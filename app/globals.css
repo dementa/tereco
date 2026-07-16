@@ -1,26 +1,73 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ─────────────────────────────────────────────
+   TERECO Design System
+   Lock colors to palette — immune to dark mode
+───────────────────────────────────────────────  */
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Override Tailwind's background/foreground completely */
+  --color-background: #F5FDFF;
+  --color-foreground: #011E28;
+
+  /* ── Primary scale ── */
+  --color-primary-900: #011E28;
+  --color-primary-800: #02303F;
+  --color-primary-700: #02465B;
+  --color-primary-600: #035D77;
+  --color-primary-500: #047093;
+  --color-primary-400: #0489AE;
+  --color-primary-200: #9ED8EA;
+  --color-primary-100: #D6F0F7;
+  --color-primary-50:  #EBF8FC;
+
+  /* ── Accent scale ── */
+  --color-accent-dark:    #C4952A;
+  --color-accent:         #F5CA93;
+  --color-accent-mid:     #F7D6A9;
+  --color-accent-light:   #FEF3DC;
+  --color-accent-lighter: #FFFBF3;
+
+  /* ── Background scale ── */
+  --color-bg:        #F5FDFF;
+  --color-bg-card:   #FFFFFF;
+  --color-bg-muted:  #EBF8FC;
+  --color-bg-subtle: #F0FAFD;
+
+  /* ── Text scale ── */
+  --color-text-primary:   #011E28;
+  --color-text-secondary: #2A5769;
+  --color-text-muted:     #5A7A85;
+  --color-text-faint:     #9BBAC5;
+
+  /* ── Semantic ── */
+  --color-success:    #1A7A4A;
+  --color-success-bg: #E8F7EF;
+  --color-warning:    #C47B0A;
+  --color-warning-bg: #FEF3DC;
+  --color-error:      #C0392B;
+  --color-error-bg:   #FDECEA;
+
+  /* ── Fonts ── */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
+/*
+  Disable Tailwind's dark mode entirely for this project.
+  TERECO has a fixed light palette — dark mode is not a product requirement.
+  This single rule prevents prefers-color-scheme from touching anything.
+*/
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #F5FDFF;
+    --foreground: #011E28;
   }
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: #F5FDFF;
+  color: #011E28;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
