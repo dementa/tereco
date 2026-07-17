@@ -32,7 +32,7 @@ const CreateSchema = z.object({
   questions: z.array(z.object({
     questionId: z.string().min(1),
     questionText: z.string().min(1),
-    type: z.enum(['mcq', 'text']),
+    questionType: z.enum(['mcq', 'text']),
     options: z.array(z.string()).optional(),
     correctAnswer: z.string().optional(),
   })).optional(),
@@ -75,7 +75,7 @@ export async function POST(request: NextRequest) {
       const questionRows = validated.questions.map(q => [
         q.questionId,
         q.questionText,
-        q.type,
+        q.questionType,
         (q.options || []).join(','),
         q.correctAnswer || '',
       ]);

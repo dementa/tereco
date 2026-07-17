@@ -15,9 +15,11 @@ const SubmitSchema = z.object({
 // ─── POST ──────────────────────────────────────────────────
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const assessmentId = params.id;
+  const {id} = await params;
+
+  const assessmentId = id;
 
   try {
     const body = await request.json();
@@ -66,7 +68,7 @@ export async function POST(
         timestamp,
         timeSpent: validated.timeSpent || 0,
         // Auto‑score if correctAnswer exists and answer matches (case‑insensitive)
-        score: (q.correctAnswer && q.type === 'mcq' && 
+        score: (q.correctAnswer && q.questionType === 'mcq' && 
                 userAnswer.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase()) ? 1 : undefined,
       };
     });

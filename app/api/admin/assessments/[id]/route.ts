@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAssessmentById, getQuestions, Question} from '@/lib/assessment-sheets';
-import { sheets, spreadsheetId} from '@/lib/googleSheets';
+import { getSheets } from '@/lib/googleSheets';
 import { z } from 'zod';
+
+const {spreadsheetId, sheets} = getSheets();
 
 const UpdateSchema = z.object({
   title: z.string().min(1).optional(),

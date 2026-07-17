@@ -3,9 +3,11 @@ import { getAssessmentById, getQuestions } from '@/lib/assessment-sheets';
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const assessmentId = params.id;
+  const { id } = await params;
+
+  const assessmentId = id;
   try {
     // 1. Get the assessment metadata
     const assessment = await getAssessmentById(assessmentId);
