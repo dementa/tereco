@@ -7,7 +7,10 @@ export function getSheets(): {
   sheets: sheets_v4.Sheets;
   spreadsheetId: string;
 } {
-  const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, "\n");
+  const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY
+  ?.replace(/\\n/g, "\n")
+  .replace(/^"|"$/g, "")
+  .trim();
   const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
   const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
 
