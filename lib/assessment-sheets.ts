@@ -1,4 +1,4 @@
-import { getSheets }from './googleSheets';
+import { getSheets } from './googleSheets';
 
 const { sheets, spreadsheetId } = getSheets();
 

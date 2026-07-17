@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAssessments } from '@/lib/assessment-sheets';
-import { getSheets }from '@/lib/googleSheets';
+import { getSheets } from '@/lib/googleSheets';
 import { z } from 'zod';
 
 const { sheets, spreadsheetId } = getSheets();
