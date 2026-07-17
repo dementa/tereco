@@ -19,7 +19,6 @@ export const COLORS = {
 
 // School → classes mapping (extend as needed)
 export const SCHOOLS: Record<string, string[]> = {
-  'Nairobi Academy': ['Form 3A', 'Form 3B', 'Form 4A'],
-  'Kisumu High': ['Form 2A', 'Form 2B', 'Form 3A'],
-  'Mombasa School': ['Form 1A', 'Form 1B', 'Form 2A'],
+  'Ebenezer Standard Junior School': ['P.1B', 'P.1C', 'P.1S', 'P.2B', 'P.2C', 'P.2S','P.3B', 'P.3C', 'P.3S','P.4B', 'P.4V', 'P.4S','P.5B', 'P.5V', 'P.5S','P.6B', 'P.6V'],
+  'Little Pines Junior School': ['J1A', 'J1B', 'J2', 'J3A', 'J3B', 'J4', 'J5', 'J6', 'ELITE'],
 };
