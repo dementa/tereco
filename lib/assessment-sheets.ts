@@ -1,4 +1,6 @@
-import { sheets, spreadsheetId } from './googleSheets';
+import { getSheets }from './googleSheets';
+
+const { sheets, spreadsheetId } = getSheets();
 
 // ─── Types ────────────────────────────────────────────────
 

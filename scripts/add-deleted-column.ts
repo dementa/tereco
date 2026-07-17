@@ -1,4 +1,6 @@
-import { sheets, spreadsheetId } from '../lib/googleSheets';
+import { getSheets }from '../lib/googleSheets';
+
+const { sheets, spreadsheetId } = getSheets();
 
 async function addDeletedColumn() {
   try {
