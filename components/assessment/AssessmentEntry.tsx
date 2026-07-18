@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { SCHOOLS } from '@/lib/constants';
 import { Card } from '@/components/ui/Card';
@@ -8,62 +8,124 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 
+interface StudentOption {
+  id: string;
+  name: string;
+}
+
+const NOT_LISTED = '__not_listed__';
+
 export function AssessmentEntry() {
   const router = useRouter();
   const [school, setSchool] = useState('');
   const [className, setClassName] = useState('');
   const [studentName, setStudentName] = useState('');
+  const [selectedStudent, setSelectedStudent] = useState('');
+  const [students, setStudents] = useState<StudentOption[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   const classes = SCHOOLS[school] || [];
 
+  // Load the registered students for the chosen school/class.
+  useEffect(() => {
+    if (!school || !className) {
+      setStudents([]);
+      setSelectedStudent('');
+      return;
+    }
+    setLoadingStudents(true);
+    setSelectedStudent('');
+    setStudentName('');
+    const qs = new URLSearchParams({ school, class: className });
+    fetch(`/api/students?${qs.toString()}`)
+      .then((r) => r.json())
+      .then((d) => setStudents(d.success ? d.data : []))
+      .catch(() => setStudents([]))
+      .finally(() => setLoadingStudents(false));
+  }, [school, className]);
+
+  const usingList = students.length > 0 && selectedStudent !== NOT_LISTED;
+
+  const resolvedName = usingList
+    ? students.find((s) => s.id === selectedStudent)?.name ?? ''
+    : studentName.trim();
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!school || !className || !studentName.trim()) {
-      setError('Please fill in all fields.');
+    if (!school || !className || !resolvedName) {
+      setError('Please select your school, class and name.');
       return;
     }
     setLoading(true);
-    // Store student info in sessionStorage for use during the assessment
-    sessionStorage.setItem('assessmentStudent', JSON.stringify({ school, className, studentName }));
+    sessionStorage.setItem(
+      'assessmentStudent',
+      JSON.stringify({ school, className, studentName: resolvedName })
+    );
     router.push('/assessment/list');
   };
 
   return (
-    <div className="min-h-screen bg-[#F5FDFF] flex items-center justify-center px-4 py-8">
+    <div className="min-h-screen bg-bg flex items-center justify-center px-4 py-8">
       <Card className="w-full max-w-md p-6 sm:p-8">
-        <h1 className="text-2xl font-bold text-[#011E28] text-center mb-2">Assessment Portal</h1>
-        <p className="text-sm text-[#5A7A85] text-center mb-6">Enter your details to start</p>
+        <h1 className="text-2xl font-bold text-primary-900 text-center mb-2">Assessment Portal</h1>
+        <p className="text-sm text-text-muted text-center mb-6">Enter your details to start</p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <Select
             label="School"
-            options={Object.keys(SCHOOLS).map(s => ({ value: s, label: s }))}
+            options={[{ value: '', label: 'Select your school…' }, ...Object.keys(SCHOOLS).map((s) => ({ value: s, label: s }))]}
             value={school}
-            onChange={(e) => {
-              setSchool(e.target.value);
-              setClassName('');
-            }}
+            onChange={(e) => { setSchool(e.target.value); setClassName(''); }}
             required
           />
           <Select
             label="Class"
-            options={classes.map(c => ({ value: c, label: c }))}
+            options={[{ value: '', label: 'Select your class…' }, ...classes.map((c) => ({ value: c, label: c }))]}
             value={className}
             onChange={(e) => setClassName(e.target.value)}
             required
             disabled={!school}
           />
-          <Input
-            label="Your Name"
-            value={studentName}
-            onChange={(e) => setStudentName(e.target.value)}
-            placeholder="Enter your full name"
-            required
-          />
 
-          {error && <p className="text-sm text-[#C0392B]">{error}</p>}
+          {loadingStudents ? (
+            <p className="text-sm text-text-muted">Loading students…</p>
+          ) : students.length > 0 ? (
+            <>
+              <Select
+                label="Your Name"
+                options={[
+                  { value: '', label: 'Select your name…' },
+                  ...students.map((s) => ({ value: s.id, label: s.name })),
+                  { value: NOT_LISTED, label: "My name isn't listed" },
+                ]}
+                value={selectedStudent}
+                onChange={(e) => setSelectedStudent(e.target.value)}
+                required
+              />
+              {selectedStudent === NOT_LISTED && (
+                <Input
+                  label="Type your full name"
+                  value={studentName}
+                  onChange={(e) => setStudentName(e.target.value)}
+                  placeholder="Enter your full name"
+                  required
+                />
+              )}
+            </>
+          ) : (
+            <Input
+              label="Your Name"
+              value={studentName}
+              onChange={(e) => setStudentName(e.target.value)}
+              placeholder="Enter your full name"
+              required
+              disabled={!className}
+            />
+          )}
+
+          {error && <p className="text-sm text-error">{error}</p>}
 
           <Button type="submit" className="w-full" isLoading={loading}>
             Continue to Assessments

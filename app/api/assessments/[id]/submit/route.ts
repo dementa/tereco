@@ -48,8 +48,27 @@ export async function POST(
 
     // 4. Build responses array
     const timestamp = new Date().toISOString();
+    const norm = (s: string) => s.trim().toLowerCase();
+    const AUTO_GRADED = new Set(['mcq', 'fill', 'checkbox']);
+
     const responses = questions.map(q => {
       const userAnswer = validated.answers[q.questionId] || '';
+      const maxScore = q.maxScore ?? 1;
+
+      // Auto-score objective questions; leave text answers (short/long/matching/
+      // dragdrop) as null so an admin can mark them manually.
+      let score: number | undefined;
+      if (AUTO_GRADED.has(q.questionType) && q.correctAnswer) {
+        if (q.questionType === 'checkbox') {
+          const given = userAnswer.split('|').map(s => norm(s)).filter(Boolean).sort();
+          const correct = q.correctAnswer.split('|').map(s => norm(s)).filter(Boolean).sort();
+          const match = given.length === correct.length && given.every((v, i) => v === correct[i]);
+          score = match ? maxScore : 0;
+        } else {
+          score = norm(userAnswer) === norm(q.correctAnswer) ? maxScore : 0;
+        }
+      }
+
       return {
         studentName: validated.studentName,
         school: validated.school,
@@ -59,13 +78,11 @@ export async function POST(
         answer: userAnswer,
         timestamp,
         timeSpent: validated.timeSpent || 0,
-        // Auto‑score if correctAnswer exists and answer matches (case‑insensitive)
-        score: (q.correctAnswer && q.questionType === 'mcq' && 
-                userAnswer.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase()) ? 1 : undefined,
+        score,
       };
     });
 
-    // 5. Save to sheet
+    // 5. Persist responses to Supabase
     await saveResponses(responses);
 
     return successResponse({ message: 'Assessment submitted successfully' });

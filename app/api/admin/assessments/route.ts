@@ -29,13 +29,14 @@ const CreateSchema = z.object({
   startTime: z.string().optional(),
   targetType: z.enum(['general', 'class', 'school+class']),
   targetValue: z.string().optional(),
-  questionsSheet: z.string().min(1),
+  questionsSheet: z.string().optional(),
   questions: z.array(z.object({
     questionId: z.string().min(1),
     questionText: z.string().min(1),
-    questionType: z.enum(['mcq', 'text']),
+    questionType: z.enum(['mcq', 'checkbox', 'fill', 'matching', 'dragdrop', 'short', 'long']),
     options: z.array(z.string()).optional(),
     correctAnswer: z.string().optional(),
+    maxScore: z.number().min(0).optional(),
   })).optional(),
 });
 
@@ -52,17 +53,17 @@ export async function POST(request: NextRequest) {
       startTime: validated.startTime,
       targetType: validated.targetType,
       targetValue: validated.targetValue,
-      questionsSheet: validated.questionsSheet,
+      questionsSheet: validated.questionsSheet ?? '',
     });
 
     if (validated.questions && validated.questions.length > 0) {
       const questions: Question[] = validated.questions.map((q) => ({
         questionId: q.questionId,
         questionText: q.questionText,
-        questionType: (q.questionType === 'mcq' ? 'mcq' : 'short') as QuestionType,
+        questionType: q.questionType as QuestionType,
         options: q.options ?? [],
         correctAnswer: q.correctAnswer,
-        maxScore: 1,
+        maxScore: q.maxScore ?? 1,
       }));
       await saveQuestions(validated.id, questions);
     }
