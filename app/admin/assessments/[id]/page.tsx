@@ -15,7 +15,7 @@ interface Question {
   options: string[];
   correctAnswer?: string;
   maxScore: number;
-  config?: any;
+  config?: unknown;
 }
 
 interface Assessment {
@@ -131,9 +131,17 @@ export default function EditAssessmentPage() {
 
   // ─── Save all questions ──────────────────────────────────
   const handleSaveQuestions = async () => {
+    // Normalize options (trim each, drop empties) and correct answers before
+    // validating/sending so multi-word options keep their internal spaces.
+    const normalized: Question[] = questions.map((q) => ({
+      ...q,
+      options: q.options.map((o) => o.trim()).filter(Boolean),
+      correctAnswer: q.correctAnswer?.trim(),
+    }));
+
     // ── Validate before sending ──
     const errors: string[] = [];
-    for (const q of questions) {
+    for (const q of normalized) {
       if (!q.questionId.trim()) errors.push(`Question ID is required (${q.questionText || 'new question'}).`);
       if (!q.questionText.trim()) errors.push(`Question text is required for ${q.questionId || 'new question'}.`);
       if (['mcq', 'checkbox', 'matching', 'dragdrop'].includes(q.questionType)) {
@@ -150,10 +158,11 @@ export default function EditAssessmentPage() {
     }
 
     try {
+      setQuestions(normalized);
       const res = await fetch(`/api/admin/assessments/${assessmentId}/questions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questions }),
+        body: JSON.stringify({ questions: normalized }),
       });
       const data = await res.json();
       if (data.success) {
@@ -161,7 +170,9 @@ export default function EditAssessmentPage() {
       } else {
         // Show detailed validation errors from server
         if (data.errors && Array.isArray(data.errors)) {
-          const serverErrors = data.errors.map((e: any) => `${e.path}: ${e.message}`).join('\n');
+          const serverErrors = data.errors
+            .map((e: { path?: unknown; message?: string }) => `${Array.isArray(e.path) ? e.path.join('.') : e.path}: ${e.message}`)
+            .join('\n');
           alert(`Server validation failed:\n${serverErrors}`);
         } else {
           alert(data.message || 'Failed to save questions');
@@ -189,7 +200,7 @@ export default function EditAssessmentPage() {
     setEditingQuestionId(newId);
   };
 
-  const updateQuestion = (index: number, field: keyof Question, value: any) => {
+  const updateQuestion = (index: number, field: keyof Question, value: Question[keyof Question]) => {
     const updated = [...questions];
     updated[index] = { ...updated[index], [field]: value };
     setQuestions(updated);
@@ -273,7 +284,7 @@ export default function EditAssessmentPage() {
                 <label className="text-xs font-medium text-[#5A7A85]">Options (comma separated)</label>
                 <Input
                   value={q.options.join(', ')}
-                  onChange={(e) => updateQuestion(index, 'options', e.target.value.split(',').map(s => s.trim()))}
+                  onChange={(e) => updateQuestion(index, 'options', e.target.value.split(','))}
                   placeholder="e.g. A, B, C, D"
                 />
               </div>
@@ -339,7 +350,7 @@ export default function EditAssessmentPage() {
                   { value: 'school+class', label: 'School + Class' },
                 ]}
                 value={targetType}
-                onChange={(e) => setTargetType(e.target.value as any)}
+                onChange={(e) => setTargetType(e.target.value as 'general' | 'class' | 'school+class')}
                 required
               />
               {targetType !== 'general' && (
