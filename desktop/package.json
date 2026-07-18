@@ -1,0 +1,61 @@
+{
+  "name": "tereco-desktop",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TERECO Collect desktop application (thin Electron wrapper around the deployed web app).",
+  "author": "TERECO",
+  "homepage": "https://github.com/dementa/tereco",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:linux": "electron-builder --linux",
+    "dist:mac": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "33.2.1",
+    "electron-builder": "25.1.8"
+  },
+  "build": {
+    "appId": "com.tereco.collect",
+    "productName": "TERECO Collect",
+    "copyright": "Copyright © TERECO",
+    "directories": {
+      "buildResources": "build",
+      "output": "dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "TERECO Collect"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Education",
+      "icon": "build/icon.png",
+      "maintainer": "TERECO <support@tereco.local>"
+    },
+    "mac": {
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] }
+      ],
+      "category": "public.app-category.education",
+      "icon": "build/icon.png"
+    }
+  }
+}
