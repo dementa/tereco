@@ -133,7 +133,7 @@ export async function getAssessments(
 
   if (error) {
     console.error("Error fetching assessments:", error);
-    return [];
+    throw new Error("Failed to fetch assessments");
   }
 
   const assessments = (data ?? []).map(rowToAssessment);
@@ -177,7 +177,7 @@ export async function getAssessmentById(
 
   if (error) {
     console.error("Error fetching assessment by ID:", error);
-    return null;
+    throw new Error("Failed to fetch assessment");
   }
   return data ? rowToAssessment(data) : null;
 }
@@ -261,7 +261,7 @@ export async function getQuestions(assessmentId: string): Promise<Question[]> {
 
   if (error) {
     console.error("Error fetching questions:", error);
-    return [];
+    throw new Error("Failed to fetch questions");
   }
   return (data ?? []).map(rowToQuestion);
 }
