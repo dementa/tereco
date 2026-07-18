@@ -2,64 +2,56 @@ import dotenv from 'dotenv';
 // Load env before anything else
 dotenv.config({ path: '.env.local' });
 
-// Now dynamically import the modules we need
+// Hashes any plaintext passcodes stored in the Supabase `users` table.
 async function run() {
   const { hashPasscode } = await import('../lib/hash.js');
-  const { ensureUsersSheet } = await import('../lib/googleSheets.js');
-  const { google } = await import('googleapis');
+  const { createClient } = await import('@supabase/supabase-js');
 
-  const privateKey = process.env.GOOGLE_SHEETS_PRIVATE_KEY?.replace(/\\n/g, '\n');
-  const clientEmail = process.env.GOOGLE_SHEETS_CLIENT_EMAIL;
-  const spreadsheetId = process.env.GOOGLE_SHEETS_SPREADSHEET_ID;
+  const url =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!privateKey || !clientEmail || !spreadsheetId) {
-    console.error('Missing environment variables');
+  if (!url || !serviceRoleKey) {
+    console.error('Missing Supabase environment variables');
     return;
   }
 
-  const auth = new google.auth.GoogleAuth({
-    credentials: { client_email: clientEmail, private_key: privateKey },
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+  const supabase = createClient(url, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const sheets = google.sheets({ version: 'v4', auth });
-
   try {
-    await ensureUsersSheet();
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: 'Users!A:E',
-    });
-    const rows = response.data.values || [];
-    if (rows.length < 2) {
+    const { data, error } = await supabase
+      .from('users')
+      .select('staff_id, passcode_hash');
+    if (error) throw error;
+
+    const rows = data ?? [];
+    if (rows.length === 0) {
       console.log('No user rows found.');
       return;
     }
-    const updates: any[] = [];
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      const staffId = row[0];
-      const plainPasscode = row[4];
-      if (!plainPasscode) continue;
-      if (plainPasscode.startsWith('$2a$')) {
+
+    let migrated = 0;
+    for (const row of rows) {
+      const staffId = row.staff_id as string;
+      const passcode = row.passcode_hash as string | null;
+      if (!passcode) continue;
+      if (passcode.startsWith('$2')) {
         console.log(`Skipping ${staffId} – already hashed.`);
         continue;
       }
-      const hashed = await hashPasscode(plainPasscode);
-      updates.push({
-        range: `Users!E${i + 1}`,
-        values: [[hashed]],
-      });
+      const hashed = await hashPasscode(passcode);
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ passcode_hash: hashed })
+        .eq('staff_id', staffId);
+      if (updateError) throw updateError;
+      migrated += 1;
     }
-    if (updates.length > 0) {
-      await sheets.spreadsheets.values.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          data: updates,
-          valueInputOption: 'USER_ENTERED',
-        },
-      });
-      console.log(`✅ Migrated ${updates.length} passcodes.`);
+
+    if (migrated > 0) {
+      console.log(`✅ Migrated ${migrated} passcodes.`);
     } else {
       console.log('No passcodes to migrate.');
     }
