@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArrowLeft } from 'lucide-react';
 import { SCHOOLS } from '@/lib/constants';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -69,6 +70,14 @@ export function AssessmentEntry() {
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center px-4 py-8">
       <Card className="w-full max-w-md p-6 sm:p-8">
+        <button
+          type="button"
+          onClick={() => router.push('/')}
+          className="mb-4 inline-flex items-center gap-1.5 text-sm text-text-muted transition-colors hover:text-primary-700"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back to sign-in
+        </button>
         <h1 className="text-2xl font-bold text-primary-900 text-center mb-2">Assessment Portal</h1>
         <p className="text-sm text-text-muted text-center mb-6">Enter your details to start</p>
 

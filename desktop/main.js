@@ -3,6 +3,15 @@
 const { app, BrowserWindow, shell, Menu, dialog } = require('electron');
 const path = require('path');
 
+// electron-updater is optional at dev time; guard the require so `npm start`
+// (unpackaged) never crashes if it isn't installed.
+let autoUpdater = null;
+try {
+  ({ autoUpdater } = require('electron-updater'));
+} catch {
+  autoUpdater = null;
+}
+
 /**
  * The deployed TERECO web app the desktop client loads.
  * Priority: TERECO_APP_URL env var > --url=<url> CLI arg > DEFAULT_URL.
@@ -58,6 +67,7 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: '#F5FDFF',
     show: false,
+    autoHideMenuBar: true,
     icon: path.join(__dirname, 'build', 'icon.png'),
     title: 'TERECO Collect',
     webPreferences: {
@@ -69,6 +79,29 @@ function createWindow() {
   });
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
+
+  // Keep essential shortcuts working even though the native menu bar is gone.
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const ctrl = input.control || input.meta;
+    const key = input.key.toLowerCase();
+    if ((ctrl && key === 'r') || key === 'f5') {
+      mainWindow.webContents.reload();
+      event.preventDefault();
+    } else if (key === 'f11') {
+      mainWindow.setFullScreen(!mainWindow.isFullScreen());
+      event.preventDefault();
+    } else if (ctrl && (key === '=' || key === '+')) {
+      mainWindow.webContents.setZoomLevel(mainWindow.webContents.getZoomLevel() + 1);
+      event.preventDefault();
+    } else if (ctrl && key === '-') {
+      mainWindow.webContents.setZoomLevel(mainWindow.webContents.getZoomLevel() - 1);
+      event.preventDefault();
+    } else if (ctrl && key === '0') {
+      mainWindow.webContents.setZoomLevel(0);
+      event.preventDefault();
+    }
+  });
 
   mainWindow.loadURL(APP_URL);
 
@@ -98,43 +131,38 @@ function createWindow() {
 }
 
 function buildMenu() {
-  const isMac = process.platform === 'darwin';
+  // No native menu bar / tabs. On macOS a minimal app menu is required for
+  // standard shortcuts (Cmd+Q, copy/paste); on Windows/Linux remove it entirely.
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null);
+    return;
+  }
   const template = [
-    ...(isMac ? [{ role: 'appMenu' }] : []),
-    { role: 'fileMenu' },
+    { role: 'appMenu' },
     { role: 'editMenu' },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-      ],
-    },
     { role: 'windowMenu' },
-    {
-      role: 'help',
-      submenu: [
-        {
-          label: 'About TERECO Collect',
-          click: () => {
-            dialog.showMessageBox(mainWindow, {
-              type: 'info',
-              title: 'About TERECO Collect',
-              message: 'TERECO Collect',
-              detail: `Version ${app.getVersion()}\nConnected to: ${APP_URL}`,
-            });
-          },
-        },
-      ],
-    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+function initAutoUpdates() {
+  // Only meaningful in a packaged build with a configured publish feed.
+  if (!autoUpdater || !app.isPackaged) return;
+  autoUpdater.autoDownload = true;
+  autoUpdater.on('update-downloaded', async () => {
+    const { response } = await dialog.showMessageBox(mainWindow, {
+      type: 'info',
+      buttons: ['Restart now', 'Later'],
+      defaultId: 0,
+      title: 'Update ready',
+      message: 'A new version of TERECO Collect has been downloaded.',
+      detail: 'Restart the app to apply the update.',
+    });
+    if (response === 0) autoUpdater.quitAndInstall();
+  });
+  autoUpdater.checkForUpdatesAndNotify().catch(() => {
+    /* offline or no feed configured — ignore */
+  });
 }
 
 // Single-instance lock so only one window runs.
@@ -152,6 +180,7 @@ if (!gotLock) {
   app.whenReady().then(() => {
     buildMenu();
     createWindow();
+    initAutoUpdates();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

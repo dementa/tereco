@@ -13,6 +13,9 @@
     "dist:linux": "electron-builder --linux",
     "dist:mac": "electron-builder --mac"
   },
+  "dependencies": {
+    "electron-updater": "6.3.9"
+  },
   "devDependencies": {
     "electron": "33.2.1",
     "electron-builder": "25.1.8"
@@ -21,6 +24,13 @@
     "appId": "com.tereco.collect",
     "productName": "TERECO Collect",
     "copyright": "Copyright © TERECO",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "dementa",
+        "repo": "tereco"
+      }
+    ],
     "directories": {
       "buildResources": "build",
       "output": "dist"
@@ -28,7 +38,8 @@
     "files": [
       "main.js",
       "preload.js",
-      "package.json"
+      "package.json",
+      "node_modules/**/*"
     ],
     "win": {
       "target": [

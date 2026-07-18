@@ -52,6 +52,32 @@ is configured via electron-builder env vars (`CSC_LINK`, `CSC_KEY_PASSWORD`,
 Unsigned Windows installers work but show a SmartScreen warning. To sign, provide
 a code-signing certificate to electron-builder (`CSC_LINK` / `CSC_KEY_PASSWORD`).
 
+## Auto-updates
+
+Two independent layers:
+
+- **Web content** updates automatically. The app loads the deployed site, so any
+  new deploy is picked up on the next launch/reload — no desktop rebuild needed.
+- **The desktop shell** (this Electron wrapper) updates via
+  [`electron-updater`](https://www.electron.build/auto-update) against **GitHub
+  Releases** (configured in `build.publish`). On launch, a packaged app checks
+  for a newer release, downloads it in the background, and prompts the user to
+  restart. Only needed when the wrapper itself changes (buttons, menu, Electron
+  version) — rare.
+
+To publish an update users will receive automatically:
+
+```bash
+cd desktop
+# bump "version" in package.json, then:
+GH_TOKEN=<github token with repo scope> npm run dist -- --publish always
+```
+
+This uploads the installers **and** the `latest*.yml` update manifests to a
+GitHub Release. Installed apps compare their version against that manifest.
+Without publishing (plain `npm run dist:*`), installers are produced but no
+auto-update feed is created.
+
 ## Icon
 
 `build/icon.png` (1024×1024) is the source icon; electron-builder generates the

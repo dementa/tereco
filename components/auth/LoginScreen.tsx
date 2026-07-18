@@ -1,12 +1,14 @@
 'use client'
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { User, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, AlertCircle, GraduationCap, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from './AuthContext';
 
 export const LoginScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
+  const router = useRouter();
   const { login } = useAuth();
   const [staffId, setStaffId] = useState('');
   const [passcode, setPasscode] = useState('');
@@ -79,11 +81,35 @@ export const LoginScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
         className="w-full max-w-sm"
       >
         {/* Logo — free-standing, no container */}
-        <div className="text-center mb-10">
+        <div className="text-center mb-8">
           <h1 className="text-3xl font-bold tracking-tight text-primary-900">
             TERECO
           </h1>
-          <p className="text-sm text-text-muted mt-2">Sign in to submit lesson records</p>
+          <p className="text-sm text-text-muted mt-2">Assessments &amp; lesson records</p>
+        </div>
+
+        {/* Quick actions — student entry needs no sign-in */}
+        <div className="mb-6">
+          <button
+            type="button"
+            onClick={() => router.push('/assessment')}
+            className="group w-full flex items-center gap-3 rounded-xl border-2 border-primary-200 bg-bg-card px-4 py-3 text-left transition-all hover:border-primary-700 hover:bg-primary-700/5 active:scale-[0.99] focus:outline-none focus:ring-2 focus:ring-primary-700/20"
+          >
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary-700/10 text-primary-700">
+              <GraduationCap className="h-5 w-5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-primary-900">Take an Assessment</span>
+              <span className="block text-xs text-text-muted">For students — no sign-in required</span>
+            </span>
+            <ChevronRight className="ml-auto h-4 w-4 shrink-0 text-text-faint transition-transform group-hover:translate-x-0.5" />
+          </button>
+        </div>
+
+        <div className="mb-6 flex items-center gap-3">
+          <span className="h-px flex-1 bg-primary-100" />
+          <span className="text-xs uppercase tracking-wide text-text-faint">Staff sign-in</span>
+          <span className="h-px flex-1 bg-primary-100" />
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">
