@@ -202,7 +202,7 @@ export async function saveResponses(responses: StudentResponse[]) {
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: 'Responses!A:I',
-      valueInputOption: 'USER_ENTERED',
+      valueInputOption: 'RAW',
       requestBody: { values: rows },
     });
   } catch (error) {
@@ -350,7 +350,7 @@ export async function saveQuestions(assessmentId: string, questions: Question[])
   await sheets.spreadsheets.values.append({
     spreadsheetId,
     range: 'Questions!A:H',
-    valueInputOption: 'USER_ENTERED',
+    valueInputOption: 'RAW',
     requestBody: { values: rows },
   });
 }
@@ -373,7 +373,7 @@ export async function deleteQuestionsForAssessment(assessmentId: string) {
   await sheets.spreadsheets.values.update({
     spreadsheetId,
     range: 'Questions!A:H',
-    valueInputOption: 'USER_ENTERED',
+    valueInputOption: 'RAW',
     requestBody: { values: newRows },
   });
 }

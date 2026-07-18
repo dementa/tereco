@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAssessments } from '@/lib/assessment-sheets';
 import { getSheets } from '@/lib/googleSheets';
+import { requireAdmin } from '@/lib/adminAuth';
 import { z } from 'zod';
 
 const { sheets, spreadsheetId } = getSheets();
 
 // ─── GET all assessments ─────────────────────────────
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const assessments = await getAssessments(); // no filters
     return NextResponse.json({ success: true, data: assessments });
@@ -39,6 +42,8 @@ const CreateSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const validated = CreateSchema.parse(body);
@@ -58,7 +63,7 @@ export async function POST(request: NextRequest) {
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: 'Assessments!A:H',
-      valueInputOption: 'USER_ENTERED',
+      valueInputOption: 'RAW',
       requestBody: { values: [assessmentRow] },
     });
 
@@ -84,7 +89,7 @@ export async function POST(request: NextRequest) {
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range: `${validated.questionsSheet}!A:E`,
-        valueInputOption: 'USER_ENTERED',
+        valueInputOption: 'RAW',
         requestBody: { values: questionRows },
       });
     }
@@ -101,7 +106,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Creation failed' },
+      { success: false, message: 'Creation failed' },
       { status: 500 }
     );
   }

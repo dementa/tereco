@@ -99,7 +99,9 @@ export async function appendRow(
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: `${sheetName}!A:Z`,
-      valueInputOption: "USER_ENTERED",
+      // RAW so user-supplied values are stored literally and never
+      // interpreted as spreadsheet formulas (CSV/formula injection).
+      valueInputOption: "RAW",
       requestBody: {
         values: [row],
       },

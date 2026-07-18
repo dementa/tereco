@@ -21,10 +21,17 @@ export async function GET(
     // 2. Get questions from the associated sheet
     const questions = await getQuestions(assessment.questionsSheet);
 
-    // Optionally, you could shuffle questions here if needed
-    // const shuffled = questions.sort(() => Math.random() - 0.5);
+    // Never expose the answer key to students taking the assessment.
+    const sanitized = questions.map((q) => ({
+      questionId: q.questionId,
+      questionText: q.questionText,
+      questionType: q.questionType,
+      options: q.options,
+      maxScore: q.maxScore,
+      config: q.config,
+    }));
 
-    return NextResponse.json({ success: true, data: questions });
+    return NextResponse.json({ success: true, data: sanitized });
   } catch (error) {
     console.error('Error fetching questions:', error);
     return NextResponse.json(

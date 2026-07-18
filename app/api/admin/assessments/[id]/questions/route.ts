@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getQuestions, saveQuestions } from '@/lib/assessment-sheets';
+import { requireAdmin } from '@/lib/adminAuth';
 import { z } from 'zod';
 
 const QuestionSchema = z.object({
@@ -20,6 +21,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const { id } = await params;
   try {
     const questions = await getQuestions(id);
@@ -36,6 +39,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const { id } = await params;
   try {
     const body = await request.json();
@@ -50,7 +55,7 @@ export async function POST(
       );
     }
     return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Save failed' },
+      { success: false, message: 'Save failed' },
       { status: 500 }
     );
   }

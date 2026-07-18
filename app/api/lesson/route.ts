@@ -37,12 +37,10 @@ const LessonSchema = z
     reference: z.string().optional(),
     teacher: z.string().optional(),
   })
-  .passthrough();
+  .strip();
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("📥 Lesson submission received");
-
     // -------------------------------
     // Google Sheets Client
     // -------------------------------
@@ -55,7 +53,6 @@ export async function POST(request: NextRequest) {
 
     try {
       body = await request.json();
-      console.log("📦 Payload:", body);
     } catch {
       return NextResponse.json(
         {
@@ -79,8 +76,6 @@ export async function POST(request: NextRequest) {
         message: issue.message,
       }));
 
-      console.log("❌ Validation failed", errors);
-
       return NextResponse.json(
         {
           success: false,
@@ -94,8 +89,6 @@ export async function POST(request: NextRequest) {
     }
 
     const validated = result.data;
-
-    console.log("✅ Validation passed");
 
     // -------------------------------
     // Ensure Sheet Exists
@@ -128,8 +121,6 @@ export async function POST(request: NextRequest) {
       ]
     );
 
-    console.log("📄 LessonRecords sheet ready");
-
         // -------------------------------
     // Prepare Row
     // -------------------------------
@@ -156,8 +147,6 @@ export async function POST(request: NextRequest) {
       new Date().toISOString(),
     ];
 
-    console.log("📝 Appending lesson record...");
-
     // -------------------------------
     // Save to Google Sheets
     // -------------------------------
@@ -167,8 +156,6 @@ export async function POST(request: NextRequest) {
       "LessonRecords",
       row
     );
-
-    console.log("✅ Lesson successfully saved.");
 
     // -------------------------------
     // Success Response
@@ -191,10 +178,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : "An unexpected server error occurred.",
+        message: "An unexpected server error occurred.",
       },
       {
         status: 500,

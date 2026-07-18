@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAssessmentById, getQuestions, Question} from '@/lib/assessment-sheets';
+import { getAssessmentById, getQuestions } from '@/lib/assessment-sheets';
 import { getSheets } from '@/lib/googleSheets';
+import { requireAdmin } from '@/lib/adminAuth';
 import { z } from 'zod';
 
 const {spreadsheetId, sheets} = getSheets();
@@ -15,11 +16,23 @@ const UpdateSchema = z.object({
   questionsSheet: z.string().optional(),
 });
 
+const QuestionInputSchema = z.object({
+  questionId: z.string().min(1),
+  questionText: z.string().min(1),
+  questionType: z.string().min(1),
+  options: z.array(z.string()).optional(),
+  correctAnswer: z.string().optional(),
+});
+
+const QuestionsArraySchema = z.array(QuestionInputSchema);
+
 // GET /api/admin/assessments/[id] – get single assessment with questions
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { id } = await params;
     const assessment = await getAssessmentById(id);
@@ -45,6 +58,8 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await request.json();
@@ -52,8 +67,11 @@ export async function PUT(
     // Validate the update fields
     const validated = UpdateSchema.parse(body);
 
-    // We'll also allow a `questions` array
-    const questions = body.questions as Question[] | undefined;
+    // Validate the optional `questions` array instead of trusting the payload.
+    const questions =
+      body.questions === undefined
+        ? undefined
+        : QuestionsArraySchema.parse(body.questions);
 
     // Read the current assessment
     const assessment = await getAssessmentById(id);
@@ -105,7 +123,7 @@ export async function PUT(
     await sheets.spreadsheets.values.update({
       spreadsheetId,
       range: `Assessments!A${rowIndex + 1}:H${rowIndex + 1}`,
-      valueInputOption: 'USER_ENTERED',
+      valueInputOption: 'RAW',
       requestBody: { values: [updatedRow] },
     });
 
@@ -141,7 +159,7 @@ export async function PUT(
       await sheets.spreadsheets.values.update({
         spreadsheetId,
         range: `${assessment.questionsSheet}!A:E`,
-        valueInputOption: 'USER_ENTERED',
+        valueInputOption: 'RAW',
         requestBody: { values: questionRows },
       });
     }
@@ -149,8 +167,14 @@ export async function PUT(
     return NextResponse.json({ success: true, message: 'Assessment updated' });
   } catch (error) {
     console.error('Error updating assessment:', error);
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, message: 'Validation failed', errors: error.issues },
+        { status: 400 }
+      );
+    }
     return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Update failed' },
+      { success: false, message: 'Update failed' },
       { status: 500 }
     );
   }
@@ -162,6 +186,8 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const { id } = await params;
     
@@ -261,7 +287,7 @@ export async function DELETE(
   } catch (error) {
     console.error('Error deleting assessment:', error);
     return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Deletion failed' },
+      { success: false, message: 'Deletion failed' },
       { status: 500 }
     );
   }
