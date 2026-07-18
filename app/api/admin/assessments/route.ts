@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAssessments } from '@/lib/assessment-sheets';
-import { getSheets } from '@/lib/googleSheets';
+import {
+  getAssessments,
+  createAssessment,
+  saveQuestions,
+  Question,
+  QuestionType,
+} from '@/lib/assessments';
 import { z } from 'zod';
 
 // ─── GET all assessments ─────────────────────────────
@@ -38,54 +43,30 @@ const CreateSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
-    const { sheets, spreadsheetId } = getSheets();
     const body = await request.json();
     const validated = CreateSchema.parse(body);
 
-    // Insert assessment metadata
-    const assessmentRow = [
-      validated.id,
-      validated.title,
-      validated.description || '',
-      validated.timeLimit,
-      validated.startTime || '',
-      validated.targetType,
-      validated.targetValue || '',
-      validated.questionsSheet,
-    ];
-
-    await sheets.spreadsheets.values.append({
-      spreadsheetId,
-      range: 'Assessments!A:H',
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [assessmentRow] },
+    await createAssessment({
+      id: validated.id,
+      title: validated.title,
+      description: validated.description,
+      timeLimit: validated.timeLimit,
+      startTime: validated.startTime,
+      targetType: validated.targetType,
+      targetValue: validated.targetValue,
+      questionsSheet: validated.questionsSheet,
     });
 
-    // If questions provided, create the questions sheet
     if (validated.questions && validated.questions.length > 0) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [{ addSheet: { properties: { title: validated.questionsSheet } } }],
-        },
-      });
-
-      const headers = ['questionId', 'questionText', 'type', 'options', 'correctAnswer'];
-      const questionRows = validated.questions.map(q => [
-        q.questionId,
-        q.questionText,
-        q.questionType,
-        (q.options || []).join(','),
-        q.correctAnswer || '',
-      ]);
-      questionRows.unshift(headers);
-
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${validated.questionsSheet}!A:E`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: questionRows },
-      });
+      const questions: Question[] = validated.questions.map((q) => ({
+        questionId: q.questionId,
+        questionText: q.questionText,
+        questionType: (q.questionType === 'mcq' ? 'mcq' : 'short') as QuestionType,
+        options: q.options ?? [],
+        correctAnswer: q.correctAnswer,
+        maxScore: 1,
+      }));
+      await saveQuestions(validated.id, questions);
     }
 
     return NextResponse.json({ success: true, message: 'Assessment created' });

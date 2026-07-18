@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getQuestions, saveQuestions } from '@/lib/assessment-sheets';
+import { getQuestions, saveQuestions } from '@/lib/assessments';
 import { z } from 'zod';
 
 const QuestionSchema = z.object({
