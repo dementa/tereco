@@ -18,7 +18,7 @@ export async function getUsers(): Promise<Record<string, AppUser>> {
 
   if (error) {
     console.error("Error fetching users:", error);
-    return {};
+    throw new Error("Failed to fetch users");
   }
 
   const users: Record<string, AppUser> = {};
