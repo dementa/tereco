@@ -88,3 +88,14 @@ create table if not exists public.responses (
 );
 create index if not exists responses_assessment_id_idx on public.responses (assessment_id);
 alter table public.responses enable row level security;
+
+-- ─── Grants ────────────────────────────────────────────────────────────────
+-- The app connects with the service-role key. service_role bypasses RLS but
+-- still needs table-level privileges; grant them explicitly so a fresh project
+-- works regardless of default-privilege configuration. No grants are given to
+-- anon/authenticated, so the public key cannot read or write.
+grant usage on schema public to service_role;
+grant all privileges on all tables in schema public to service_role;
+grant all privileges on all sequences in schema public to service_role;
+alter default privileges in schema public grant all on tables to service_role;
+alter default privileges in schema public grant all on sequences to service_role;
