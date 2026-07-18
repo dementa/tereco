@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { saveResponses, getAssessmentById, getQuestions } from '@/lib/assessment-sheets';
+import { saveResponses, getAssessmentById, getQuestions } from '@/lib/assessments';
 import { z } from 'zod';
 
 // ─── Validation ─────────────────────────────────────────────
@@ -52,7 +52,7 @@ export async function POST(
     }
 
     // 3. Get questions to auto‑score MCQ
-    const questions = await getQuestions(assessment.questionsSheet);
+    const questions = await getQuestions(assessment.id);
 
     // 4. Build responses array
     const timestamp = new Date().toISOString();
