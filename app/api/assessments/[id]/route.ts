@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getAssessmentById } from '@/lib/assessment-sheets';
+import { errorResponse, successResponse } from '@/lib/apiResponse';
 
 export async function GET(
   request: NextRequest,
@@ -9,17 +10,11 @@ export async function GET(
     const { id } = await params;
     const assessment = await getAssessmentById(id);
     if (!assessment) {
-      return NextResponse.json(
-        { success: false, message: 'Assessment not found' },
-        { status: 404 }
-      );
+      return errorResponse('Assessment not found', 404);
     }
-    return NextResponse.json({ success: true, data: assessment });
+    return successResponse({ data: assessment });
   } catch (error) {
     console.error('Error fetching assessment:', error);
-    return NextResponse.json(
-      { success: false, message: 'Failed to fetch assessment' },
-      { status: 500 }
-    );
+    return errorResponse('Failed to fetch assessment', 500);
   }
 }

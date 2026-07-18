@@ -1,10 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { z } from "zod";
 import {
   getSheets,
   ensureSheet,
   appendRow,
 } from "@/lib/googleSheets";
+import {
+  errorResponse,
+  handleApiError,
+  successResponse,
+} from "@/lib/apiResponse";
 
 // -------------------------------
 // Validation Schema
@@ -57,15 +62,7 @@ export async function POST(request: NextRequest) {
       body = await request.json();
       console.log("📦 Payload:", body);
     } catch {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid request body.",
-        },
-        {
-          status: 400,
-        }
-      );
+      return errorResponse("Invalid request body.", 400);
     }
 
     // -------------------------------
@@ -74,23 +71,8 @@ export async function POST(request: NextRequest) {
     const result = LessonSchema.safeParse(body);
 
     if (!result.success) {
-      const errors = result.error.issues.map((issue) => ({
-        path: issue.path.join("."),
-        message: issue.message,
-      }));
-
-      console.log("❌ Validation failed", errors);
-
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Validation failed.",
-          errors,
-        },
-        {
-          status: 400,
-        }
-      );
+      console.log("❌ Validation failed", result.error.issues);
+      return handleApiError(result.error);
     }
 
     const validated = result.data;
@@ -173,32 +155,13 @@ export async function POST(request: NextRequest) {
     // -------------------------------
     // Success Response
     // -------------------------------
-    return NextResponse.json(
-      {
-        success: true,
-        message: "Lesson submitted successfully.",
-        reference: validated.reference,
-      },
-      {
-        status: 200,
-      }
-    );
+    return successResponse({
+      message: "Lesson submitted successfully.",
+      reference: validated.reference,
+    });
 
   } catch (error) {
-
     console.error("❌ Lesson API Error:", error);
-
-    return NextResponse.json(
-      {
-        success: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : "An unexpected server error occurred.",
-      },
-      {
-        status: 500,
-      }
-    );
+    return handleApiError(error);
   }
 }

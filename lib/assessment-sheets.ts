@@ -1,4 +1,4 @@
-import { getSheets } from './googleSheets';
+import { ensureSheet, getSheets } from './googleSheets';
 
 const { sheets, spreadsheetId } = getSheets();
 
@@ -225,28 +225,16 @@ export async function getAssessmentById(id: string): Promise<Assessment | null> 
 }
 
 export async function ensureAssessmentsSheet() {
-  try {
-    const meta = await sheets.spreadsheets.get({ spreadsheetId });
-    const sheetExists = meta.data.sheets?.some(s => s.properties?.title === 'Assessments');
-    if (!sheetExists) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [{ addSheet: { properties: { title: 'Assessments' } } }],
-        },
-      });
-      const headers = ['id', 'title', 'description', 'timeLimit', 'startTime', 'targetType', 'targetValue', 'questionsSheet'];
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: 'Assessments!A1:H1',
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [headers] },
-      });
-    }
-  } catch (error) {
-    console.error('Error ensuring Assessments sheet:', error);
-    throw error;
-  }
+  await ensureSheet(sheets, spreadsheetId, 'Assessments', [
+    'id',
+    'title',
+    'description',
+    'timeLimit',
+    'startTime',
+    'targetType',
+    'targetValue',
+    'questionsSheet',
+  ]);
 }
 
 // Add this function to lib/assessment-sheets.ts
@@ -378,25 +366,74 @@ export async function deleteQuestionsForAssessment(assessmentId: string) {
   });
 }
 
-export async function ensureQuestionsSheet() {
-  try {
-    const meta = await sheets.spreadsheets.get({ spreadsheetId });
-    const exists = meta.data.sheets?.some(s => s.properties?.title === 'Questions');
-    if (!exists) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: { requests: [{ addSheet: { properties: { title: 'Questions' } } }] },
-      });
-      const headers = ['assessmentId', 'questionId', 'questionText', 'type', 'options', 'correctAnswer', 'maxScore', 'config'];
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: 'Questions!A1:H1',
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [headers] },
-      });
-    }
-  } catch (error) {
-    console.error('Error ensuring Questions sheet:', error);
-    throw new Error('Failed to setup Questions sheet');
+/**
+ * Minimal question shape needed to serialise a per-assessment questions sheet.
+ */
+export interface QuestionSheetRow {
+  questionId: string;
+  questionText: string;
+  questionType: string;
+  options?: string[];
+  correctAnswer?: string;
+}
+
+/**
+ * (Re)create a per-assessment questions sheet and write the given questions.
+ *
+ * If a sheet with `sheetName` already exists it is deleted first, so the sheet
+ * always reflects exactly the provided questions. Shared by the admin create
+ * and update routes.
+ */
+export async function writeAssessmentQuestionsSheet(
+  sheetName: string,
+  questions: QuestionSheetRow[]
+) {
+  const meta = await sheets.spreadsheets.get({ spreadsheetId });
+  const existing = meta.data.sheets?.find(
+    s => s.properties?.title === sheetName
+  );
+  if (existing?.properties?.sheetId != null) {
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      requestBody: {
+        requests: [{ deleteSheet: { sheetId: existing.properties.sheetId } }],
+      },
+    });
   }
+
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId,
+    requestBody: {
+      requests: [{ addSheet: { properties: { title: sheetName } } }],
+    },
+  });
+
+  const rows = questions.map(q => [
+    q.questionId,
+    q.questionText,
+    q.questionType,
+    (q.options || []).join(','),
+    q.correctAnswer || '',
+  ]);
+  rows.unshift(['questionId', 'questionText', 'type', 'options', 'correctAnswer']);
+
+  await sheets.spreadsheets.values.update({
+    spreadsheetId,
+    range: `${sheetName}!A:E`,
+    valueInputOption: 'USER_ENTERED',
+    requestBody: { values: rows },
+  });
+}
+
+export async function ensureQuestionsSheet() {
+  await ensureSheet(sheets, spreadsheetId, 'Questions', [
+    'assessmentId',
+    'questionId',
+    'questionText',
+    'type',
+    'options',
+    'correctAnswer',
+    'maxScore',
+    'config',
+  ]);
 }

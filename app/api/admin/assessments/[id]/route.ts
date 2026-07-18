@@ -1,6 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAssessmentById, getQuestions, Question} from '@/lib/assessment-sheets';
-import { getSheets } from '@/lib/googleSheets';
+import { NextRequest } from 'next/server';
+import {
+  getAssessmentById,
+  getQuestions,
+  Question,
+  writeAssessmentQuestionsSheet,
+} from '@/lib/assessment-sheets';
+import { columnLetter, getSheets } from '@/lib/googleSheets';
+import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { z } from 'zod';
 
 const {spreadsheetId, sheets} = getSheets();
@@ -24,19 +30,13 @@ export async function GET(
     const { id } = await params;
     const assessment = await getAssessmentById(id);
     if (!assessment) {
-      return NextResponse.json(
-        { success: false, message: 'Assessment not found' },
-        { status: 404 }
-      );
+      return errorResponse('Assessment not found', 404);
     }
     const questions = await getQuestions(assessment.questionsSheet);
-    return NextResponse.json({ success: true, data: { ...assessment, questions } });
+    return successResponse({ data: { ...assessment, questions } });
   } catch (error) {
     console.error('Error fetching assessment:', error);
-    return NextResponse.json(
-      { success: false, message: 'Failed to fetch assessment' },
-      { status: 500 }
-    );
+    return errorResponse('Failed to fetch assessment', 500);
   }
 }
 
@@ -58,10 +58,7 @@ export async function PUT(
     // Read the current assessment
     const assessment = await getAssessmentById(id);
     if (!assessment) {
-      return NextResponse.json(
-        { success: false, message: 'Assessment not found' },
-        { status: 404 }
-      );
+      return errorResponse('Assessment not found', 404);
     }
 
     // Update metadata in the Assessments sheet
@@ -71,20 +68,14 @@ export async function PUT(
     });
     const rows = response.data.values || [];
     if (rows.length < 2) {
-      return NextResponse.json(
-        { success: false, message: 'No assessments found' },
-        { status: 404 }
-      );
+      return errorResponse('No assessments found', 404);
     }
 
     const headers = rows[0];
     const idIdx = headers.indexOf('id');
     const rowIndex = rows.findIndex((row, idx) => idx > 0 && row[idIdx] === id);
     if (rowIndex === -1) {
-      return NextResponse.json(
-        { success: false, message: 'Assessment not found' },
-        { status: 404 }
-      );
+      return errorResponse('Assessment not found', 404);
     }
 
     const existingRow = rows[rowIndex];
@@ -111,48 +102,13 @@ export async function PUT(
 
     // If questions are provided, update the questions sheet
     if (questions !== undefined) {
-      // Delete the existing sheet
-      const meta = await sheets.spreadsheets.get({ spreadsheetId });
-      const sheetExists = meta.data.sheets?.some(s => s.properties?.title === assessment.questionsSheet);
-      if (sheetExists) {
-        const sheetId = meta.data.sheets!.find(s => s.properties?.title === assessment.questionsSheet)!.properties!.sheetId!;
-        await sheets.spreadsheets.batchUpdate({
-          spreadsheetId,
-          requestBody: { requests: [{ deleteSheet: { sheetId } }] },
-        });
-      }
-
-      // Create a new sheet with updated questions
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: { requests: [{ addSheet: { properties: { title: assessment.questionsSheet } } }] },
-      });
-
-      const headersRow = ['questionId', 'questionText', 'type', 'options', 'correctAnswer'];
-      const questionRows = questions.map(q => [
-        q.questionId,
-        q.questionText,
-        q.questionType,
-        (q.options || []).join(','),
-        q.correctAnswer || '',
-      ]);
-      questionRows.unshift(headersRow);
-
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${assessment.questionsSheet}!A:E`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: questionRows },
-      });
+      await writeAssessmentQuestionsSheet(assessment.questionsSheet, questions);
     }
 
-    return NextResponse.json({ success: true, message: 'Assessment updated' });
+    return successResponse({ message: 'Assessment updated' });
   } catch (error) {
     console.error('Error updating assessment:', error);
-    return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Update failed' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Update failed');
   }
 }
 
@@ -172,10 +128,7 @@ export async function DELETE(
     });
     const rows = response.data.values || [];
     if (rows.length < 2) {
-      return NextResponse.json(
-        { success: false, message: 'No assessments found' },
-        { status: 404 }
-      );
+      return errorResponse('No assessments found', 404);
     }
     const headers = rows[0];
     let idIdx = headers.indexOf('id');
@@ -186,7 +139,7 @@ export async function DELETE(
       // Append a new header
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `Assessments!${String.fromCharCode(65 + headers.length)}1`,
+        range: `Assessments!${columnLetter(headers.length)}1`,
         valueInputOption: 'USER_ENTERED',
         requestBody: { values: [['deleted']] },
       });
@@ -203,7 +156,7 @@ export async function DELETE(
         const falseValues = Array(rowCount).fill(['FALSE']);
         await sheets.spreadsheets.values.update({
           spreadsheetId,
-          range: `Assessments!${String.fromCharCode(65 + deletedIdx)}2:${String.fromCharCode(65 + deletedIdx)}${rowCount + 1}`,
+          range: `Assessments!${columnLetter(deletedIdx)}2:${columnLetter(deletedIdx)}${rowCount + 1}`,
           valueInputOption: 'USER_ENTERED',
           requestBody: { values: falseValues },
         });
@@ -215,10 +168,7 @@ export async function DELETE(
       });
       const fullRows = fullResponse.data.values || [];
       if (fullRows.length < 2) {
-        return NextResponse.json(
-          { success: false, message: 'No assessments found' },
-          { status: 404 }
-        );
+        return errorResponse('No assessments found', 404);
       }
       // Re-map indices
       const fullHeaders = fullRows[0];
@@ -227,15 +177,12 @@ export async function DELETE(
       // Find the row index again
       const rowIndex = fullRows.findIndex((row, idx) => idx > 0 && row[idIdx] === id);
       if (rowIndex === -1) {
-        return NextResponse.json(
-          { success: false, message: 'Assessment not found' },
-          { status: 404 }
-        );
+        return errorResponse('Assessment not found', 404);
       }
       // Set deleted = TRUE
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `Assessments!${String.fromCharCode(65 + deletedIdx)}${rowIndex + 1}`,
+        range: `Assessments!${columnLetter(deletedIdx)}${rowIndex + 1}`,
         valueInputOption: 'USER_ENTERED',
         requestBody: { values: [['TRUE']] },
       });
@@ -243,26 +190,20 @@ export async function DELETE(
       // deleted column exists, find the row
       const rowIndex = rows.findIndex((row, idx) => idx > 0 && row[idIdx] === id);
       if (rowIndex === -1) {
-        return NextResponse.json(
-          { success: false, message: 'Assessment not found' },
-          { status: 404 }
-        );
+        return errorResponse('Assessment not found', 404);
       }
       // Set deleted = TRUE
       await sheets.spreadsheets.values.update({
         spreadsheetId,
-        range: `Assessments!${String.fromCharCode(65 + deletedIdx)}${rowIndex + 1}`,
+        range: `Assessments!${columnLetter(deletedIdx)}${rowIndex + 1}`,
         valueInputOption: 'USER_ENTERED',
         requestBody: { values: [['TRUE']] },
       });
     }
 
-    return NextResponse.json({ success: true, message: 'Assessment deleted (soft-deleted)' });
+    return successResponse({ message: 'Assessment deleted (soft-deleted)' });
   } catch (error) {
     console.error('Error deleting assessment:', error);
-    return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Deletion failed' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Deletion failed');
   }
 }

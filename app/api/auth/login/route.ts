@@ -1,9 +1,10 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import {
   getUsersFromSheet,
   ensureUsersSheet,
 } from "@/lib/googleSheets";
 import { verifyPasscode } from '@/lib/hash';
+import { errorResponse, successResponse } from '@/lib/apiResponse';
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,10 +14,7 @@ export async function POST(request: NextRequest) {
 
     const { staffId, passcode } = await request.json();
     if (!staffId || !passcode) {
-      return NextResponse.json(
-        { success: false, message: 'Missing credentials' },
-        { status: 400 }
-      );
+      return errorResponse('Missing credentials', 400);
     }
 
     // Fetch all users from sheet
@@ -26,33 +24,23 @@ export async function POST(request: NextRequest) {
     // Check if user exists
     const user = users[staffId];
     if (!user) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid credentials' },
-        { status: 401 }
-      );
+      return errorResponse('Invalid credentials', 401);
     }
 
     // Verify the provided passcode against the stored hash
     const isValid = await verifyPasscode(passcode, user.passcode);
 
     if (!isValid) {
-      return NextResponse.json(
-        { success: false, message: 'Invalid credentials' },
-        { status: 401 }
-      );
+      return errorResponse('Invalid credentials', 401);
     }
 
     // Success: return user data (without the hash)
     const { passcode: _, ...safeUser } = user; // '_' unused
-    return NextResponse.json({
-      success: true,
+    return successResponse({
       user: { id: staffId, staffId, ...safeUser },
     });
   } catch (error) {
     console.error('Login error:', error);
-    return NextResponse.json(
-      { success: false, message: 'Server error' },
-      { status: 500 }
-    );
+    return errorResponse('Server error', 500);
   }
 }

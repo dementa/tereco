@@ -36,6 +36,14 @@ export function getSheets(): {
 }
 
 /**
+ * Convert a zero-based column index into its A1 column letter (0 -> "A").
+ * Only supports the single-letter range A–Z, which is all this app uses.
+ */
+export function columnLetter(index: number): string {
+  return String.fromCharCode(65 + index);
+}
+
+/**
  * Ensure a sheet exists. Creates it with headers if missing.
  */
 export async function ensureSheet(
@@ -135,44 +143,14 @@ export async function getRows(
  * Ensure the "Users" sheet exists and has the correct headers.
  */
 export async function ensureUsersSheet() {
-  try {
-    const { sheets, spreadsheetId } = getSheets();
-    
-    const meta = await sheets.spreadsheets.get({ spreadsheetId });
-    const sheetExists = meta.data.sheets?.some(
-      (s) => s.properties?.title === 'Users'
-    );
-
-    if (!sheetExists) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [
-            {
-              addSheet: {
-                properties: {
-                  title: 'Users',
-                },
-              },
-            },
-          ],
-        },
-      });
-
-      const headers = ['Staff ID', 'PasscodeHash', 'Name', 'Role', 'School'];
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: 'Users!A1:E1',
-        valueInputOption: 'USER_ENTERED',
-        requestBody: {
-          values: [headers],
-        },
-      });
-    }
-  } catch (error) {
-    console.error('Error ensuring Users sheet:', error);
-    throw new Error('Failed to setup Users sheet');
-  }
+  const { sheets, spreadsheetId } = getSheets();
+  await ensureSheet(sheets, spreadsheetId, 'Users', [
+    'Staff ID',
+    'PasscodeHash',
+    'Name',
+    'Role',
+    'School',
+  ]);
 }
 
 /**

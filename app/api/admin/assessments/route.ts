@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { getAssessments } from '@/lib/assessment-sheets';
+import { NextRequest } from 'next/server';
+import { getAssessments, writeAssessmentQuestionsSheet } from '@/lib/assessment-sheets';
 import { getSheets } from '@/lib/googleSheets';
+import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { z } from 'zod';
 
 const { sheets, spreadsheetId } = getSheets();
@@ -9,13 +10,10 @@ const { sheets, spreadsheetId } = getSheets();
 export async function GET() {
   try {
     const assessments = await getAssessments(); // no filters
-    return NextResponse.json({ success: true, data: assessments });
+    return successResponse({ data: assessments });
   } catch (error) {
     console.error('Error fetching assessments:', error);
-    return NextResponse.json(
-      { success: false, message: 'Failed to fetch assessments' },
-      { status: 500 }
-    );
+    return errorResponse('Failed to fetch assessments', 500);
   }
 }
 
@@ -64,45 +62,12 @@ export async function POST(request: NextRequest) {
 
     // If questions provided, create the questions sheet
     if (validated.questions && validated.questions.length > 0) {
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId,
-        requestBody: {
-          requests: [{ addSheet: { properties: { title: validated.questionsSheet } } }],
-        },
-      });
-
-      const headers = ['questionId', 'questionText', 'type', 'options', 'correctAnswer'];
-      const questionRows = validated.questions.map(q => [
-        q.questionId,
-        q.questionText,
-        q.questionType,
-        (q.options || []).join(','),
-        q.correctAnswer || '',
-      ]);
-      questionRows.unshift(headers);
-
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `${validated.questionsSheet}!A:E`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: questionRows },
-      });
+      await writeAssessmentQuestionsSheet(validated.questionsSheet, validated.questions);
     }
 
-    return NextResponse.json({ success: true, message: 'Assessment created' });
+    return successResponse({ message: 'Assessment created' });
   } catch (error) {
     console.error('Error creating assessment:', error);
-
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, message: 'Validation failed', errors: error.issues },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Creation failed' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Creation failed');
   }
 }
