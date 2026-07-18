@@ -72,6 +72,18 @@ create table if not exists public.questions (
 create index if not exists questions_assessment_id_idx on public.questions (assessment_id);
 alter table public.questions enable row level security;
 
+-- ─── Students (registry of learners who take assessments) ──────────────────
+create table if not exists public.students (
+  id          uuid primary key default gen_random_uuid(),
+  student_id  text default '',
+  name        text not null,
+  school      text not null,
+  class_name  text not null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists students_school_class_idx on public.students (school, class_name);
+alter table public.students enable row level security;
+
 -- ─── Assessment responses (student submissions) ────────────────────────────
 create table if not exists public.responses (
   id            uuid primary key default gen_random_uuid(),
