@@ -39,7 +39,10 @@ export function formatZodIssues(error: z.ZodError) {
  * Convert a thrown value into an appropriate error response.
  *
  * - `ZodError` -> 400 with formatted validation issues.
- * - Anything else -> `fallbackStatus` with the error message (or `fallbackMessage`).
+ * - Anything else -> `fallbackStatus` with the generic `fallbackMessage`.
+ *
+ * The non-validation branch deliberately never surfaces the raw error
+ * message to the client, so internal failure details are not leaked.
  */
 export function handleApiError(
   error: unknown,
@@ -53,6 +56,5 @@ export function handleApiError(
     });
   }
 
-  const message = error instanceof Error ? error.message : fallbackMessage;
-  return errorResponse(message, fallbackStatus);
+  return errorResponse(fallbackMessage, fallbackStatus);
 }

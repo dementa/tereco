@@ -40,7 +40,7 @@ const LessonSchema = z
     reference: z.string().optional(),
     teacher: z.string().optional(),
   })
-  .passthrough();
+  .strip();
 
 export async function POST(request: NextRequest) {
   try {

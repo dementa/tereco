@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { getQuestions, saveQuestions } from '@/lib/assessments';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
+import { requireAdmin } from '@/lib/adminAuth';
 import { z } from 'zod';
 
 const QuestionSchema = z.object({
@@ -21,6 +22,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const { id } = await params;
   try {
     const questions = await getQuestions(id);
@@ -35,6 +38,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   const { id } = await params;
   try {
     const body = await request.json();
@@ -42,6 +47,7 @@ export async function POST(
     await saveQuestions(id, validated.questions);
     return successResponse({ message: 'Questions saved' });
   } catch (error) {
+    console.error('Error saving questions:', error);
     return handleApiError(error, 'Save failed');
   }
 }
