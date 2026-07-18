@@ -1,6 +1,5 @@
-import { NextRequest } from 'next/server';
-import { getAssessments } from '@/lib/assessment-sheets';
-import { errorResponse, successResponse } from '@/lib/apiResponse';
+import { NextRequest, NextResponse } from 'next/server';
+import { getAssessments } from '@/lib/assessments';
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -9,9 +8,12 @@ export async function GET(request: NextRequest) {
 
   try {
     const assessments = await getAssessments(school, className);
-    return successResponse({ data: assessments });
+    return NextResponse.json({ success: true, data: assessments });
   } catch (error) {
     console.error('Error in /api/assessments:', error);
-    return errorResponse('Failed to fetch assessments', 500);
+    return NextResponse.json(
+      { success: false, message: 'Failed to fetch assessments' },
+      { status: 500 }
+    );
   }
 }

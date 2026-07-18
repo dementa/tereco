@@ -1,15 +1,13 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import {
   getAssessmentById,
   getQuestions,
+  updateAssessment,
+  saveQuestions,
+  softDeleteAssessment,
   Question,
-  writeAssessmentQuestionsSheet,
-} from '@/lib/assessment-sheets';
-import { columnLetter, getSheets } from '@/lib/googleSheets';
-import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
+} from '@/lib/assessments';
 import { z } from 'zod';
-
-const {spreadsheetId, sheets} = getSheets();
 
 const UpdateSchema = z.object({
   title: z.string().min(1).optional(),
@@ -30,13 +28,19 @@ export async function GET(
     const { id } = await params;
     const assessment = await getAssessmentById(id);
     if (!assessment) {
-      return errorResponse('Assessment not found', 404);
+      return NextResponse.json(
+        { success: false, message: 'Assessment not found' },
+        { status: 404 }
+      );
     }
-    const questions = await getQuestions(assessment.questionsSheet);
-    return successResponse({ data: { ...assessment, questions } });
+    const questions = await getQuestions(assessment.id);
+    return NextResponse.json({ success: true, data: { ...assessment, questions } });
   } catch (error) {
     console.error('Error fetching assessment:', error);
-    return errorResponse('Failed to fetch assessment', 500);
+    return NextResponse.json(
+      { success: false, message: 'Failed to fetch assessment' },
+      { status: 500 }
+    );
   }
 }
 
@@ -49,161 +53,65 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
-    // Validate the update fields
     const validated = UpdateSchema.parse(body);
-
-    // We'll also allow a `questions` array
     const questions = body.questions as Question[] | undefined;
 
-    // Read the current assessment
     const assessment = await getAssessmentById(id);
     if (!assessment) {
-      return errorResponse('Assessment not found', 404);
+      return NextResponse.json(
+        { success: false, message: 'Assessment not found' },
+        { status: 404 }
+      );
     }
 
-    // Update metadata in the Assessments sheet
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: 'Assessments!A:H',
-    });
-    const rows = response.data.values || [];
-    if (rows.length < 2) {
-      return errorResponse('No assessments found', 404);
-    }
+    await updateAssessment(id, validated);
 
-    const headers = rows[0];
-    const idIdx = headers.indexOf('id');
-    const rowIndex = rows.findIndex((row, idx) => idx > 0 && row[idIdx] === id);
-    if (rowIndex === -1) {
-      return errorResponse('Assessment not found', 404);
-    }
-
-    const existingRow = rows[rowIndex];
-    const updatedRow = [...existingRow];
-    const map: { [key: string]: number } = {};
-    headers.forEach((h: string, i: number) => map[h] = i);
-
-    if (validated.title !== undefined) updatedRow[map.title] = validated.title;
-    if (validated.description !== undefined) updatedRow[map.description] = validated.description;
-    if (validated.timeLimit !== undefined) updatedRow[map.timeLimit] = validated.timeLimit.toString();
-    if (validated.startTime !== undefined) updatedRow[map.startTime] = validated.startTime;
-    if (validated.targetType !== undefined) updatedRow[map.targetType] = validated.targetType;
-    if (validated.targetValue !== undefined) updatedRow[map.targetValue] = validated.targetValue;
-    if (validated.questionsSheet !== undefined) {
-      updatedRow[map.questionsSheet] = validated.questionsSheet;
-    }
-
-    await sheets.spreadsheets.values.update({
-      spreadsheetId,
-      range: `Assessments!A${rowIndex + 1}:H${rowIndex + 1}`,
-      valueInputOption: 'USER_ENTERED',
-      requestBody: { values: [updatedRow] },
-    });
-
-    // If questions are provided, update the questions sheet
     if (questions !== undefined) {
-      await writeAssessmentQuestionsSheet(assessment.questionsSheet, questions);
+      await saveQuestions(id, questions);
     }
 
-    return successResponse({ message: 'Assessment updated' });
+    return NextResponse.json({ success: true, message: 'Assessment updated' });
   } catch (error) {
     console.error('Error updating assessment:', error);
-    return handleApiError(error, 'Update failed');
+
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, message: 'Validation failed', errors: error.issues },
+        { status: 400 }
+      );
+    }
+
+    return NextResponse.json(
+      { success: false, message: error instanceof Error ? error.message : 'Update failed' },
+      { status: 500 }
+    );
   }
 }
 
-
-// DELETE /api/admin/assessments/[id]
+// DELETE /api/admin/assessments/[id] – soft-delete
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    
-    // 1. Get the current data and headers
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId,
-      range: 'Assessments!A:Z', // read all columns
-    });
-    const rows = response.data.values || [];
-    if (rows.length < 2) {
-      return errorResponse('No assessments found', 404);
-    }
-    const headers = rows[0];
-    let idIdx = headers.indexOf('id');
-    let deletedIdx = headers.indexOf('deleted');
 
-    // If no deleted column, add it now
-    if (deletedIdx === -1) {
-      // Append a new header
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `Assessments!${columnLetter(headers.length)}1`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [['deleted']] },
-      });
-      // Re-fetch the headers to get the new column index
-      const newResponse = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: 'Assessments!1:1',
-      });
-      const newHeaders = newResponse.data.values?.[0] || [];
-      deletedIdx = newHeaders.indexOf('deleted');
-      // Also set default FALSE for all existing rows
-      const rowCount = rows.length - 1;
-      if (rowCount > 0) {
-        const falseValues = Array(rowCount).fill(['FALSE']);
-        await sheets.spreadsheets.values.update({
-          spreadsheetId,
-          range: `Assessments!${columnLetter(deletedIdx)}2:${columnLetter(deletedIdx)}${rowCount + 1}`,
-          valueInputOption: 'USER_ENTERED',
-          requestBody: { values: falseValues },
-        });
-      }
-      // Now re-fetch the rows to get the updated data
-      const fullResponse = await sheets.spreadsheets.values.get({
-        spreadsheetId,
-        range: 'Assessments!A:Z',
-      });
-      const fullRows = fullResponse.data.values || [];
-      if (fullRows.length < 2) {
-        return errorResponse('No assessments found', 404);
-      }
-      // Re-map indices
-      const fullHeaders = fullRows[0];
-      idIdx = fullHeaders.indexOf('id');
-      deletedIdx = fullHeaders.indexOf('deleted');
-      // Find the row index again
-      const rowIndex = fullRows.findIndex((row, idx) => idx > 0 && row[idIdx] === id);
-      if (rowIndex === -1) {
-        return errorResponse('Assessment not found', 404);
-      }
-      // Set deleted = TRUE
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `Assessments!${columnLetter(deletedIdx)}${rowIndex + 1}`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [['TRUE']] },
-      });
-    } else {
-      // deleted column exists, find the row
-      const rowIndex = rows.findIndex((row, idx) => idx > 0 && row[idIdx] === id);
-      if (rowIndex === -1) {
-        return errorResponse('Assessment not found', 404);
-      }
-      // Set deleted = TRUE
-      await sheets.spreadsheets.values.update({
-        spreadsheetId,
-        range: `Assessments!${columnLetter(deletedIdx)}${rowIndex + 1}`,
-        valueInputOption: 'USER_ENTERED',
-        requestBody: { values: [['TRUE']] },
-      });
+    const assessment = await getAssessmentById(id);
+    if (!assessment) {
+      return NextResponse.json(
+        { success: false, message: 'Assessment not found' },
+        { status: 404 }
+      );
     }
 
-    return successResponse({ message: 'Assessment deleted (soft-deleted)' });
+    await softDeleteAssessment(id);
+
+    return NextResponse.json({ success: true, message: 'Assessment deleted (soft-deleted)' });
   } catch (error) {
     console.error('Error deleting assessment:', error);
-    return handleApiError(error, 'Deletion failed');
+    return NextResponse.json(
+      { success: false, message: error instanceof Error ? error.message : 'Deletion failed' },
+      { status: 500 }
+    );
   }
 }
