@@ -1,10 +1,6 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
-import {
-  getSheets,
-  ensureSheet,
-  appendRow,
-} from "@/lib/googleSheets";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import {
   errorResponse,
   handleApiError,
@@ -13,21 +9,22 @@ import {
 
 // -------------------------------
 // Validation Schema
+// Field names match the payload sent by DailyLessonWizard.
 // -------------------------------
 const LessonSchema = z
   .object({
     school: z.string().min(1, "School is required"),
-    class: z.string().min(1, "Class is required"),
+    className: z.string().min(1, "Class is required"),
     date: z.string().min(1, "Lesson date is required"),
     period: z.string().min(1, "Period is required"),
     status: z.string().min(1, "Lesson status is required"),
 
     missedReason: z.string().optional().default(""),
-    explanation: z.string().optional().default(""),
+    missedExplanation: z.string().optional().default(""),
 
     learningArea: z.string().min(1, "Learning area is required"),
     specificSkill: z.string().min(1, "Specific skill is required"),
-    lessonApproach: z.string().min(1, "Lesson approach is required"),
+    approach: z.string().min(1, "Lesson approach is required"),
 
     // Automatically convert "20" -> 20
     present: z.coerce.number().min(0, "Present learners cannot be negative"),
@@ -37,6 +34,7 @@ const LessonSchema = z
     overallProgress: z.string().min(1, "Overall progress is required"),
     achievement: z.string().min(1, "Achievement is required"),
     challenges: z.string().min(1, "Challenges are required"),
+    challengeDetails: z.string().optional().default(""),
     supportRequired: z.string().optional().default(""),
 
     reference: z.string().optional(),
@@ -46,13 +44,6 @@ const LessonSchema = z
 
 export async function POST(request: NextRequest) {
   try {
-    console.log("📥 Lesson submission received");
-
-    // -------------------------------
-    // Google Sheets Client
-    // -------------------------------
-    const { sheets, spreadsheetId } = getSheets();
-
     // -------------------------------
     // Parse Request
     // -------------------------------
@@ -60,7 +51,6 @@ export async function POST(request: NextRequest) {
 
     try {
       body = await request.json();
-      console.log("📦 Payload:", body);
     } catch {
       return errorResponse("Invalid request body.", 400);
     }
@@ -77,80 +67,40 @@ export async function POST(request: NextRequest) {
 
     const validated = result.data;
 
-    console.log("✅ Validation passed");
-
     // -------------------------------
-    // Ensure Sheet Exists
+    // Save to Supabase
     // -------------------------------
-    await ensureSheet(
-      sheets,
-      spreadsheetId,
-      "LessonRecords",
-      [
-        "School",
-        "Class",
-        "Date",
-        "Period",
-        "Status",
-        "Missed Reason",
-        "Explanation",
-        "Learning Area",
-        "Specific Skill",
-        "Lesson Approach",
-        "Present",
-        "Absent",
-        "Computer Access",
-        "Overall Progress",
-        "Achievement",
-        "Challenges",
-        "Support Required",
-        "Reference",
-        "Teacher",
-        "Timestamp",
-      ]
-    );
+    const supabase = getSupabaseAdmin();
 
-    console.log("📄 LessonRecords sheet ready");
+    const record = {
+      school: validated.school,
+      class_name: validated.className,
+      lesson_date: validated.date,
+      period: validated.period,
+      status: validated.status,
+      missed_reason: validated.missedReason,
+      missed_explanation: validated.missedExplanation,
+      learning_area: validated.learningArea,
+      specific_skill: validated.specificSkill,
+      approach: validated.approach,
+      present: validated.present,
+      absent: validated.absent,
+      computer_access: validated.computerAccess,
+      overall_progress: validated.overallProgress,
+      achievement: validated.achievement,
+      challenges: validated.challenges,
+      challenge_details: validated.challengeDetails,
+      support_required: validated.supportRequired,
+      reference: validated.reference ?? "",
+      teacher: validated.teacher ?? "",
+    };
 
-        // -------------------------------
-    // Prepare Row
-    // -------------------------------
-    const row = [
-      validated.school,
-      validated.class,
-      validated.date,
-      validated.period,
-      validated.status,
-      validated.missedReason,
-      validated.explanation,
-      validated.learningArea,
-      validated.specificSkill,
-      validated.lessonApproach,
-      validated.present,
-      validated.absent,
-      validated.computerAccess,
-      validated.overallProgress,
-      validated.achievement,
-      validated.challenges,
-      validated.supportRequired,
-      validated.reference ?? "",
-      validated.teacher ?? "",
-      new Date().toISOString(),
-    ];
+    const { error } = await supabase.from("lesson_records").insert(record);
 
-    console.log("📝 Appending lesson record...");
-
-    // -------------------------------
-    // Save to Google Sheets
-    // -------------------------------
-    await appendRow(
-      sheets,
-      spreadsheetId,
-      "LessonRecords",
-      row
-    );
-
-    console.log("✅ Lesson successfully saved.");
+    if (error) {
+      console.error("❌ Supabase insert error:", error);
+      return errorResponse("Failed to save lesson record.", 500);
+    }
 
     // -------------------------------
     // Success Response
@@ -159,7 +109,6 @@ export async function POST(request: NextRequest) {
       message: "Lesson submitted successfully.",
       reference: validated.reference,
     });
-
   } catch (error) {
     console.error("❌ Lesson API Error:", error);
     return handleApiError(error);
