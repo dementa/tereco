@@ -3,8 +3,6 @@ import { getAssessmentById, getQuestions, Question} from '@/lib/assessment-sheet
 import { getSheets } from '@/lib/googleSheets';
 import { z } from 'zod';
 
-const {spreadsheetId, sheets} = getSheets();
-
 const UpdateSchema = z.object({
   title: z.string().min(1).optional(),
   description: z.string().optional(),
@@ -46,6 +44,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { sheets, spreadsheetId } = getSheets();
     const { id } = await params;
     const body = await request.json();
 
@@ -163,6 +162,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { sheets, spreadsheetId } = getSheets();
     const { id } = await params;
     
     // 1. Get the current data and headers

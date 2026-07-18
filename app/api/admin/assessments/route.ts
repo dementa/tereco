@@ -3,8 +3,6 @@ import { getAssessments } from '@/lib/assessment-sheets';
 import { getSheets } from '@/lib/googleSheets';
 import { z } from 'zod';
 
-const { sheets, spreadsheetId } = getSheets();
-
 // ─── GET all assessments ─────────────────────────────
 export async function GET() {
   try {
@@ -40,6 +38,7 @@ const CreateSchema = z.object({
 
 export async function POST(request: NextRequest) {
   try {
+    const { sheets, spreadsheetId } = getSheets();
     const body = await request.json();
     const validated = CreateSchema.parse(body);
 

@@ -26,7 +26,17 @@ export function AssessmentList() {
       router.push('/assessment');
       return;
     }
-    const { school, className } = JSON.parse(studentData);
+
+    let school: string;
+    let className: string;
+    try {
+      ({ school, className } = JSON.parse(studentData));
+    } catch (err) {
+      console.error('Invalid student data in sessionStorage:', err);
+      sessionStorage.removeItem('assessmentStudent');
+      router.push('/assessment');
+      return;
+    }
 
     fetch(`/api/assessments?school=${encodeURIComponent(school)}&class=${encodeURIComponent(className)}`)
       .then(res => res.json())

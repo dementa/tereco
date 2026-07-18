@@ -207,7 +207,7 @@ export async function getUsersFromSheet(): Promise<
 
     if ([staffIdx, passIdx, nameIdx, roleIdx, schoolIdx].some((i) => i === -1)) {
       console.error('❌ Missing required columns in Users sheet');
-      return {};
+      throw new Error('Users sheet is misconfigured: missing required columns');
     }
 
     const users: Record<
@@ -230,6 +230,6 @@ export async function getUsersFromSheet(): Promise<
     return users;
   } catch (error) {
     console.error('Error fetching users from sheet:', error);
-    return {};
+    throw new Error('Failed to fetch users from sheet');
   }
 }

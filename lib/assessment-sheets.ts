@@ -1,7 +1,5 @@
 import { getSheets } from './googleSheets';
 
-const { sheets, spreadsheetId } = getSheets();
-
 // ─── Types ────────────────────────────────────────────────
 
 export interface Assessment {
@@ -112,6 +110,7 @@ export async function getAssessments(
   className?: string
 ): Promise<Assessment[]> {
   try {
+    const { sheets, spreadsheetId } = getSheets();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: 'Assessments!A:I', // now includes the deleted column (I)
@@ -176,7 +175,7 @@ export async function getAssessments(
     return assessments;
   } catch (error) {
     console.error('Error fetching assessments:', error);
-    return [];
+    throw new Error('Failed to fetch assessments');
   }
 }
 
@@ -187,6 +186,7 @@ export async function getAssessments(
  */
 export async function saveResponses(responses: StudentResponse[]) {
   try {
+    const { sheets, spreadsheetId } = getSheets();
     const rows = responses.map(r => [
       r.studentName,
       r.school,
@@ -220,12 +220,13 @@ export async function getAssessmentById(id: string): Promise<Assessment | null> 
     return all.find(a => a.id === id) || null;
   } catch (error) {
     console.error('Error fetching assessment by ID:', error);
-    return null;
+    throw new Error('Failed to fetch assessment');
   }
 }
 
 export async function ensureAssessmentsSheet() {
   try {
+    const { sheets, spreadsheetId } = getSheets();
     const meta = await sheets.spreadsheets.get({ spreadsheetId });
     const sheetExists = meta.data.sheets?.some(s => s.properties?.title === 'Assessments');
     if (!sheetExists) {
@@ -252,6 +253,7 @@ export async function ensureAssessmentsSheet() {
 // Add this function to lib/assessment-sheets.ts
 async function ensureAssessmentsSheetHasDeletedColumn() {
   try {
+    const { sheets, spreadsheetId } = getSheets();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
       range: 'Assessments!1:1',
@@ -275,6 +277,7 @@ async function ensureAssessmentsSheetHasDeletedColumn() {
     }
   } catch (error) {
     console.error('Error ensuring deleted column:', error);
+    throw new Error('Failed to ensure deleted column');
   }
 }
 
@@ -285,6 +288,7 @@ export async function getQuestions(assessmentId: string): Promise<Question[]> {
 
   
   try {
+    const { sheets, spreadsheetId } = getSheets();
     await ensureQuestionsSheet();
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
@@ -311,7 +315,14 @@ export async function getQuestions(assessmentId: string): Promise<Question[]> {
       const options = optionsStr ? optionsStr.split(',').map((s: any) => s.trim()) : [];
       let config: any = undefined;
       if (row[configIdx]) {
-        try { config = JSON.parse(row[configIdx]); } catch {}
+        try {
+          config = JSON.parse(row[configIdx]);
+        } catch (parseError) {
+          console.warn(
+            `Skipping invalid config JSON for question "${row[qIdIdx]}":`,
+            parseError
+          );
+        }
       }
       questions.push({
         questionId: row[qIdIdx] || '',
@@ -326,12 +337,13 @@ export async function getQuestions(assessmentId: string): Promise<Question[]> {
     return questions;
   } catch (error) {
     console.error('Error fetching questions:', error);
-    return [];
+    throw new Error('Failed to fetch questions');
   }
 }
 
 export async function saveQuestions(assessmentId: string, questions: Question[]) {
 
+  const { sheets, spreadsheetId } = getSheets();
   await ensureQuestionsSheet();
   // Delete existing ones
   await deleteQuestionsForAssessment(assessmentId);
@@ -356,6 +368,7 @@ export async function saveQuestions(assessmentId: string, questions: Question[])
 }
 
 export async function deleteQuestionsForAssessment(assessmentId: string) {
+  const { sheets, spreadsheetId } = getSheets();
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: 'Questions!A:H',
@@ -380,6 +393,7 @@ export async function deleteQuestionsForAssessment(assessmentId: string) {
 
 export async function ensureQuestionsSheet() {
   try {
+    const { sheets, spreadsheetId } = getSheets();
     const meta = await sheets.spreadsheets.get({ spreadsheetId });
     const exists = meta.data.sheets?.some(s => s.properties?.title === 'Questions');
     if (!exists) {
