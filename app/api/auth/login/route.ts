@@ -1,16 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import {
-  getUsersFromSheet,
-  ensureUsersSheet,
-} from "@/lib/googleSheets";
+import { getUsers } from "@/lib/users";
 import { verifyPasscode } from '@/lib/hash';
 
 export async function POST(request: NextRequest) {
   try {
-    // Ensure the Users sheet exists (optional, but good practice)
-    // This function doesn't need parameters - it handles authentication internally
-    await ensureUsersSheet();
-
     const { staffId, passcode } = await request.json();
     if (!staffId || !passcode) {
       return NextResponse.json(
@@ -19,9 +12,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch all users from sheet
-    // This function doesn't need parameters - it handles authentication internally
-    const users = await getUsersFromSheet();
+    const users = await getUsers();
 
     // Check if user exists
     const user = users[staffId];

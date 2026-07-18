@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getAssessmentById, getQuestions } from '@/lib/assessment-sheets';
+import { getAssessmentById, getQuestions } from '@/lib/assessments';
 
 export async function GET(
   request: NextRequest,
@@ -18,8 +18,8 @@ export async function GET(
       );
     }
 
-    // 2. Get questions from the associated sheet
-    const questions = await getQuestions(assessment.questionsSheet);
+    // 2. Get questions for this assessment
+    const questions = await getQuestions(assessment.id);
 
     // Optionally, you could shuffle questions here if needed
     // const shuffled = questions.sort(() => Math.random() - 0.5);
