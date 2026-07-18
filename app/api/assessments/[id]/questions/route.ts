@@ -21,17 +21,16 @@ export async function GET(
     // 2. Get questions for this assessment
     const questions = await getQuestions(assessment.id);
 
-    // Never expose the answer key to students taking the assessment.
-    const sanitized = questions.map((q) => ({
+    // Never expose correctAnswer / config to students.
+    const safeQuestions = questions.map((q) => ({
       questionId: q.questionId,
       questionText: q.questionText,
       questionType: q.questionType,
       options: q.options,
       maxScore: q.maxScore,
-      config: q.config,
     }));
 
-    return NextResponse.json({ success: true, data: sanitized });
+    return NextResponse.json({ success: true, data: safeQuestions });
   } catch (error) {
     console.error('Error fetching questions:', error);
     return NextResponse.json(

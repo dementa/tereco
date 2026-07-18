@@ -72,6 +72,18 @@ create table if not exists public.questions (
 create index if not exists questions_assessment_id_idx on public.questions (assessment_id);
 alter table public.questions enable row level security;
 
+-- ─── Students (registry of learners who take assessments) ──────────────────
+create table if not exists public.students (
+  id          uuid primary key default gen_random_uuid(),
+  student_id  text default '',
+  name        text not null,
+  school      text not null,
+  class_name  text not null,
+  created_at  timestamptz not null default now()
+);
+create index if not exists students_school_class_idx on public.students (school, class_name);
+alter table public.students enable row level security;
+
 -- ─── Assessment responses (student submissions) ────────────────────────────
 create table if not exists public.responses (
   id            uuid primary key default gen_random_uuid(),
@@ -88,3 +100,14 @@ create table if not exists public.responses (
 );
 create index if not exists responses_assessment_id_idx on public.responses (assessment_id);
 alter table public.responses enable row level security;
+
+-- ─── Grants ────────────────────────────────────────────────────────────────
+-- The app connects with the service-role key. service_role bypasses RLS but
+-- still needs table-level privileges; grant them explicitly so a fresh project
+-- works regardless of default-privilege configuration. No grants are given to
+-- anon/authenticated, so the public key cannot read or write.
+grant usage on schema public to service_role;
+grant all privileges on all tables in schema public to service_role;
+grant all privileges on all sequences in schema public to service_role;
+alter default privileges in schema public grant all on tables to service_role;
+alter default privileges in schema public grant all on sequences to service_role;
