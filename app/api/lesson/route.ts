@@ -35,7 +35,7 @@ const LessonSchema = z
     reference: z.string().optional(),
     teacher: z.string().optional(),
   })
-  .passthrough();
+  .strip();
 
 export async function POST(request: NextRequest) {
   try {
@@ -145,10 +145,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        message:
-          error instanceof Error
-            ? error.message
-            : "An unexpected server error occurred.",
+        message: "An unexpected server error occurred.",
       },
       {
         status: 500,

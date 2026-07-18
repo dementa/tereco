@@ -6,10 +6,13 @@ import {
   Question,
   QuestionType,
 } from '@/lib/assessments';
+import { requireAdmin } from '@/lib/adminAuth';
 import { z } from 'zod';
 
 // ─── GET all assessments ─────────────────────────────
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const assessments = await getAssessments(); // no filters
     return NextResponse.json({ success: true, data: assessments });
@@ -43,6 +46,8 @@ const CreateSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const denied = requireAdmin(request);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const validated = CreateSchema.parse(body);
@@ -82,7 +87,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Creation failed' },
+      { success: false, message: 'Creation failed' },
       { status: 500 }
     );
   }

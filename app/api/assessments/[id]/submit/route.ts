@@ -113,7 +113,7 @@ export async function POST(
     }
 
     return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Submission failed' },
+      { success: false, message: 'Submission failed' },
       { status: 500 }
     );
   }
