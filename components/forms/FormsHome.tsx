@@ -1,10 +1,11 @@
 'use client'
 
 import React, { useState } from 'react';
+import Link from 'next/link';
 import { motion } from 'framer-motion';
 import {
   BookOpen, Users, ClipboardCheck, FileText, School, Package,
-  LogOut, Settings, Clock, CheckCircle, Shield
+  LogOut, Settings, Clock, CheckCircle, Shield, LayoutDashboard
 } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -56,6 +57,15 @@ export const FormsHome: React.FC<FormsHomeProps> = ({ onSelectForm, onLogout }) 
             </div>
           </div>
           <div className="flex items-center justify-end gap-2 w-full sm:w-auto">
+            {user?.role === 'admin' && (
+              <Link
+                href="/admin"
+                className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-primary-700 text-white hover:bg-primary-800 transition-all text-sm shrink-0"
+              >
+                <LayoutDashboard className="w-4 h-4" />
+                <span className="hidden sm:inline">Admin Portal</span>
+              </Link>
+            )}
             <button className="p-2 rounded-xl hover:bg-bg-card hover:shadow-sm transition-all shrink-0">
               <Settings className="w-5 h-5 text-text-muted" />
             </button>

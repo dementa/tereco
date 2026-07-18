@@ -21,10 +21,16 @@ export async function GET(
     // 2. Get questions for this assessment
     const questions = await getQuestions(assessment.id);
 
-    // Optionally, you could shuffle questions here if needed
-    // const shuffled = questions.sort(() => Math.random() - 0.5);
+    // Never expose correctAnswer / config to students.
+    const safeQuestions = questions.map((q) => ({
+      questionId: q.questionId,
+      questionText: q.questionText,
+      questionType: q.questionType,
+      options: q.options,
+      maxScore: q.maxScore,
+    }));
 
-    return NextResponse.json({ success: true, data: questions });
+    return NextResponse.json({ success: true, data: safeQuestions });
   } catch (error) {
     console.error('Error fetching questions:', error);
     return NextResponse.json(

@@ -308,6 +308,81 @@ export async function saveQuestions(
 
 // ─── Responses ────────────────────────────────────────────
 
+export interface ResponseRecord {
+  id: string;
+  studentName: string;
+  school: string;
+  className: string;
+  assessmentId: string;
+  questionId: string;
+  answer: string;
+  score: number | null;
+  submittedAt: string;
+  timeSpent: number;
+}
+
+interface ResponseRow {
+  id: string;
+  student_name: string | null;
+  school: string | null;
+  class: string | null;
+  assessment_id: string | null;
+  question_id: string | null;
+  answer: string | null;
+  score: number | null;
+  submitted_at: string | null;
+  time_spent: number | null;
+}
+
+function rowToResponse(row: ResponseRow): ResponseRecord {
+  return {
+    id: row.id,
+    studentName: row.student_name ?? "",
+    school: row.school ?? "",
+    className: row.class ?? "",
+    assessmentId: row.assessment_id ?? "",
+    questionId: row.question_id ?? "",
+    answer: row.answer ?? "",
+    score: row.score,
+    submittedAt: row.submitted_at ?? "",
+    timeSpent: row.time_spent ?? 0,
+  };
+}
+
+/**
+ * Get all responses for an assessment (for marking / review).
+ */
+export async function getResponses(
+  assessmentId: string
+): Promise<ResponseRecord[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("responses")
+    .select(
+      "id, student_name, school, class, assessment_id, question_id, answer, score, submitted_at, time_spent"
+    )
+    .eq("assessment_id", assessmentId)
+    .order("submitted_at", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching responses:", error);
+    return [];
+  }
+  return (data ?? []).map(rowToResponse);
+}
+
+/**
+ * Update the score of a single response (manual marking).
+ */
+export async function updateResponseScore(id: string, score: number) {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("responses")
+    .update({ score })
+    .eq("id", id);
+  if (error) throw new Error(error.message);
+}
+
 /**
  * Save student responses.
  */
