@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getAssessmentById, getQuestions } from '@/lib/assessments';
+import { errorResponse, successResponse } from '@/lib/apiResponse';
 
 export async function GET(
   request: NextRequest,
@@ -12,10 +13,7 @@ export async function GET(
     // 1. Get the assessment metadata
     const assessment = await getAssessmentById(assessmentId);
     if (!assessment) {
-      return NextResponse.json(
-        { success: false, message: 'Assessment not found' },
-        { status: 404 }
-      );
+      return errorResponse('Assessment not found', 404);
     }
 
     // 2. Get questions for this assessment
@@ -24,12 +22,9 @@ export async function GET(
     // Optionally, you could shuffle questions here if needed
     // const shuffled = questions.sort(() => Math.random() - 0.5);
 
-    return NextResponse.json({ success: true, data: questions });
+    return successResponse({ data: questions });
   } catch (error) {
     console.error('Error fetching questions:', error);
-    return NextResponse.json(
-      { success: false, message: 'Failed to fetch questions' },
-      { status: 500 }
-    );
+    return errorResponse('Failed to fetch questions', 500);
   }
 }
