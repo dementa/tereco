@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import {
   getAssessments,
   createAssessment,
@@ -6,6 +6,7 @@ import {
   Question,
   QuestionType,
 } from '@/lib/assessments';
+import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { requireAdmin } from '@/lib/adminAuth';
 import { z } from 'zod';
 
@@ -15,13 +16,10 @@ export async function GET(request: NextRequest) {
   if (denied) return denied;
   try {
     const assessments = await getAssessments(); // no filters
-    return NextResponse.json({ success: true, data: assessments });
+    return successResponse({ data: assessments });
   } catch (error) {
     console.error('Error fetching assessments:', error);
-    return NextResponse.json(
-      { success: false, message: 'Failed to fetch assessments' },
-      { status: 500 }
-    );
+    return errorResponse('Failed to fetch assessments', 500);
   }
 }
 
@@ -75,20 +73,9 @@ export async function POST(request: NextRequest) {
       await saveQuestions(validated.id, questions);
     }
 
-    return NextResponse.json({ success: true, message: 'Assessment created' });
+    return successResponse({ message: 'Assessment created' });
   } catch (error) {
     console.error('Error creating assessment:', error);
-
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, message: 'Validation failed', errors: error.issues },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json(
-      { success: false, message: 'Creation failed' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Creation failed');
   }
 }

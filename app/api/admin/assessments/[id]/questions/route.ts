@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getQuestions, saveQuestions } from '@/lib/assessments';
+import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { requireAdmin } from '@/lib/adminAuth';
 import { z } from 'zod';
 
@@ -26,12 +27,10 @@ export async function GET(
   const { id } = await params;
   try {
     const questions = await getQuestions(id);
-    return NextResponse.json({ success: true, data: questions });
+    return successResponse({ data: questions });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, message: 'Failed to fetch questions' },
-      { status: 500 }
-    );
+    console.error('Error fetching questions:', error);
+    return errorResponse('Failed to fetch questions', 500);
   }
 }
 
@@ -46,17 +45,9 @@ export async function POST(
     const body = await request.json();
     const validated = SaveQuestionsSchema.parse(body);
     await saveQuestions(id, validated.questions);
-    return NextResponse.json({ success: true, message: 'Questions saved' });
+    return successResponse({ message: 'Questions saved' });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, message: 'Validation failed', errors: error.issues},
-        { status: 400 }
-      );
-    }
-    return NextResponse.json(
-      { success: false, message: 'Save failed' },
-      { status: 500 }
-    );
+    console.error('Error saving questions:', error);
+    return handleApiError(error, 'Save failed');
   }
 }

@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { deleteStudent } from '@/lib/students';
+import { handleApiError, successResponse } from '@/lib/apiResponse';
 
 export async function DELETE(
   request: NextRequest,
@@ -8,11 +9,8 @@ export async function DELETE(
   try {
     const { id } = await params;
     await deleteStudent(id);
-    return NextResponse.json({ success: true, message: 'Student deleted' });
+    return successResponse({ message: 'Student deleted' });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Delete failed' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Delete failed');
   }
 }

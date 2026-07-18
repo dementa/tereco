@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import {
   getAssessmentById,
   getQuestions,
@@ -8,6 +8,7 @@ import {
   Question,
   QuestionType,
 } from '@/lib/assessments';
+import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { requireAdmin } from '@/lib/adminAuth';
 import { z } from 'zod';
 
@@ -42,19 +43,13 @@ export async function GET(
     const { id } = await params;
     const assessment = await getAssessmentById(id);
     if (!assessment) {
-      return NextResponse.json(
-        { success: false, message: 'Assessment not found' },
-        { status: 404 }
-      );
+      return errorResponse('Assessment not found', 404);
     }
     const questions = await getQuestions(assessment.id);
-    return NextResponse.json({ success: true, data: { ...assessment, questions } });
+    return successResponse({ data: { ...assessment, questions } });
   } catch (error) {
     console.error('Error fetching assessment:', error);
-    return NextResponse.json(
-      { success: false, message: 'Failed to fetch assessment' },
-      { status: 500 }
-    );
+    return errorResponse('Failed to fetch assessment', 500);
   }
 }
 
@@ -86,10 +81,7 @@ export async function PUT(
 
     const assessment = await getAssessmentById(id);
     if (!assessment) {
-      return NextResponse.json(
-        { success: false, message: 'Assessment not found' },
-        { status: 404 }
-      );
+      return errorResponse('Assessment not found', 404);
     }
 
     await updateAssessment(id, validated);
@@ -98,19 +90,10 @@ export async function PUT(
       await saveQuestions(id, questions);
     }
 
-    return NextResponse.json({ success: true, message: 'Assessment updated' });
+    return successResponse({ message: 'Assessment updated' });
   } catch (error) {
     console.error('Error updating assessment:', error);
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, message: 'Validation failed', errors: error.issues },
-        { status: 400 }
-      );
-    }
-    return NextResponse.json(
-      { success: false, message: 'Update failed' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Update failed');
   }
 }
 
@@ -126,20 +109,14 @@ export async function DELETE(
 
     const assessment = await getAssessmentById(id);
     if (!assessment) {
-      return NextResponse.json(
-        { success: false, message: 'Assessment not found' },
-        { status: 404 }
-      );
+      return errorResponse('Assessment not found', 404);
     }
 
     await softDeleteAssessment(id);
 
-    return NextResponse.json({ success: true, message: 'Assessment deleted (soft-deleted)' });
+    return successResponse({ message: 'Assessment deleted (soft-deleted)' });
   } catch (error) {
     console.error('Error deleting assessment:', error);
-    return NextResponse.json(
-      { success: false, message: 'Deletion failed' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Deletion failed');
   }
 }
