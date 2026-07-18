@@ -1,14 +1,12 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { getResponses, getQuestions, getAssessmentById } from '@/lib/assessments';
+import { errorResponse, successResponse } from '@/lib/apiResponse';
 
 // GET /api/admin/responses?assessmentId=... – responses + questions for marking
 export async function GET(request: NextRequest) {
   const assessmentId = request.nextUrl.searchParams.get('assessmentId');
   if (!assessmentId) {
-    return NextResponse.json(
-      { success: false, message: 'assessmentId is required' },
-      { status: 400 }
-    );
+    return errorResponse('assessmentId is required', 400);
   }
   try {
     const [assessment, responses, questions] = await Promise.all([
@@ -16,15 +14,9 @@ export async function GET(request: NextRequest) {
       getResponses(assessmentId),
       getQuestions(assessmentId),
     ]);
-    return NextResponse.json({
-      success: true,
-      data: { assessment, responses, questions },
-    });
+    return successResponse({ data: { assessment, responses, questions } });
   } catch (error) {
     console.error('Error fetching responses:', error);
-    return NextResponse.json(
-      { success: false, message: 'Failed to fetch responses' },
-      { status: 500 }
-    );
+    return errorResponse('Failed to fetch responses', 500);
   }
 }

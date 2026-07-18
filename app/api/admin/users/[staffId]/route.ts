@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { deleteUser } from '@/lib/users';
+import { handleApiError, successResponse } from '@/lib/apiResponse';
 
 export async function DELETE(
   request: NextRequest,
@@ -8,11 +9,8 @@ export async function DELETE(
   try {
     const { staffId } = await params;
     await deleteUser(decodeURIComponent(staffId));
-    return NextResponse.json({ success: true, message: 'User deleted' });
+    return successResponse({ message: 'User deleted' });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Delete failed' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Delete failed');
   }
 }

@@ -1,5 +1,6 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { updateResponseScore } from '@/lib/assessments';
+import { handleApiError, successResponse } from '@/lib/apiResponse';
 import { z } from 'zod';
 
 const ScoreSchema = z.object({
@@ -16,17 +17,8 @@ export async function PATCH(
     const body = await request.json();
     const { score } = ScoreSchema.parse(body);
     await updateResponseScore(id, score);
-    return NextResponse.json({ success: true, message: 'Score updated' });
+    return successResponse({ message: 'Score updated' });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, message: 'Validation failed', errors: error.issues },
-        { status: 400 }
-      );
-    }
-    return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Update failed' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Update failed');
   }
 }

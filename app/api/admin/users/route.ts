@@ -1,17 +1,15 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { listUsers, createUser } from '@/lib/users';
+import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { z } from 'zod';
 
 export async function GET() {
   try {
     const users = await listUsers();
-    return NextResponse.json({ success: true, data: users });
+    return successResponse({ data: users });
   } catch (error) {
     console.error('Error listing users:', error);
-    return NextResponse.json(
-      { success: false, message: 'Failed to list users' },
-      { status: 500 }
-    );
+    return errorResponse('Failed to list users', 500);
   }
 }
 
@@ -28,17 +26,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const validated = CreateUserSchema.parse(body);
     const user = await createUser(validated);
-    return NextResponse.json({ success: true, data: user });
+    return successResponse({ data: user });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json(
-        { success: false, message: 'Validation failed', errors: error.issues },
-        { status: 400 }
-      );
-    }
-    return NextResponse.json(
-      { success: false, message: error instanceof Error ? error.message : 'Create failed' },
-      { status: 500 }
-    );
+    return handleApiError(error, 'Create failed');
   }
 }
