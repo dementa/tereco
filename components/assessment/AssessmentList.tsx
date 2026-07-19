@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Clock } from 'lucide-react';
+import { useAuth } from '@/components/auth/AuthContext';
 
 interface Assessment {
   id: string;
@@ -16,19 +17,23 @@ interface Assessment {
 
 export function AssessmentList() {
   const router = useRouter();
+  const { user, isAuthenticated, loading: authLoading, mustChangePassword } = useAuth();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const studentData = sessionStorage.getItem('assessmentStudent');
-    if (!studentData) {
+    if (authLoading) return;
+    if (!isAuthenticated || user?.role !== 'student') {
       router.push('/assessment');
       return;
     }
-    const { school, className } = JSON.parse(studentData);
+    if (mustChangePassword) {
+      router.push('/assessment/change-password');
+      return;
+    }
 
-    fetch(`/api/assessments?school=${encodeURIComponent(school)}&class=${encodeURIComponent(className)}`)
+    fetch(`/api/assessments?school=${encodeURIComponent(user.school)}&class=${encodeURIComponent(user.className ?? '')}`)
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -39,7 +44,7 @@ export function AssessmentList() {
       })
       .catch(() => setError('Network error.'))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [router, user, isAuthenticated, authLoading, mustChangePassword]);
 
   const handleStart = (assessment: Assessment) => {
     // Store time limit and start timestamp

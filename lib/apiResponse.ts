@@ -36,13 +36,30 @@ export function formatZodIssues(error: z.ZodError) {
 }
 
 /**
+ * Throw this (instead of a plain Error) when the message is specific,
+ * actionable, and safe to show the caller verbatim — e.g. "an account with
+ * this email already exists." handleApiError surfaces it as-is; every other
+ * thrown error still falls back to a generic message so internal failure
+ * details never leak to the client.
+ */
+export class UserFacingError extends Error {
+  status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = "UserFacingError";
+    this.status = status;
+  }
+}
+
+/**
  * Convert a thrown value into an appropriate error response.
  *
  * - `ZodError` -> 400 with formatted validation issues.
+ * - `UserFacingError` -> its own message and status, verbatim.
  * - Anything else -> `fallbackStatus` with the generic `fallbackMessage`.
  *
- * The non-validation branch deliberately never surfaces the raw error
- * message to the client, so internal failure details are not leaked.
+ * The generic branch deliberately never surfaces the raw error message to
+ * the client, so internal failure details are not leaked.
  */
 export function handleApiError(
   error: unknown,
@@ -54,6 +71,10 @@ export function handleApiError(
     return errorResponse(validationMessage, 400, {
       errors: formatZodIssues(error),
     });
+  }
+
+  if (error instanceof UserFacingError) {
+    return errorResponse(error.message, error.status);
   }
 
   return errorResponse(fallbackMessage, fallbackStatus);

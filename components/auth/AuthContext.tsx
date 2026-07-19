@@ -1,20 +1,25 @@
 'use client'
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
-interface User {
+export interface User {
   id: string;
   staffId: string;
   name: string;
   role: string;
   school: string;
+  schoolId?: string | null;
+  className?: string | null;
 }
 
 interface AuthContextType {
   user: User | null;
-  login: (user: User) => void; // now accepts a user object
-  logout: () => void;
   isAuthenticated: boolean;
+  loading: boolean;
+  mustChangePassword: boolean;
+  login: (user: User & { mustChangePassword?: boolean }) => void;
+  logout: () => void;
+  refresh: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -22,45 +27,50 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [mustChangePassword, setMustChangePassword] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const storedUser = localStorage.getItem('tereco_user');
-    const sessionToken = localStorage.getItem('tereco_session');
-    if (storedUser && sessionToken) {
-      try {
-        const parsed = JSON.parse(storedUser);
-        const tokenAge = Date.now() - parseInt(sessionToken);
-        if (tokenAge < 24 * 60 * 60 * 1000) {
-          setUser(parsed);
-          setIsAuthenticated(true);
-        } else {
-          localStorage.removeItem('tereco_user');
-          localStorage.removeItem('tereco_session');
-        }
-      } catch {
-        localStorage.removeItem('tereco_user');
-        localStorage.removeItem('tereco_session');
+  // Session lives server-side (real Supabase Auth cookies, set by
+  // /api/auth/login) — this just rehydrates React state from it on load.
+  const refresh = useCallback(async () => {
+    try {
+      const res = await fetch('/api/auth/me');
+      const data = await res.json();
+      if (data.success) {
+        setUser(data.user);
+        setIsAuthenticated(true);
+        setMustChangePassword(!!data.user.mustChangePassword);
+      } else {
+        setUser(null);
+        setIsAuthenticated(false);
+        setMustChangePassword(false);
       }
+    } catch {
+      setUser(null);
+      setIsAuthenticated(false);
+      setMustChangePassword(false);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
-  const login = (user: User) => {
-    setUser(user);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const login = (loggedInUser: User & { mustChangePassword?: boolean }) => {
+    setUser(loggedInUser);
     setIsAuthenticated(true);
-    localStorage.setItem('tereco_user', JSON.stringify(user));
-    localStorage.setItem('tereco_session', Date.now().toString());
+    setMustChangePassword(!!loggedInUser.mustChangePassword);
   };
 
   const logout = () => {
     setUser(null);
     setIsAuthenticated(false);
-    localStorage.removeItem('tereco_user');
-    localStorage.removeItem('tereco_session');
+    setMustChangePassword(false);
     fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isAuthenticated }}>
+    <AuthContext.Provider value={{ user, isAuthenticated, loading, mustChangePassword, login, logout, refresh }}>
       {children}
     </AuthContext.Provider>
   );

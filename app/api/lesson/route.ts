@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { getSupabaseAdmin } from "@/lib/supabase";
+import { getCurrentProfile, requireRole } from "@/lib/auth/session";
 import {
   errorResponse,
   handleApiError,
@@ -15,6 +16,7 @@ const LessonSchema = z
   .object({
     school: z.string().min(1, "School is required"),
     className: z.string().min(1, "Class is required"),
+    stream: z.string().optional(),
     date: z.string().min(1, "Lesson date is required"),
     period: z.string().min(1, "Period is required"),
     status: z.string().min(1, "Lesson status is required"),
@@ -38,11 +40,18 @@ const LessonSchema = z
     supportRequired: z.string().optional().default(""),
 
     reference: z.string().optional(),
-    teacher: z.string().optional(),
+    teacher: z.string().optional(), // display-only now; teacher_id is sourced from the session, not trusted from this field
+
+    schoolId: z.string().uuid().optional(),
+    classId: z.string().uuid().optional(),
+    streamId: z.string().uuid().optional(),
   })
   .strip();
 
 export async function POST(request: NextRequest) {
+  const denied = await requireRole(request, ["staff", "admin", "super_admin"]);
+  if (denied) return denied;
+
   try {
     // -------------------------------
     // Parse Request
@@ -66,6 +75,7 @@ export async function POST(request: NextRequest) {
     }
 
     const validated = result.data;
+    const profile = await getCurrentProfile(request);
 
     // -------------------------------
     // Save to Supabase
@@ -92,7 +102,11 @@ export async function POST(request: NextRequest) {
       challenge_details: validated.challengeDetails,
       support_required: validated.supportRequired,
       reference: validated.reference ?? "",
-      teacher: validated.teacher ?? "",
+      teacher: profile?.name ?? validated.teacher ?? "",
+      teacher_id: profile?.id ?? null,
+      school_id: validated.schoolId ?? null,
+      class_id: validated.classId ?? null,
+      stream_id: validated.streamId ?? null,
     };
 
     const { error } = await supabase.from("lesson_records").insert(record);

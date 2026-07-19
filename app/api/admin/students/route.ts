@@ -1,9 +1,12 @@
 import { NextRequest } from 'next/server';
 import { getStudents, createStudent } from '@/lib/students';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
+import { requireRole } from '@/lib/auth/session';
 import { z } from 'zod';
 
 export async function GET(request: NextRequest) {
+  const denied = await requireRole(request, ['admin', 'super_admin']);
+  if (denied) return denied;
   const searchParams = request.nextUrl.searchParams;
   const school = searchParams.get('school') || undefined;
   const className = searchParams.get('class') || undefined;
@@ -24,6 +27,8 @@ const CreateStudentSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const denied = await requireRole(request, ['admin', 'super_admin']);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const validated = CreateStudentSchema.parse(body);

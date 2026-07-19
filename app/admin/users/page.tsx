@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { SCHOOLS } from '@/lib/constants';
+import { useToast } from '@/components/ui/ToastProvider';
 import { Trash2, UserPlus } from 'lucide-react';
 
 interface StaffUser {
@@ -23,6 +24,7 @@ const ROLES = [
 const emptyForm = { staffId: '', passcode: '', name: '', role: 'teacher', school: Object.keys(SCHOOLS)[0] };
 
 export default function AdminUsersPage() {
+  const toast = useToast();
   const [users, setUsers] = useState<StaffUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -58,11 +60,14 @@ export default function AdminUsersPage() {
       if (data.success) {
         setForm(emptyForm);
         load();
+        toast.success(`${form.name} added.`);
       } else {
         setFormError(data.message || 'Failed to create user');
+        toast.error(data.message || 'Failed to create user.');
       }
     } catch {
       setFormError('Network error');
+      toast.error('Network error — please try again.');
     } finally {
       setCreating(false);
     }
@@ -72,8 +77,12 @@ export default function AdminUsersPage() {
     if (!confirm(`Delete staff user "${staffId}"?`)) return;
     const res = await fetch(`/api/admin/users/${encodeURIComponent(staffId)}`, { method: 'DELETE' });
     const data = await res.json();
-    if (data.success) setUsers((prev) => prev.filter((u) => u.staffId !== staffId));
-    else alert(data.message || 'Delete failed');
+    if (data.success) {
+      setUsers((prev) => prev.filter((u) => u.staffId !== staffId));
+      toast.success('User deleted.');
+    } else {
+      toast.error(data.message || 'Delete failed.');
+    }
   };
 
   return (

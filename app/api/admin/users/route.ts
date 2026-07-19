@@ -1,9 +1,12 @@
 import { NextRequest } from 'next/server';
 import { listUsers, createUser } from '@/lib/users';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
+import { requireRole } from '@/lib/auth/session';
 import { z } from 'zod';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const denied = await requireRole(request, ['admin', 'super_admin']);
+  if (denied) return denied;
   try {
     const users = await listUsers();
     return successResponse({ data: users });
@@ -22,6 +25,8 @@ const CreateUserSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
+  const denied = await requireRole(request, ['admin', 'super_admin']);
+  if (denied) return denied;
   try {
     const body = await request.json();
     const validated = CreateUserSchema.parse(body);

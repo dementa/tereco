@@ -7,12 +7,13 @@ import {
   QuestionType,
 } from '@/lib/assessments';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
-import { requireAdmin } from '@/lib/adminAuth';
+import { getCurrentProfile, requireRole } from '@/lib/auth/session';
+import { generateSystemId } from '@/lib/idGenerator';
 import { z } from 'zod';
 
 // ─── GET all assessments ─────────────────────────────
 export async function GET(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireRole(request, ['admin', 'super_admin']);
   if (denied) return denied;
   try {
     const assessments = await getAssessments(); // no filters
@@ -24,8 +25,9 @@ export async function GET(request: NextRequest) {
 }
 
 // ─── POST create a new assessment ─────────────────────
+// `id` is no longer client-supplied — it's generated server-side (ASS0001, ...)
+// so admins can't collide/retype IDs the way question IDs used to.
 const CreateSchema = z.object({
-  id: z.string().min(1),
   title: z.string().min(1),
   description: z.string().optional(),
   timeLimit: z.number().min(1),
@@ -44,14 +46,17 @@ const CreateSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const denied = requireAdmin(request);
+  const denied = await requireRole(request, ['admin', 'super_admin']);
   if (denied) return denied;
   try {
     const body = await request.json();
     const validated = CreateSchema.parse(body);
+    const profile = await getCurrentProfile(request);
+
+    const id = await generateSystemId('assessment');
 
     await createAssessment({
-      id: validated.id,
+      id,
       title: validated.title,
       description: validated.description,
       timeLimit: validated.timeLimit,
@@ -59,6 +64,7 @@ export async function POST(request: NextRequest) {
       targetType: validated.targetType,
       targetValue: validated.targetValue,
       questionsSheet: validated.questionsSheet ?? '',
+      createdBy: profile?.id,
     });
 
     if (validated.questions && validated.questions.length > 0) {
@@ -70,10 +76,10 @@ export async function POST(request: NextRequest) {
         correctAnswer: q.correctAnswer,
         maxScore: q.maxScore ?? 1,
       }));
-      await saveQuestions(validated.id, questions);
+      await saveQuestions(id, questions);
     }
 
-    return successResponse({ message: 'Assessment created' });
+    return successResponse({ message: 'Assessment created', data: { id } });
   } catch (error) {
     console.error('Error creating assessment:', error);
     return handleApiError(error, 'Creation failed');

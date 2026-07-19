@@ -4,12 +4,12 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { User, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
-import { useAuth } from './AuthContext';
+import { useAuth, type User as AuthUser } from './AuthContext';
 
-export const LoginScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
+export const LoginScreen: React.FC<{ onLogin: (user: AuthUser & { mustChangePassword?: boolean }) => void }> = ({ onLogin }) => {
   const { login } = useAuth();
-  const [staffId, setStaffId] = useState('');
-  const [passcode, setPasscode] = useState('');
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
@@ -46,12 +46,12 @@ export const LoginScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ staffId: staffId.trim(), passcode }),
+        body: JSON.stringify({ identifier: identifier.trim(), password }),
       });
       const data = await response.json();
       if (data.success) {
         login(data.user);
-        onLogin();
+        onLogin(data.user);
       } else {
         const newAttempts = attempts + 1;
         setAttempts(newAttempts);
@@ -88,18 +88,18 @@ export const LoginScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
 
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="staffId" className="text-xs font-medium text-text-secondary tracking-wide">
-              Staff ID
+            <label htmlFor="identifier" className="text-xs font-medium text-text-secondary tracking-wide">
+              System ID or email
             </label>
             <div className="relative mt-2">
               <User className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
               <input
-                id="staffId"
+                id="identifier"
                 type="text"
-                value={staffId}
-                onChange={(e) => setStaffId(e.target.value)}
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
                 className="w-full border-0 border-b border-primary-200 bg-transparent pl-6 pr-2 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
-                placeholder="e.g. TCH-2026-001"
+                placeholder="e.g. TSF-2026-0001"
                 required
                 autoComplete="username"
               />
@@ -107,18 +107,18 @@ export const LoginScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
           </div>
 
           <div>
-            <label htmlFor="passcode" className="text-xs font-medium text-text-secondary tracking-wide">
-              Passcode
+            <label htmlFor="password" className="text-xs font-medium text-text-secondary tracking-wide">
+              Password
             </label>
             <div className="relative mt-2">
               <Lock className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
               <input
-                id="passcode"
+                id="password"
                 type={showPassword ? 'text' : 'password'}
-                value={passcode}
-                onChange={(e) => setPasscode(e.target.value)}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 className="w-full border-0 border-b border-primary-200 bg-transparent pl-6 pr-8 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
-                placeholder="Enter your passcode"
+                placeholder="Enter your password"
                 required
                 autoComplete="current-password"
               />
@@ -126,7 +126,7 @@ export const LoginScreen: React.FC<{ onLogin: () => void }> = ({ onLogin }) => {
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute right-0 top-1/2 -translate-y-1/2 text-text-faint hover:text-primary-700 transition-colors"
-                aria-label={showPassword ? 'Hide passcode' : 'Show passcode'}
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>

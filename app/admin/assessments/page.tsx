@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { useToast } from '@/components/ui/ToastProvider';
 
 interface Assessment {
   id: string;
@@ -18,7 +19,6 @@ interface Assessment {
 }
 
 const emptyForm = {
-  id: '',
   title: '',
   description: '',
   timeLimit: 30,
@@ -29,6 +29,7 @@ const emptyForm = {
 
 export default function AdminAssessments() {
   const router = useRouter();
+  const toast = useToast();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -64,12 +65,15 @@ export default function AdminAssessments() {
       if (data.success) {
         setNewAssessment(emptyForm);
         load();
-        router.push(`/admin/assessments/${newAssessment.id}`);
+        toast.success('Assessment created.');
+        router.push(`/admin/assessments/${data.data.id}`);
       } else {
         setFormError(data.message || 'Creation failed');
+        toast.error(data.message || 'Creation failed.');
       }
     } catch {
       setFormError('Network error');
+      toast.error('Network error — please try again.');
     } finally {
       setCreating(false);
     }
@@ -79,8 +83,12 @@ export default function AdminAssessments() {
     if (!confirm(`Are you sure you want to delete assessment "${id}"?`)) return;
     const res = await fetch(`/api/admin/assessments/${id}`, { method: 'DELETE' });
     const data = await res.json();
-    if (data.success) setAssessments((prev) => prev.filter((a) => a.id !== id));
-    else alert(data.message || 'Delete failed');
+    if (data.success) {
+      setAssessments((prev) => prev.filter((a) => a.id !== id));
+      toast.success('Assessment deleted.');
+    } else {
+      toast.error(data.message || 'Delete failed.');
+    }
   };
 
   return (
@@ -92,7 +100,6 @@ export default function AdminAssessments() {
         <h2 className="text-lg font-semibold text-primary-900 mb-4">Create new assessment</h2>
         <form onSubmit={handleCreate} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input label="Assessment ID" value={newAssessment.id} onChange={(e) => setNewAssessment((p) => ({ ...p, id: e.target.value }))} placeholder="e.g. ASSESS-001" required />
             <Input label="Title" value={newAssessment.title} onChange={(e) => setNewAssessment((p) => ({ ...p, title: e.target.value }))} required />
             <Input label="Description" value={newAssessment.description} onChange={(e) => setNewAssessment((p) => ({ ...p, description: e.target.value }))} />
             <Input label="Time limit (minutes)" type="number" value={newAssessment.timeLimit} onChange={(e) => setNewAssessment((p) => ({ ...p, timeLimit: parseInt(e.target.value) || 0 }))} required />

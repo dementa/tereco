@@ -26,7 +26,6 @@ import {
   Monitor, TrendingUp, FileText, Pencil,
 } from 'lucide-react'
 import { useAuth } from '@/components/auth/AuthContext'
-import { SCHOOLS } from '@/lib/constants'
 
 /* ─────────────────────────────────────────────────
    Types
@@ -35,6 +34,7 @@ interface FormData {
   // Step 1
   school: string
   className: string
+  stream: string
   date: string
   period: string
   status: 'Completed' | 'Partially Completed' | 'Missed' | ''
@@ -57,6 +57,10 @@ interface FormData {
 }
 
 interface FieldError { [key: string]: string }
+
+interface DirectoryStream { id: string; name: string }
+interface DirectoryClass { id: string; name: string; hasStreams: boolean; streams: DirectoryStream[] }
+interface DirectorySchool { id: string; name: string; classes: DirectoryClass[] }
 
 /* ─────────────────────────────────────────────────
    Constants
@@ -97,7 +101,7 @@ const STEPS = [
 ]
 
 const INITIAL: FormData = {
-  school: '', className: '', date: new Date().toISOString().split('T')[0],
+  school: '', className: '', stream: '', date: new Date().toISOString().split('T')[0],
   period: '', status: '', missedReason: '', missedExplanation: '',
   learningArea: '', specificSkill: '', approach: '',
   present: '', absent: '', computerAccess: '',
@@ -108,11 +112,12 @@ const INITIAL: FormData = {
 /* ─────────────────────────────────────────────────
    Validation
 ───────────────────────────────────────────────── */
-function validateStep(step: number, data: FormData): FieldError {
+function validateStep(step: number, data: FormData, selectedClassHasStreams: boolean): FieldError {
   const err: FieldError = {}
   if (step === 0) {
     if (!data.school)    err.school = 'Select a school'
     if (!data.className) err.className = 'Select a class'
+    if (selectedClassHasStreams && !data.stream) err.stream = 'Select a stream'
     if (!data.date)      err.date = 'Enter the lesson date'
     if (!data.period)    err.period = 'Select a period'
     if (!data.status)    err.status = 'Select lesson status'
@@ -521,13 +526,24 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   const [direction,   setDirection]   = useState<1 | -1>(1)
   const [ref]   = useState(() => `TER-${String(Math.floor(100000 + Math.random() * 900000))}`)
   const topRef  = useRef<HTMLDivElement>(null)
+  const [directory, setDirectory] = useState<DirectorySchool[]>([])
+
+  useEffect(() => {
+    fetch('/api/directory/schools')
+      .then(r => r.json())
+      .then(d => { if (d.success) setDirectory(d.data) })
+      .catch(() => {})
+  }, [])
 
   const set = <K extends keyof FormData>(key: K, value: FormData[K]) =>
     setData(p => ({ ...p, [key]: value }))
 
   const isMissed    = data.status === 'Missed'
   const hasChallenges = data.challenges === 'Yes'
-  const availableClasses = SCHOOLS[data.school] || []
+  const selectedSchool   = directory.find(s => s.name === data.school)
+  const availableClasses = selectedSchool?.classes ?? []
+  const selectedClass    = availableClasses.find(c => c.name === data.className)
+  const availableStreams = selectedClass?.streams ?? []
   const skillsForArea    = SKILLS[data.learningArea] || []
 
   /* Clear errors when field changes */
@@ -540,7 +556,7 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   }
 
   function goNext() {
-    const errs = validateStep(step, data)
+    const errs = validateStep(step, data, !!selectedClass?.hasStreams)
     if (Object.keys(errs).length > 0) {
       setErrors(errs)
       setTouched(true)
@@ -565,10 +581,14 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   async function handleSubmit() {
     setSubmitting(true)
     try {
+      const stream = availableStreams.find(s => s.name === data.stream)
       const res = await fetch('/api/lesson', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...data, reference: ref, teacher: user?.name }),
+        body: JSON.stringify({
+          ...data, reference: ref, teacher: user?.name,
+          schoolId: selectedSchool?.id, classId: selectedClass?.id, streamId: stream?.id,
+        }),
       })
       const json = await res.json()
       if (!res.ok || !json.success) throw new Error(json.message || 'Submission failed')
@@ -589,21 +609,32 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FloatingSelect
             label="School"
-            options={Object.keys(SCHOOLS)}
+            options={directory.map(s => s.name)}
             value={data.school}
-            onChange={v => { set('school', v); set('className', ''); clearErr('school') }}
+            onChange={v => { set('school', v); set('className', ''); set('stream', ''); clearErr('school') }}
             error={errors.school}
             required
           />
           <FloatingSelect
             label="Class"
-            options={availableClasses}
+            options={availableClasses.map(c => c.name)}
             value={data.className}
-            onChange={v => { set('className', v); clearErr('className') }}
+            onChange={v => { set('className', v); set('stream', ''); clearErr('className') }}
             error={errors.className}
             required
+            hint={data.school ? undefined : 'Select a school first'}
           />
         </div>
+        {selectedClass?.hasStreams && (
+          <FloatingSelect
+            label="Stream"
+            options={availableStreams.map(s => s.name)}
+            value={data.stream}
+            onChange={v => { set('stream', v); clearErr('stream') }}
+            error={errors.stream}
+            required
+          />
+        )}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <FloatingInput
             label="Lesson date"
@@ -900,6 +931,7 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
           <div className="px-5 py-1 divide-y divide-[#02465B]/04">
             <ReviewRow label="School"  value={data.school}     onEdit={() => goToStep(0)} />
             <ReviewRow label="Class"   value={data.className}  onEdit={() => goToStep(0)} />
+            <ReviewRow label="Stream"  value={data.stream}     onEdit={() => goToStep(0)} />
             <ReviewRow label="Date"    value={new Date(data.date).toLocaleDateString('en-GB', { dateStyle: 'long' })} />
             <ReviewRow label="Period"  value={data.period}     />
             <ReviewRow label="Status"  value={data.status}     />

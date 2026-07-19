@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import { updateResponseScore } from '@/lib/assessments';
 import { handleApiError, successResponse } from '@/lib/apiResponse';
+import { requireRole } from '@/lib/auth/session';
 import { z } from 'zod';
 
 const ScoreSchema = z.object({
@@ -12,6 +13,8 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const denied = await requireRole(request, ['admin', 'super_admin']);
+  if (denied) return denied;
   try {
     const { id } = await params;
     const body = await request.json();

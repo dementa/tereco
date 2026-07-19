@@ -33,6 +33,13 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# real staff emails for the users->auth migration — PII, never commit
+scripts/migration-emails.csv
+
+# real student data (bulk-import testing) — PII, never commit
+scripts/student-import-template.xlsx
+scripts/*.xlsx
+
 # vercel
 .vercel
 

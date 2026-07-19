@@ -7,7 +7,7 @@ import { AuthProvider, useAuth } from '@/components/auth/AuthContext';
 import { Button } from '@/components/ui/Button';
 import {
   LayoutDashboard, FileText, Users, GraduationCap, ClipboardList,
-  CheckSquare, LogOut, ShieldAlert, ArrowLeft,
+  CheckSquare, LogOut, ShieldAlert, ArrowLeft, School, UserCog, Contact,
 } from 'lucide-react';
 
 const NAV = [
@@ -19,19 +19,24 @@ const NAV = [
   { href: '/admin/users', label: 'Staff Users', icon: Users },
 ];
 
+// Super-admin-only account provisioning — separate from the day-to-day
+// roster pages above (route-level guarded by requireSuperAdmin too, this is
+// just nav visibility).
+const SYSTEM_NAV = [
+  { href: '/admin/system/schools', label: 'Schools', icon: School },
+  { href: '/admin/system/staff', label: 'Staff & Admins', icon: UserCog },
+  { href: '/admin/system/students', label: 'Student Accounts', icon: GraduationCap },
+  { href: '/admin/system/parents', label: 'Parents', icon: Contact },
+];
+
+const ADMIN_ROLES = ['admin', 'super_admin'];
+
 function AdminShell({ children }: { children: React.ReactNode }) {
-  const { user, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, loading, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const [ready, setReady] = React.useState(false);
 
-  // AuthContext hydrates from localStorage in an effect; wait one tick.
-  React.useEffect(() => {
-    const t = setTimeout(() => setReady(true), 50);
-    return () => clearTimeout(t);
-  }, []);
-
-  if (!ready) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center text-text-muted">
         Loading admin…
@@ -39,7 +44,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthenticated || user?.role !== 'admin') {
+  if (!isAuthenticated || !ADMIN_ROLES.includes(user?.role ?? '')) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center px-4">
         <div className="max-w-md text-center bg-bg-card rounded-2xl p-8 border border-primary-100">
@@ -72,7 +77,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             <p className="text-xs text-text-muted truncate">{user?.name}</p>
           </div>
         </div>
-        <nav className="flex-1 p-3 space-y-1">
+        <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {NAV.map((item) => {
             const Icon = item.icon;
             const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
@@ -91,6 +96,30 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+
+          {user?.role === 'super_admin' && (
+            <>
+              <p className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-text-faint">System</p>
+              {SYSTEM_NAV.map((item) => {
+                const Icon = item.icon;
+                const active = pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
+                      active
+                        ? 'bg-primary-700 text-white'
+                        : 'text-text-secondary hover:bg-primary-50'
+                    }`}
+                  >
+                    <Icon className="w-4.5 h-4.5" />
+                    {item.label}
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </nav>
         <div className="p-3 border-t border-primary-100 space-y-1">
           <Link href="/" className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-text-secondary hover:bg-primary-50">

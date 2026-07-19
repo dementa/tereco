@@ -1,0 +1,5 @@
+# Copy this to scripts/migration-emails.csv and fill in real emails for your
+# existing staff/admin rows (check their staff_id in the `users` table or the
+# /admin/users page). Lines starting with # are ignored.
+# staff_id,email
+TCH-2026-001,teacher@example.com

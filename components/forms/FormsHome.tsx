@@ -57,7 +57,7 @@ export const FormsHome: React.FC<FormsHomeProps> = ({ onSelectForm, onLogout }) 
             </div>
           </div>
           <div className="flex items-center justify-end gap-2 w-full sm:w-auto">
-            {user?.role === 'admin' && (
+            {(user?.role === 'admin' || user?.role === 'super_admin') && (
               <Link
                 href="/admin"
                 className="flex items-center gap-2 px-3 sm:px-4 py-2 rounded-xl bg-primary-700 text-white hover:bg-primary-800 transition-all text-sm shrink-0"

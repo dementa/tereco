@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { SCHOOLS } from '@/lib/constants';
+import { useToast } from '@/components/ui/ToastProvider';
 import { Trash2, UserPlus } from 'lucide-react';
 
 interface Student {
@@ -25,6 +26,7 @@ const emptyForm = {
 };
 
 export default function AdminStudentsPage() {
+  const toast = useToast();
   const [students, setStudents] = useState<Student[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -67,11 +69,14 @@ export default function AdminStudentsPage() {
       if (data.success) {
         setForm((prev) => ({ ...prev, name: '', studentId: '' }));
         load();
+        toast.success(`${form.name} added.`);
       } else {
         setFormError(data.message || 'Failed to add student');
+        toast.error(data.message || 'Failed to add student.');
       }
     } catch {
       setFormError('Network error');
+      toast.error('Network error — please try again.');
     } finally {
       setCreating(false);
     }
@@ -81,8 +86,12 @@ export default function AdminStudentsPage() {
     if (!confirm('Remove this student?')) return;
     const res = await fetch(`/api/admin/students/${id}`, { method: 'DELETE' });
     const data = await res.json();
-    if (data.success) setStudents((prev) => prev.filter((s) => s.id !== id));
-    else alert(data.message || 'Delete failed');
+    if (data.success) {
+      setStudents((prev) => prev.filter((s) => s.id !== id));
+      toast.success('Student removed.');
+    } else {
+      toast.error(data.message || 'Delete failed.');
+    }
   };
 
   const formClasses = SCHOOLS[form.school] ?? [];

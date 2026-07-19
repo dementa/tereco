@@ -23,6 +23,8 @@ export interface StudentResponse {
   timestamp: string;
   timeSpent: number; // seconds
   score?: number;
+  studentId?: string;
+  schoolId?: string;
 }
 
 export type QuestionType =
@@ -53,6 +55,7 @@ export interface CreateAssessmentInput {
   targetType: Assessment["targetType"];
   targetValue?: string;
   questionsSheet: string;
+  createdBy?: string;
 }
 
 export interface UpdateAssessmentInput {
@@ -194,6 +197,7 @@ export async function createAssessment(input: CreateAssessmentInput) {
     target_value: input.targetValue ?? "",
     questions_sheet: input.questionsSheet,
     deleted: false,
+    created_by: input.createdBy ?? null,
   });
 
   if (error) {
@@ -400,10 +404,18 @@ export async function saveResponses(responses: StudentResponse[]) {
     submitted_at: r.timestamp,
     time_spent: r.timeSpent,
     score: r.score ?? null,
+    student_id: r.studentId ?? null,
+    school_id: r.schoolId ?? null,
   }));
 
   const { error } = await supabase.from("responses").insert(rows);
   if (error) {
+    // 23505 = unique_violation — responses_assessment_student_unique caught a
+    // repeat submission. Surface as a distinct, catchable error rather than
+    // a generic failure.
+    if (error.code === "23505") {
+      throw new Error("ALREADY_SUBMITTED");
+    }
     console.error("Error saving responses:", error);
     throw new Error("Failed to save assessment responses");
   }

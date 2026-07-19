@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Quicksand } from "next/font/google";
 import "./globals.css";
+import { ToastProvider } from "@/components/ui/ToastProvider";
 
 const quicksand = Quicksand({
   subsets: ["latin"],
@@ -25,7 +26,7 @@ export default function RootLayout({
       className={`${quicksand.variable} h-full antialiased`}
     >
       <body className="min-h-full font-sans">
-        {children}
+        <ToastProvider>{children}</ToastProvider>
       </body>
     </html>
   );

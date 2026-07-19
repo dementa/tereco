@@ -1,50 +1,78 @@
-import { NextRequest } from 'next/server';
-import { getUsers } from "@/lib/users";
-import { verifyPasscode } from '@/lib/hash';
-import { errorResponse, successResponse } from '@/lib/apiResponse';
-import { ADMIN_SESSION_COOKIE, ADMIN_SESSION_TTL_SECONDS, createAdminSessionToken } from '@/lib/adminAuth';
+import { NextRequest } from "next/server";
+import { createClient } from "@/lib/auth/supabase-server";
+import { getSupabaseAdmin } from "@/lib/supabase";
+import { errorResponse, successResponse } from "@/lib/apiResponse";
 
+/**
+ * Accepts either a system ID (TA-2026-0001, TSF-..., TST-..., TPR-...) or an
+ * email address (the super admin has no system ID) as `identifier`. Resolves
+ * to an email, then signs in via Supabase Auth — this sets real, signed
+ * session cookies (via the @supabase/ssr server client), not the old
+ * localStorage timestamp.
+ */
 export async function POST(request: NextRequest) {
   try {
-    const { staffId, passcode } = await request.json();
-    if (!staffId || !passcode) {
-      return errorResponse('Missing credentials', 400);
+    const body = await request.json();
+    const identifier = String(body.identifier ?? "").trim();
+    const password = String(body.password ?? "");
+
+    if (!identifier || !password) {
+      return errorResponse("Missing credentials", 400);
     }
 
-    const users = await getUsers();
+    const admin = getSupabaseAdmin();
+    let email = identifier;
 
-    // Check if user exists
-    const user = users[staffId];
-    if (!user) {
-      return errorResponse('Invalid credentials', 401);
+    if (!identifier.includes("@")) {
+      const { data: bySystemId } = await admin
+        .from("profiles")
+        .select("email")
+        .eq("system_id", identifier)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (!bySystemId) {
+        return errorResponse("Invalid credentials", 401);
+      }
+      email = bySystemId.email;
     }
 
-    // Verify the provided passcode against the stored hash
-    const isValid = await verifyPasscode(passcode, user.passcode);
+    const supabase = await createClient();
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
-    if (!isValid) {
-      return errorResponse('Invalid credentials', 401);
+    if (error || !data.user) {
+      return errorResponse("Invalid credentials", 401);
     }
 
-    // Success: return user data (without the hash)
-    const { passcode: _, ...safeUser } = user; // '_' unused
-    const response = successResponse({
-      user: { id: staffId, staffId, ...safeUser },
+    const { data: profile } = await admin
+      .from("profiles")
+      .select("id, system_id, role, name, email, school_id, class_name, must_change_password, schools!profiles_school_id_fkey(name)")
+      .eq("id", data.user.id)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (!profile) {
+      await supabase.auth.signOut();
+      return errorResponse("Invalid credentials", 401);
+    }
+
+    const schoolName = (profile.schools as unknown as { name: string } | null)?.name ?? "";
+
+    return successResponse({
+      user: {
+        id: profile.id,
+        staffId: profile.system_id ?? "",
+        role: profile.role,
+        name: profile.name,
+        email: profile.email,
+        school: schoolName,
+        schoolId: profile.school_id,
+        className: profile.class_name,
+        mustChangePassword: profile.must_change_password,
+      },
     });
-
-    if (user.role === 'admin') {
-      response.cookies.set(ADMIN_SESSION_COOKIE, createAdminSessionToken(staffId), {
-        httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: ADMIN_SESSION_TTL_SECONDS,
-      });
-    }
-
-    return response;
   } catch (error) {
-    console.error('Login error:', error);
-    return errorResponse('Server error', 500);
+    console.error("Login error:", error);
+    return errorResponse("Server error", 500);
   }
 }

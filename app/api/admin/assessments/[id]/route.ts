@@ -9,7 +9,7 @@ import {
   QuestionType,
 } from '@/lib/assessments';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
-import { requireAdmin } from '@/lib/adminAuth';
+import { requireRole } from '@/lib/auth/session';
 import { z } from 'zod';
 
 const UpdateSchema = z.object({
@@ -37,7 +37,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = requireAdmin(request);
+  const denied = await requireRole(request, ['admin', 'super_admin']);
   if (denied) return denied;
   try {
     const { id } = await params;
@@ -58,7 +58,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = requireAdmin(request);
+  const denied = await requireRole(request, ['admin', 'super_admin']);
   if (denied) return denied;
   try {
     const { id } = await params;
@@ -102,7 +102,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = requireAdmin(request);
+  const denied = await requireRole(request, ['admin', 'super_admin']);
   if (denied) return denied;
   try {
     const { id } = await params;

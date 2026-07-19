@@ -1,136 +1,114 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { SCHOOLS } from '@/lib/constants';
+import { GraduationCap, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
+import { useAuth } from '@/components/auth/AuthContext';
 
-interface StudentOption {
-  id: string;
-  name: string;
-}
-
-const NOT_LISTED = '__not_listed__';
-
+/**
+ * Student login — replaces the old open self-declared name/school/class
+ * picker. A real account (system ID + password) is what makes the
+ * one-submission-per-assessment guarantee actually enforceable.
+ */
 export function AssessmentEntry() {
   const router = useRouter();
-  const [school, setSchool] = useState('');
-  const [className, setClassName] = useState('');
-  const [studentName, setStudentName] = useState('');
-  const [selectedStudent, setSelectedStudent] = useState('');
-  const [students, setStudents] = useState<StudentOption[]>([]);
-  const [loadingStudents, setLoadingStudents] = useState(false);
+  const { login } = useAuth();
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const classes = SCHOOLS[school] || [];
-
-  // Load the registered students for the chosen school/class.
-  useEffect(() => {
-    if (!school || !className) {
-      setStudents([]);
-      setSelectedStudent('');
-      return;
-    }
-    setLoadingStudents(true);
-    setSelectedStudent('');
-    setStudentName('');
-    const qs = new URLSearchParams({ school, class: className });
-    fetch(`/api/students?${qs.toString()}`)
-      .then((r) => r.json())
-      .then((d) => setStudents(d.success ? d.data : []))
-      .catch(() => setStudents([]))
-      .finally(() => setLoadingStudents(false));
-  }, [school, className]);
-
-  const usingList = students.length > 0 && selectedStudent !== NOT_LISTED;
-
-  const resolvedName = usingList
-    ? students.find((s) => s.id === selectedStudent)?.name ?? ''
-    : studentName.trim();
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!school || !className || !resolvedName) {
-      setError('Please select your school, class and name.');
-      return;
-    }
+    setError('');
     setLoading(true);
-    sessionStorage.setItem(
-      'assessmentStudent',
-      JSON.stringify({ school, className, studentName: resolvedName })
-    );
-    router.push('/assessment/list');
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: identifier.trim(), password }),
+      });
+      const data = await res.json();
+      if (!data.success) {
+        setError(data.message || 'Invalid System ID or password.');
+        return;
+      }
+      if (data.user.role !== 'student') {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        setError('This portal is for students only.');
+        return;
+      }
+      login(data.user);
+      if (data.user.mustChangePassword) {
+        router.push('/assessment/change-password');
+      } else {
+        router.push('/assessment/list');
+      }
+    } catch {
+      setError('Network error. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center px-4 py-8">
       <Card className="w-full max-w-md p-6 sm:p-8">
-        <h1 className="text-2xl font-bold text-primary-900 text-center mb-2">Assessment Portal</h1>
-        <p className="text-sm text-text-muted text-center mb-6">Enter your details to start</p>
+        <div className="text-center mb-6">
+          <div className="mx-auto w-14 h-14 rounded-2xl bg-primary-700 text-white flex items-center justify-center shadow-md mb-4">
+            <GraduationCap size={26} />
+          </div>
+          <h1 className="text-2xl font-bold text-primary-900">Assessment Portal</h1>
+          <p className="text-sm text-text-muted mt-1">Sign in with your student account to continue</p>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          <Select
-            label="School"
-            options={[{ value: '', label: 'Select your school…' }, ...Object.keys(SCHOOLS).map((s) => ({ value: s, label: s }))]}
-            value={school}
-            onChange={(e) => { setSchool(e.target.value); setClassName(''); }}
+          <Input
+            label="Student System ID"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            placeholder="e.g. TST-2026-0001"
             required
+            autoComplete="username"
           />
-          <Select
-            label="Class"
-            options={[{ value: '', label: 'Select your class…' }, ...classes.map((c) => ({ value: c, label: c }))]}
-            value={className}
-            onChange={(e) => setClassName(e.target.value)}
-            required
-            disabled={!school}
-          />
-
-          {loadingStudents ? (
-            <p className="text-sm text-text-muted">Loading students…</p>
-          ) : students.length > 0 ? (
-            <>
-              <Select
-                label="Your Name"
-                options={[
-                  { value: '', label: 'Select your name…' },
-                  ...students.map((s) => ({ value: s.id, label: s.name })),
-                  { value: NOT_LISTED, label: "My name isn't listed" },
-                ]}
-                value={selectedStudent}
-                onChange={(e) => setSelectedStudent(e.target.value)}
-                required
-              />
-              {selectedStudent === NOT_LISTED && (
-                <Input
-                  label="Type your full name"
-                  value={studentName}
-                  onChange={(e) => setStudentName(e.target.value)}
-                  placeholder="Enter your full name"
-                  required
-                />
-              )}
-            </>
-          ) : (
+          <div className="relative">
             <Input
-              label="Your Name"
-              value={studentName}
-              onChange={(e) => setStudentName(e.target.value)}
-              placeholder="Enter your full name"
+              label="Password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
               required
-              disabled={!className}
+              autoComplete="current-password"
             />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-[34px] text-text-faint hover:text-primary-700"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {error && (
+            <div className="flex items-start gap-2 text-sm text-error">
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+              <p>{error}</p>
+            </div>
           )}
 
-          {error && <p className="text-sm text-error">{error}</p>}
-
-          <Button type="submit" className="w-full" isLoading={loading}>
-            Continue to Assessments
+          <Button type="submit" className="w-full justify-center" isLoading={loading}>
+            Sign in
           </Button>
         </form>
+
+        <p className="text-xs text-text-faint text-center mt-6">
+          Don&apos;t have an account? Ask your teacher or school admin.
+        </p>
       </Card>
     </div>
   );

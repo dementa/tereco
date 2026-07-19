@@ -2,14 +2,17 @@ import { NextRequest } from 'next/server';
 import { saveResponses, getAssessmentById, getQuestions } from '@/lib/assessments';
 import { z } from 'zod';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
+import { getCurrentProfile } from '@/lib/auth/session';
+import { getSupabaseAdmin } from '@/lib/supabase';
 
 // ─── Validation ─────────────────────────────────────────────
+// studentName/school/className are no longer accepted from the client —
+// identity is resolved server-side from the verified session, closing the
+// gap that let anyone submit as anyone (and, combined with the unique
+// constraint on responses(assessment_id, student_id), the gap that let the
+// same student submit the same assessment repeatedly).
 const SubmitSchema = z.object({
-  studentName: z.string().min(1, 'Student name is required'),
-  school: z.string().min(1, 'School is required'),
-  className: z.string().min(1, 'Class name is required'),
-  assessmentId: z.string().min(1, 'Assessment ID is required'),
-  answers: z.record(z.string(), z.string()), // key: string, value: string
+  answers: z.record(z.string(), z.string()),
   timeSpent: z.number().optional(),
 });
 
@@ -18,18 +21,17 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const {id} = await params;
-
+  const { id } = await params;
   const assessmentId = id;
+
+  const profile = await getCurrentProfile(request);
+  if (!profile || profile.role !== 'student') {
+    return errorResponse('Unauthorized', 401);
+  }
 
   try {
     const body = await request.json();
     const validated = SubmitSchema.parse(body);
-
-    // Ensure the assessment ID matches the route param
-    if (validated.assessmentId !== assessmentId) {
-      return errorResponse('Assessment ID mismatch', 400);
-    }
 
     // 1. Fetch assessment to validate time limit
     const assessment = await getAssessmentById(assessmentId);
@@ -45,6 +47,13 @@ export async function POST(
 
     // 3. Get questions to auto‑score MCQ
     const questions = await getQuestions(assessment.id);
+
+    let schoolName = '';
+    if (profile.schoolId) {
+      const admin = getSupabaseAdmin();
+      const { data: school } = await admin.from('schools').select('name').eq('id', profile.schoolId).maybeSingle();
+      schoolName = school?.name ?? '';
+    }
 
     // 4. Build responses array
     const timestamp = new Date().toISOString();
@@ -70,15 +79,17 @@ export async function POST(
       }
 
       return {
-        studentName: validated.studentName,
-        school: validated.school,
-        class: validated.className,
-        assessmentId: validated.assessmentId,
+        studentName: profile.name,
+        school: schoolName,
+        class: profile.className ?? '',
+        assessmentId,
         questionId: q.questionId,
         answer: userAnswer,
         timestamp,
         timeSpent: validated.timeSpent || 0,
         score,
+        studentId: profile.id,
+        schoolId: profile.schoolId ?? undefined,
       };
     });
 
@@ -87,6 +98,9 @@ export async function POST(
 
     return successResponse({ message: 'Assessment submitted successfully' });
   } catch (error) {
+    if (error instanceof Error && error.message === 'ALREADY_SUBMITTED') {
+      return errorResponse('You have already submitted this assessment.', 409);
+    }
     console.error('Error submitting assessment:', error);
     return handleApiError(error, 'Submission failed', 500, 'Invalid submission data');
   }

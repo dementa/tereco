@@ -7,11 +7,16 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { AlertCircle, Trash2, Plus, Save, X } from 'lucide-react';
+import { useToast } from '@/components/ui/ToastProvider';
+
+// Only auto-markable types for now — matching/dragdrop/short/long need manual
+// marking, which isn't confirmed/tested yet.
+type QuestionType = 'mcq' | 'checkbox' | 'fill';
 
 interface Question {
-  questionId: string;
+  questionId: string; // server-assigned on save (Q1, Q2, ...) — display only, never user-editable
   questionText: string;
-  questionType: 'mcq' | 'checkbox' | 'fill' | 'matching' | 'dragdrop' | 'short' | 'long';
+  questionType: QuestionType;
   options: string[];
   correctAnswer?: string;
   maxScore: number;
@@ -32,6 +37,7 @@ interface Assessment {
 export default function EditAssessmentPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const toast = useToast();
   const assessmentId = params.id;
 
   // Assessment metadata state
@@ -88,24 +94,23 @@ export default function EditAssessmentPage() {
     fetchData();
   }, [assessmentId]);
 
-  // Fetch questions
-  useEffect(() => {
-    async function fetchQuestions() {
-      try {
-        const res = await fetch(`/api/admin/assessments/${assessmentId}/questions`);
-        if (!res.ok) throw new Error('Failed to fetch questions');
-        const data = await res.json();
-        if (data.success) {
-          setQuestions(data.data);
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoadingQuestions(false);
+  // Fetch questions — also called after a successful save to pick up the
+  // real server-assigned IDs (see handleSaveQuestions).
+  const fetchQuestions = async () => {
+    try {
+      const res = await fetch(`/api/admin/assessments/${assessmentId}/questions`);
+      if (!res.ok) throw new Error('Failed to fetch questions');
+      const data = await res.json();
+      if (data.success) {
+        setQuestions(data.data);
       }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingQuestions(false);
     }
-    fetchQuestions();
-  }, [assessmentId]);
+  };
+  useEffect(() => { fetchQuestions(); }, [assessmentId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ─── Metadata save ────────────────────────────────────────
   const handleSaveMetadata = async (e: React.FormEvent) => {
@@ -120,12 +125,12 @@ export default function EditAssessmentPage() {
       });
       const data = await res.json();
       if (data.success) {
-        alert('Assessment updated');
+        toast.success('Assessment updated.');
       } else {
-        alert(data.message || 'Update failed');
+        toast.error(data.message || 'Update failed.');
       }
     } catch (err) {
-      alert('Network error');
+      toast.error('Network error — please try again.');
     } finally {
       setSaving(false);
     }
@@ -146,24 +151,15 @@ export default function EditAssessmentPage() {
     // ── Validate before sending ──
     const errors: string[] = [];
     for (const q of normalized) {
-      if (!q.questionId.trim()) errors.push(`Question ID is required (${q.questionText || 'new question'}).`);
-      if (!q.questionText.trim()) errors.push(`Question text is required for ${q.questionId || 'new question'}.`);
-      if (['mcq', 'checkbox', 'matching', 'dragdrop'].includes(q.questionType)) {
+      if (!q.questionText.trim()) errors.push(`Question text is required for "${q.questionId || 'a new question'}".`);
+      if (['mcq', 'checkbox'].includes(q.questionType)) {
         if (q.options.length === 0) errors.push(`Options are required for ${q.questionType} question "${q.questionId}".`);
       }
-      if (['mcq', 'checkbox', 'fill'].includes(q.questionType)) {
-        if (!q.correctAnswer?.trim()) errors.push(`Correct answer is required for ${q.questionType} question "${q.questionId}".`);
-      }
-    }
-
-    const seenIds = new Set<string>();
-    for (const q of normalized) {
-      if (seenIds.has(q.questionId)) errors.push(`Duplicate question ID "${q.questionId}" — question IDs must be unique.`);
-      seenIds.add(q.questionId);
+      if (!q.correctAnswer?.trim()) errors.push(`Correct answer is required for question "${q.questionId}".`);
     }
 
     if (errors.length > 0) {
-      alert(`Validation errors:\n${errors.join('\n')}`);
+      toast.error(`Validation errors:\n${errors.join('\n')}`);
       savingQuestionsRef.current = false;
       return;
     }
@@ -178,20 +174,21 @@ export default function EditAssessmentPage() {
       });
       const data = await res.json();
       if (data.success) {
-        alert('Questions saved successfully!');
+        toast.success('Questions saved successfully!');
+        await fetchQuestions(); // pick up the real server-assigned question IDs
       } else {
         // Show detailed validation errors from server
         if (data.errors && Array.isArray(data.errors)) {
           const serverErrors = data.errors
             .map((e: { path?: unknown; message?: string }) => `${Array.isArray(e.path) ? e.path.join('.') : e.path}: ${e.message}`)
             .join('\n');
-          alert(`Server validation failed:\n${serverErrors}`);
+          toast.error(`Server validation failed:\n${serverErrors}`);
         } else {
-          alert(data.message || 'Failed to save questions');
+          toast.error(data.message || 'Failed to save questions.');
         }
       }
     } catch (err) {
-      alert('Network error. Please try again.');
+      toast.error('Network error — please try again.');
     } finally {
       setSavingQuestions(false);
       savingQuestionsRef.current = false;
@@ -259,20 +256,12 @@ export default function EditAssessmentPage() {
         ) : (
           // Edit mode
           <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Question ID"
-                value={q.questionId}
-                onChange={(e) => updateQuestion(index, 'questionId', e.target.value)}
-                required
-              />
-              <Input
-                label="Question Text"
-                value={q.questionText}
-                onChange={(e) => updateQuestion(index, 'questionText', e.target.value)}
-                required
-              />
-            </div>
+            <Input
+              label="Question Text"
+              value={q.questionText}
+              onChange={(e) => updateQuestion(index, 'questionText', e.target.value)}
+              required
+            />
             <div className="grid grid-cols-2 gap-3">
               <Select
                 label="Type"
@@ -280,10 +269,6 @@ export default function EditAssessmentPage() {
                   { value: 'mcq', label: 'Multiple Choice' },
                   { value: 'checkbox', label: 'Checkbox' },
                   { value: 'fill', label: 'Fill in the Blank' },
-                  { value: 'matching', label: 'Matching' },
-                  { value: 'dragdrop', label: 'Drag and Drop' },
-                  { value: 'short', label: 'Short Answer' },
-                  { value: 'long', label: 'Long Answer' },
                 ]}
                 value={q.questionType}
                 onChange={(e) => updateQuestion(index, 'questionType', e.target.value as Question['questionType'])}
@@ -297,7 +282,7 @@ export default function EditAssessmentPage() {
                 required
               />
             </div>
-            {['mcq', 'checkbox', 'matching', 'dragdrop'].includes(q.questionType) && (
+            {['mcq', 'checkbox'].includes(q.questionType) && (
               <div>
                 <label className="text-xs font-medium text-[#5A7A85]">Options (comma separated)</label>
                 <Input
@@ -307,13 +292,12 @@ export default function EditAssessmentPage() {
                 />
               </div>
             )}
-            {['mcq', 'checkbox', 'fill'].includes(q.questionType) && (
-              <Input
-                label="Correct Answer"
-                value={q.correctAnswer || ''}
-                onChange={(e) => updateQuestion(index, 'correctAnswer', e.target.value)}
-              />
-            )}
+            <Input
+              label={q.questionType === 'checkbox' ? 'Correct Answer(s) — separate multiple with |' : 'Correct Answer'}
+              value={q.correctAnswer || ''}
+              onChange={(e) => updateQuestion(index, 'correctAnswer', e.target.value)}
+              required
+            />
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setEditingQuestionId(null)}>
                 <X className="w-4 h-4 mr-1" /> Cancel

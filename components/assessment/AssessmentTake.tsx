@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { AlertCircle, Clock, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
+import { useAuth } from '@/components/auth/AuthContext';
 
 type QuestionType = 'mcq' | 'checkbox' | 'fill' | 'matching' | 'dragdrop' | 'short' | 'long';
 
@@ -22,6 +23,7 @@ export function AssessmentTake() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const assessmentId = params.id;
+  const { isAuthenticated, user, loading: authLoading } = useAuth();
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -36,6 +38,14 @@ export function AssessmentTake() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const submittedRef = useRef(false);
+
+  // ─── Auth guard ────────────────────────────────────────
+  useEffect(() => {
+    if (authLoading) return;
+    if (!isAuthenticated || user?.role !== 'student') {
+      router.push('/assessment');
+    }
+  }, [authLoading, isAuthenticated, user, router]);
 
   // ─── Load assessment metadata + questions ────────────────
   useEffect(() => {
@@ -84,17 +94,11 @@ export function AssessmentTake() {
     submittedRef.current = true;
     setSubmitting(true);
     try {
-      const studentData = sessionStorage.getItem('assessmentStudent');
-      if (!studentData) {
-        router.push('/assessment');
-        return;
-      }
-      const { school, className, studentName } = JSON.parse(studentData);
       const timeSpent = Math.round((Date.now() - (startTimeRef.current || Date.now())) / 1000);
       const res = await fetch(`/api/assessments/${assessmentId}/submit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ studentName, school, className, assessmentId, answers, timeSpent }),
+        body: JSON.stringify({ answers, timeSpent }),
       });
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || 'Submission failed.');
