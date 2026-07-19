@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -51,6 +51,8 @@ export default function EditAssessmentPage() {
   // Questions state
   const [questions, setQuestions] = useState<Question[]>([]);
   const [loadingQuestions, setLoadingQuestions] = useState(true);
+  const [savingQuestions, setSavingQuestions] = useState(false);
+  const savingQuestionsRef = useRef(false); // synchronous guard: state updates aren't visible until re-render, so a fast double-click can pass the state check alone
   const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
   const [newQuestion, setNewQuestion] = useState<Partial<Question>>({
     questionType: 'mcq',
@@ -131,6 +133,8 @@ export default function EditAssessmentPage() {
 
   // ─── Save all questions ──────────────────────────────────
   const handleSaveQuestions = async () => {
+    if (savingQuestionsRef.current) return; // guard against double-submit racing the delete+insert on the server
+    savingQuestionsRef.current = true;
     // Normalize options (trim each, drop empties) and correct answers before
     // validating/sending so multi-word options keep their internal spaces.
     const normalized: Question[] = questions.map((q) => ({
@@ -152,11 +156,19 @@ export default function EditAssessmentPage() {
       }
     }
 
+    const seenIds = new Set<string>();
+    for (const q of normalized) {
+      if (seenIds.has(q.questionId)) errors.push(`Duplicate question ID "${q.questionId}" — question IDs must be unique.`);
+      seenIds.add(q.questionId);
+    }
+
     if (errors.length > 0) {
       alert(`Validation errors:\n${errors.join('\n')}`);
+      savingQuestionsRef.current = false;
       return;
     }
 
+    setSavingQuestions(true);
     try {
       setQuestions(normalized);
       const res = await fetch(`/api/admin/assessments/${assessmentId}/questions`, {
@@ -180,12 +192,18 @@ export default function EditAssessmentPage() {
       }
     } catch (err) {
       alert('Network error. Please try again.');
+    } finally {
+      setSavingQuestions(false);
+      savingQuestionsRef.current = false;
     }
   };
 
   // ─── Question CRUD helpers ──────────────────────────────
   const addQuestion = () => {
-    const newId = `Q${questions.length + 1}`;
+    const existingIds = new Set(questions.map((q) => q.questionId));
+    let n = questions.length + 1;
+    let newId = `Q${n}`;
+    while (existingIds.has(newId)) newId = `Q${++n}`;
     setQuestions([
       ...questions,
       {
@@ -375,7 +393,7 @@ export default function EditAssessmentPage() {
               <Button variant="outline" onClick={addQuestion}>
                 <Plus className="w-4 h-4 mr-1" /> Add Question
               </Button>
-              <Button variant="primary" onClick={handleSaveQuestions}>
+              <Button variant="primary" onClick={handleSaveQuestions} isLoading={savingQuestions} disabled={savingQuestions}>
                 <Save className="w-4 h-4 mr-1" /> Save All
               </Button>
             </div>

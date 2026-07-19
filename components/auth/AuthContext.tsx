@@ -56,6 +56,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsAuthenticated(false);
     localStorage.removeItem('tereco_user');
     localStorage.removeItem('tereco_session');
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
   };
 
   return (

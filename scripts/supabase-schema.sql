@@ -70,6 +70,7 @@ create table if not exists public.questions (
   created_at     timestamptz not null default now()
 );
 create index if not exists questions_assessment_id_idx on public.questions (assessment_id);
+create unique index if not exists questions_assessment_id_question_id_key on public.questions (assessment_id, question_id);
 alter table public.questions enable row level security;
 
 -- ─── Students (registry of learners who take assessments) ──────────────────

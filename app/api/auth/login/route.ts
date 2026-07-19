@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { getUsers } from "@/lib/users";
 import { verifyPasscode } from '@/lib/hash';
 import { errorResponse, successResponse } from '@/lib/apiResponse';
+import { ADMIN_SESSION_COOKIE, ADMIN_SESSION_TTL_SECONDS, createAdminSessionToken } from '@/lib/adminAuth';
 
 export async function POST(request: NextRequest) {
   try {
@@ -27,9 +28,21 @@ export async function POST(request: NextRequest) {
 
     // Success: return user data (without the hash)
     const { passcode: _, ...safeUser } = user; // '_' unused
-    return successResponse({
+    const response = successResponse({
       user: { id: staffId, staffId, ...safeUser },
     });
+
+    if (user.role === 'admin') {
+      response.cookies.set(ADMIN_SESSION_COOKIE, createAdminSessionToken(staffId), {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: ADMIN_SESSION_TTL_SECONDS,
+      });
+    }
+
+    return response;
   } catch (error) {
     console.error('Login error:', error);
     return errorResponse('Server error', 500);
