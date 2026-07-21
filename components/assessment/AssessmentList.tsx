@@ -101,9 +101,18 @@ export function AssessmentList() {
                 )}
               </div>
             </div>
-            <Button variant="primary" onClick={() => handleStart(a)}>
-              Start Assessment
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button variant="primary" onClick={() => handleStart(a)}>
+                Start Assessment
+              </Button>
+              {/* For learners without a computer, or sitting the paper in class. */}
+              <Button
+                variant="outline"
+                onClick={() => router.push(`/assessment/paper/${a.systemId}`)}
+              >
+                Do it on paper
+              </Button>
+            </div>
           </Card>
         ))}
       </div>

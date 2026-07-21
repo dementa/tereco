@@ -31,7 +31,7 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-for f in 00-local-stubs.sql 01-core.sql 02-audit.sql 03-collection.sql 04-notifications.sql 05-assessment-authoring.sql; do
+for f in 00-local-stubs.sql 01-core.sql 02-audit.sql 03-collection.sql 04-notifications.sql 05-assessment-authoring.sql 06-offline-submissions.sql; do
   [ -f "$SCHEMA_DIR/$f" ] || continue
   echo "Applying $f..."
   docker cp "$SCHEMA_DIR/$f" "$CONTAINER:/tmp/$f"

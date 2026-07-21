@@ -15,12 +15,14 @@ import crypto from "crypto";
  * orphaned copies nobody can identify.
  */
 
-export type UploadKind = "profile" | "school" | "question";
+export type UploadKind = "profile" | "school" | "question" | "script";
 
 const FOLDERS: Record<UploadKind, string> = {
   profile: "tereco/profiles",
   school: "tereco/schools",
   question: "tereco/questions",
+  // One folder per submission, one asset per page.
+  script: "tereco/scripts",
 };
 
 export interface CloudinaryConfig {

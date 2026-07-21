@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAssessmentBySystemId, getMarkedScript } from "@/lib/assessments";
 import { getCurrentProfile } from "@/lib/auth/session";
+import { getSubmissionFor } from "@/lib/entities/offline-submissions";
 import { errorResponse, handleApiError, successResponse } from "@/lib/apiResponse";
 
 /**
@@ -45,7 +46,13 @@ export async function GET(
     const script = await getMarkedScript(assessment.id, studentId);
     if (!script) return errorResponse("No submission found for this assessment.", 404);
 
-    return successResponse({ data: script });
+    // A paper sitting has no typed answers, so the marker (and the learner)
+    // need the uploaded pages to make any sense of it.
+    const submission = await getSubmissionFor(assessment.id, studentId);
+
+    return successResponse({
+      data: { ...script, mode: submission?.mode ?? "online", scans: submission?.scans ?? [] },
+    });
   } catch (error) {
     return handleApiError(error, "Failed to load the result");
   }

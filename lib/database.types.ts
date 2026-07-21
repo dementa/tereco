@@ -44,6 +44,7 @@ export type Database = {
           marked_at: string | null
           marked_by: string | null
           max_score: number | null
+          mode: string
           started_at: string | null
           status: string
           student_id: string
@@ -58,6 +59,7 @@ export type Database = {
           marked_at?: string | null
           marked_by?: string | null
           max_score?: number | null
+          mode?: string
           started_at?: string | null
           status?: string
           student_id: string
@@ -72,6 +74,7 @@ export type Database = {
           marked_at?: string | null
           marked_by?: string | null
           max_score?: number | null
+          mode?: string
           started_at?: string | null
           status?: string
           student_id?: string
@@ -1159,6 +1162,41 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      submission_scans: {
+        Row: {
+          id: string
+          page_number: number
+          public_id: string
+          submission_id: string
+          uploaded_at: string
+          url: string
+        }
+        Insert: {
+          id?: string
+          page_number: number
+          public_id: string
+          submission_id: string
+          uploaded_at?: string
+          url: string
+        }
+        Update: {
+          id?: string
+          page_number?: number
+          public_id?: string
+          submission_id?: string
+          uploaded_at?: string
+          url?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "submission_scans_submission_id_fkey"
+            columns: ["submission_id"]
+            isOneToOne: false
+            referencedRelation: "assessment_submissions"
             referencedColumns: ["id"]
           },
         ]

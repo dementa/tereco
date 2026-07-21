@@ -48,7 +48,15 @@ interface MarkedAnswer {
   verdict: Verdict;
 }
 
+interface Scan {
+  id: string;
+  pageNumber: number;
+  url: string;
+}
+
 interface MarkedScript {
+  mode?: 'online' | 'scanned';
+  scans?: Scan[];
   assessmentSystemId: string;
   assessmentTitle: string;
   studentName: string;
@@ -378,6 +386,41 @@ export default function MarkingPage() {
               )}
             </div>
           </div>
+
+          {/* A paper sitting has no typed answers — without the pages there is
+              literally nothing to mark from. */}
+          {openScript.mode === 'scanned' && (
+            <div className="mb-4">
+              <p className="text-xs font-medium text-[#5A7D8A] mb-2">
+                UPLOADED PAPER ({openScript.scans?.length ?? 0} page
+                {openScript.scans?.length === 1 ? '' : 's'})
+              </p>
+              {openScript.scans?.length ? (
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {openScript.scans.map((scan) => (
+                    <a
+                      key={scan.id}
+                      href={scan.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 rounded-xl border border-[#E8EFF3] overflow-hidden hover:border-[#02465B]/40"
+                      title={`Open page ${scan.pageNumber} full size`}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={scan.url} alt={`Page ${scan.pageNumber}`} className="h-40 w-auto object-contain bg-[#F1F6F8]" />
+                      <span className="block text-center text-xs text-[#5A7D8A] py-1">
+                        Page {scan.pageNumber}
+                      </span>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-[#C26565]">
+                  This learner started a paper submission but uploaded no pages.
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="space-y-3">
             {openScript.answers.map((a) => {
