@@ -8,9 +8,15 @@ import { z } from 'zod';
 // order (Q1, Q2, ...) so they can never be mistyped, duplicated or raced.
 const QuestionSchema = z.object({
   questionText: z.string().min(1),
-  questionType: z.enum(['mcq', 'checkbox', 'fill', 'matching', 'dragdrop', 'short', 'long']),
+  questionType: z.enum([
+    'mcq', 'checkbox', 'true_false', 'fill', 'matching', 'dragdrop', 'short', 'long',
+  ]),
   options: z.array(z.string()).default([]),
   correctAnswer: z.string().optional(),
+  // Expected answer / mark split for hand-marked questions.
+  modelAnswer: z.string().optional(),
+  imageUrl: z.string().url().optional(),
+  imagePublicId: z.string().optional(),
   maxScore: z.number().positive().default(1),
   config: z.unknown().optional(),
 });
@@ -60,6 +66,9 @@ export async function POST(
         questionType: q.questionType,
         options: q.options,
         correctAnswer: q.correctAnswer,
+        modelAnswer: q.modelAnswer,
+        imageUrl: q.imageUrl,
+        imagePublicId: q.imagePublicId,
         maxScore: q.maxScore,
         config: q.config,
       }))

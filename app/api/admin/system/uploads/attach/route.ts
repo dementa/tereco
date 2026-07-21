@@ -2,12 +2,13 @@ import { NextRequest } from "next/server";
 import { z } from "zod";
 import { buildPublicId, destroyAsset, verifyAsset } from "@/lib/cloudinary";
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { requireSuperAdmin } from "@/lib/auth/session";
+import { requireRole, requireSuperAdmin } from "@/lib/auth/session";
 import { errorResponse, handleApiError, successResponse } from "@/lib/apiResponse";
 
 const AttachSchema = z.object({
-  kind: z.enum(["profile", "school"]),
+  kind: z.enum(["profile", "school", "question"]),
   entityId: z.string().uuid(),
+  slot: z.number().int().positive().optional(),
   /** Omit to clear the existing image. */
   remove: z.boolean().optional(),
 });
@@ -20,13 +21,32 @@ const AttachSchema = z.object({
  * response cannot point someone's photo at an arbitrary address.
  */
 export async function POST(request: NextRequest) {
-  const denied = await requireSuperAdmin(request);
+  // Peek at the kind before choosing the guard: question images are authored
+  // by teachers, while profile photos and school logos stay super-admin only.
+  const body = await request.json();
+  const denied =
+    body?.kind === "question"
+      ? await requireRole(request, ["admin", "super_admin", "staff"])
+      : await requireSuperAdmin(request);
   if (denied) return denied;
 
   try {
-    const { kind, entityId, remove } = AttachSchema.parse(await request.json());
+    const { kind, entityId, slot, remove } = AttachSchema.parse(body);
     const supabase = getSupabaseAdmin();
-    const publicId = buildPublicId(kind, entityId);
+    const publicId = buildPublicId(kind, entityId, slot);
+
+    // Question images are not written to a row here: saving the paper replaces
+    // every question, so the URL is carried in that payload instead. This still
+    // verifies the asset against Cloudinary rather than trusting the browser.
+    if (kind === "question") {
+      if (remove) {
+        await destroyAsset(publicId);
+        return successResponse({ message: "Image removed", data: { url: null, publicId: null } });
+      }
+      const asset = await verifyAsset(publicId);
+      if (!asset) return errorResponse("The upload could not be verified with Cloudinary.", 400);
+      return successResponse({ message: "Image ready", data: { url: asset.url, publicId } });
+    }
 
     // Written as two explicit branches rather than computed column names: the
     // generated types cannot check a dynamic key, and silently losing that

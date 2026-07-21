@@ -9,16 +9,26 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
-import { ArrowLeft, Download, Plus, Save, Send, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, KeyRound, Plus, Printer, Save, Send, Trash2 } from 'lucide-react';
+import { QuestionImage } from '@/components/admin/QuestionImage';
 
-type QuestionType = 'mcq' | 'checkbox' | 'fill' | 'matching' | 'dragdrop' | 'short' | 'long';
+type QuestionType =
+  | 'mcq' | 'checkbox' | 'true_false' | 'fill' | 'matching' | 'dragdrop' | 'short' | 'long';
 
-const AUTO_SCORED: QuestionType[] = ['mcq', 'checkbox', 'fill'];
+/** Types whose correct answer must be picked from the entered options. */
+const CHOICE_TYPES: QuestionType[] = ['mcq', 'checkbox', 'true_false'];
+/** Types the author supplies their own options for. */
 const NEEDS_OPTIONS: QuestionType[] = ['mcq', 'checkbox'];
+/** Types marked by a person, where a model answer is the useful thing. */
+const HAND_MARKED: QuestionType[] = ['short', 'long', 'matching', 'dragdrop'];
+
+const TRUE_FALSE_OPTIONS = ['True', 'False'];
+const CHECKBOX_SEP = '|';
 
 const QUESTION_TYPES: { value: QuestionType; label: string }[] = [
   { value: 'mcq', label: 'Multiple choice (one answer)' },
   { value: 'checkbox', label: 'Multiple choice (several answers)' },
+  { value: 'true_false', label: 'True or false' },
   { value: 'fill', label: 'Fill in the blank' },
   { value: 'short', label: 'Short answer (marked by hand)' },
   { value: 'long', label: 'Long answer (marked by hand)' },
@@ -32,6 +42,9 @@ interface Question {
   questionType: QuestionType;
   options: string[];
   correctAnswer?: string;
+  modelAnswer?: string;
+  imageUrl?: string;
+  imagePublicId?: string;
   maxScore: number;
 }
 
@@ -51,6 +64,7 @@ interface Assessment {
   opensAt?: string;
   closesAt?: string;
   status: 'draft' | 'published' | 'closed';
+  instructions: string;
   targets: AssessmentTarget[];
   questions: Question[];
 }
@@ -108,6 +122,7 @@ export default function AssessmentDetailPage() {
     releasedAt: null,
   });
   const [releasing, setReleasing] = useState(false);
+  const [instructions, setInstructions] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -122,6 +137,7 @@ export default function AssessmentDetailPage() {
       if (detail.success) {
         setAssessment(detail.data);
         setQuestions(detail.data.questions ?? []);
+        setInstructions(detail.data.instructions ?? '');
       } else {
         toast.error(detail.message ?? 'Failed to load assessment.');
       }
@@ -174,10 +190,15 @@ export default function AssessmentDetailPage() {
             questionType: q.questionType,
             options: NEEDS_OPTIONS.includes(q.questionType)
               ? q.options.filter((o) => o.trim())
-              : [],
-            correctAnswer: AUTO_SCORED.includes(q.questionType)
-              ? q.correctAnswer || undefined
+              : q.questionType === 'true_false'
+                ? TRUE_FALSE_OPTIONS
+                : [],
+            correctAnswer: q.correctAnswer || undefined,
+            modelAnswer: HAND_MARKED.includes(q.questionType)
+              ? q.modelAnswer || undefined
               : undefined,
+            imageUrl: q.imageUrl || undefined,
+            imagePublicId: q.imagePublicId || undefined,
             maxScore: Number(q.maxScore),
           })),
         }),
@@ -391,6 +412,72 @@ export default function AssessmentDetailPage() {
         </div>
       </Card>
 
+      {/* ── Paper ────────────────────────────────────────────── */}
+      <Card>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <h2 className="font-semibold text-primary-900">Printed paper</h2>
+          <div className="flex flex-wrap gap-2">
+            <a href={`/api/admin/assessments/${systemId}/paper`} download>
+              <Button variant="outline">
+                <Printer className="w-4 h-4 mr-1.5" aria-hidden />
+                Question paper
+              </Button>
+            </a>
+            {assessment.targets
+              .filter((t) => t.schoolId)
+              .map((t) => (
+                <a
+                  key={t.id}
+                  href={`/api/admin/assessments/${systemId}/paper?schoolId=${t.schoolId}`}
+                  download
+                >
+                  <Button variant="outline">
+                    <Printer className="w-4 h-4 mr-1.5" aria-hidden />
+                    {schools.find((s) => s.id === t.schoolId)?.name ?? 'School'} paper
+                  </Button>
+                </a>
+              ))}
+            <a href={`/api/admin/assessments/${systemId}/answer-key`} download>
+              <Button
+                variant="outline"
+                disabled={assessment.status === 'published'}
+                title={
+                  assessment.status === 'published'
+                    ? 'Unavailable while learners can still sit this paper'
+                    : 'Correct answers and marking guidance'
+                }
+              >
+                <KeyRound className="w-4 h-4 mr-1.5" aria-hidden />
+                Answer key
+              </Button>
+            </a>
+          </div>
+        </div>
+        <p className="text-xs text-text-muted mb-3">
+          The plain paper carries TERECO branding; a per-school paper carries that school&apos;s
+          logo. The answer key is unavailable while the assessment is published.
+        </p>
+        <label htmlFor="instructions" className="text-xs font-medium text-[#5A7D8A]">
+          Instructions printed on the paper (leave blank for the standard wording)
+        </label>
+        <textarea
+          id="instructions"
+          rows={4}
+          value={instructions}
+          onChange={(e) => setInstructions(e.target.value)}
+          placeholder="One instruction per line."
+          className="mt-1.5 w-full rounded-xl border-2 border-[#D1E0E8] px-3 py-2 text-sm focus:border-[#02465B] focus:outline-none"
+        />
+        <div className="mt-2">
+          <Button
+            variant="outline"
+            onClick={() => void patchAssessment({ instructions }, 'Instructions saved.')}
+          >
+            Save instructions
+          </Button>
+        </div>
+      </Card>
+
       {/* ── Questions ────────────────────────────────────────── */}
       <Card>
         <div className="flex items-center justify-between mb-3">
@@ -467,9 +554,26 @@ export default function AssessmentDetailPage() {
                   disabled={locked}
                   onChange={(e) => updateQuestion(index, { maxScore: Number(e.target.value) })}
                 />
-                {AUTO_SCORED.includes(q.questionType) && (
+                {/* Chosen from the options, never typed: a typo here scores
+                    every learner zero on this question and nothing surfaces it
+                    until someone reads the marks. The database rejects it too. */}
+                {(q.questionType === 'mcq' || q.questionType === 'true_false') && (
+                  <Select
+                    label="Correct answer"
+                    options={[
+                      { value: '', label: 'Choose the correct option' },
+                      ...(q.questionType === 'true_false' ? TRUE_FALSE_OPTIONS : q.options)
+                        .filter((o) => o.trim())
+                        .map((o) => ({ value: o, label: o })),
+                    ]}
+                    value={q.correctAnswer ?? ''}
+                    disabled={locked}
+                    onChange={(e) => updateQuestion(index, { correctAnswer: e.target.value })}
+                  />
+                )}
+                {q.questionType === 'fill' && (
                   <Input
-                    label={q.questionType === 'checkbox' ? 'Correct (separate with |)' : 'Correct answer'}
+                    label="Correct answer"
                     value={q.correctAnswer ?? ''}
                     disabled={locked}
                     onChange={(e) => updateQuestion(index, { correctAnswer: e.target.value })}
@@ -479,18 +583,55 @@ export default function AssessmentDetailPage() {
 
               {NEEDS_OPTIONS.includes(q.questionType) && (
                 <div className="space-y-1.5">
-                  <span className="text-xs font-medium text-[#5A7D8A]">Choices</span>
+                  <span className="text-xs font-medium text-[#5A7D8A]">
+                    Choices
+                    {q.questionType === 'checkbox' && ' — tick every correct one'}
+                  </span>
                   {q.options.map((option, oi) => (
-                    <div key={oi} className="flex gap-2">
+                    <div key={oi} className="flex gap-2 items-center">
+                      {q.questionType === 'checkbox' && (
+                        <input
+                          type="checkbox"
+                          disabled={locked || !option.trim()}
+                          aria-label={`Mark choice ${oi + 1} correct`}
+                          checked={(q.correctAnswer ?? '')
+                            .split(CHECKBOX_SEP)
+                            .map((a) => a.trim())
+                            .includes(option.trim())}
+                          onChange={(e) => {
+                            const chosen = (q.correctAnswer ?? '')
+                              .split(CHECKBOX_SEP)
+                              .map((a) => a.trim())
+                              .filter(Boolean);
+                            const next = e.target.checked
+                              ? [...chosen, option.trim()]
+                              : chosen.filter((a) => a !== option.trim());
+                            updateQuestion(index, { correctAnswer: next.join(CHECKBOX_SEP) });
+                          }}
+                          className="rounded border-[#D1E0E8] shrink-0"
+                        />
+                      )}
                       <input
                         type="text"
                         value={option}
                         disabled={locked}
-                        onChange={(e) =>
-                          updateQuestion(index, {
-                            options: q.options.map((o, i) => (i === oi ? e.target.value : o)),
-                          })
-                        }
+                        onChange={(e) => {
+                          const previous = q.options[oi];
+                          const options = q.options.map((o, i) => (i === oi ? e.target.value : o));
+                          // Carry the correct answer across the rename, or it
+                          // silently stops matching any option.
+                          let correctAnswer = q.correctAnswer;
+                          if (q.questionType === 'checkbox') {
+                            correctAnswer = (q.correctAnswer ?? '')
+                              .split(CHECKBOX_SEP)
+                              .map((a) => (a.trim() === previous.trim() ? e.target.value : a.trim()))
+                              .filter(Boolean)
+                              .join(CHECKBOX_SEP);
+                          } else if (q.correctAnswer && q.correctAnswer === previous) {
+                            correctAnswer = e.target.value;
+                          }
+                          updateQuestion(index, { options, correctAnswer });
+                        }}
                         placeholder={`Choice ${oi + 1}`}
                         aria-label={`${q.code} choice ${oi + 1}`}
                         className="flex-1 rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
@@ -522,6 +663,39 @@ export default function AssessmentDetailPage() {
                   )}
                 </div>
               )}
+
+              {/* Without this the answer key is blank for exactly the questions
+                  a human marker needs help with. Optional, so a paper can still
+                  be written quickly. */}
+              {HAND_MARKED.includes(q.questionType) && (
+                <div className="space-y-1.5">
+                  <label
+                    htmlFor={`model-${index}`}
+                    className="text-xs font-medium text-[#5A7D8A]"
+                  >
+                    Model answer / mark split (optional — printed on the answer key)
+                  </label>
+                  <textarea
+                    id={`model-${index}`}
+                    rows={2}
+                    value={q.modelAnswer ?? ''}
+                    disabled={locked}
+                    onChange={(e) => updateQuestion(index, { modelAnswer: e.target.value })}
+                    placeholder="e.g. Mouse (1 mark). Used to move the pointer or select items (1 mark)."
+                    className="w-full rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
+                  />
+                </div>
+              )}
+
+              <QuestionImage
+                assessmentId={assessment.id}
+                position={q.position}
+                value={q.imageUrl}
+                disabled={locked}
+                onChange={(url, publicId) =>
+                  updateQuestion(index, { imageUrl: url ?? undefined, imagePublicId: publicId ?? undefined })
+                }
+              />
             </div>
           ))}
         </div>

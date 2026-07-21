@@ -15,11 +15,12 @@ import crypto from "crypto";
  * orphaned copies nobody can identify.
  */
 
-export type UploadKind = "profile" | "school";
+export type UploadKind = "profile" | "school" | "question";
 
 const FOLDERS: Record<UploadKind, string> = {
   profile: "tereco/profiles",
   school: "tereco/schools",
+  question: "tereco/questions",
 };
 
 export interface CloudinaryConfig {
@@ -61,8 +62,18 @@ function sign(params: Record<string, string | number>, apiSecret: string): strin
   return crypto.createHash("sha1").update(canonical + apiSecret).digest("hex");
 }
 
-export function buildPublicId(kind: UploadKind, entityId: string): string {
-  return `${FOLDERS[kind]}/${entityId}`;
+/**
+ * Where an asset lives.
+ *
+ * Question images take a `slot` (the question's position) rather than the
+ * question's own id, because saving a paper deletes and re-inserts every
+ * question — so question ids change on every save and an id-keyed image would
+ * be orphaned the moment the paper was edited. Assessment id + position is
+ * stable across re-saves.
+ */
+export function buildPublicId(kind: UploadKind, entityId: string, slot?: number): string {
+  const base = `${FOLDERS[kind]}/${entityId}`;
+  return slot === undefined ? base : `${base}/q${slot}`;
 }
 
 export interface SignedUpload {
@@ -75,10 +86,14 @@ export interface SignedUpload {
   uploadUrl: string;
 }
 
-export function createSignedUpload(kind: UploadKind, entityId: string): SignedUpload {
+export function createSignedUpload(
+  kind: UploadKind,
+  entityId: string,
+  slot?: number
+): SignedUpload {
   const { cloudName, apiKey, apiSecret } = getCloudinaryConfig();
   const timestamp = Math.floor(Date.now() / 1000);
-  const publicId = buildPublicId(kind, entityId);
+  const publicId = buildPublicId(kind, entityId, slot);
 
   const params: Record<string, string | number> = {
     // Same id every time for this entity, so a replacement overwrites rather

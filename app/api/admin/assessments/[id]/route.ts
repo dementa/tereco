@@ -29,9 +29,14 @@ const TargetSchema = z
 
 const QuestionSchema = z.object({
   questionText: z.string().min(1),
-  questionType: z.enum(['mcq', 'checkbox', 'fill', 'matching', 'dragdrop', 'short', 'long']),
+  questionType: z.enum([
+    'mcq', 'checkbox', 'true_false', 'fill', 'matching', 'dragdrop', 'short', 'long',
+  ]),
   options: z.array(z.string()).default([]),
   correctAnswer: z.string().optional(),
+  modelAnswer: z.string().optional(),
+  imageUrl: z.string().url().optional(),
+  imagePublicId: z.string().optional(),
   maxScore: z.number().positive().default(1),
   config: z.unknown().optional(),
 });
@@ -43,6 +48,7 @@ const UpdateSchema = z.object({
   opensAt: z.string().nullable().optional(),
   closesAt: z.string().nullable().optional(),
   status: z.enum(['draft', 'published', 'closed']).optional(),
+  instructions: z.string().optional(),
   targets: z.array(TargetSchema).optional(),
   questions: z.array(QuestionSchema).optional(),
 });
@@ -87,6 +93,7 @@ export async function PUT(
       opensAt: validated.opensAt,
       closesAt: validated.closesAt,
       status: validated.status,
+      instructions: validated.instructions,
       targets: validated.targets,
     });
 
@@ -102,6 +109,9 @@ export async function PUT(
           questionType: q.questionType,
           options: q.options,
           correctAnswer: q.correctAnswer,
+          modelAnswer: q.modelAnswer,
+          imageUrl: q.imageUrl,
+          imagePublicId: q.imagePublicId,
           maxScore: q.maxScore,
           config: q.config,
         }))
