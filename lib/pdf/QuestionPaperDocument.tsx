@@ -36,8 +36,11 @@ const styles = StyleSheet.create({
   marks: { fontSize: 8, color: '#5A7D8A' },
   questionImage: { maxWidth: 200, maxHeight: 130, objectFit: 'contain', marginTop: 6, marginBottom: 2 },
 
-  optionRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4, marginLeft: 8 },
-  circleLetter: { width: 15, height: 15, borderWidth: 0.75, borderColor: '#12333F', borderRadius: 8, textAlign: 'center', fontSize: 8, paddingTop: 3 },
+  optionRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 5, marginLeft: 10 },
+  // The letter is printed PLAIN, with room around it, because the learner is
+  // the one who draws the circle. Drawing it here would leave them nowhere to
+  // mark and every option looking already chosen.
+  optionLetter: { width: 16, textAlign: 'center', fontSize: 9, fontFamily: 'Helvetica-Bold' },
   tickBox: { width: 11, height: 11, borderWidth: 0.75, borderColor: '#12333F' },
   optionText: { fontSize: 9, flexShrink: 1 },
 
@@ -153,11 +156,11 @@ export function QuestionPaperDocument({
 
             {q.imageUrl ? <Image style={styles.questionImage} src={q.imageUrl} /> : null}
 
-            {/* One answer per question: circle a letter. */}
+            {/* One answer per question: the learner circles the letter. */}
             {(q.questionType === 'mcq' || q.questionType === 'true_false') &&
               q.options.map((opt, i) => (
                 <View key={i} style={styles.optionRow}>
-                  <Text style={styles.circleLetter}>{LETTERS[i]}</Text>
+                  <Text style={styles.optionLetter}>{LETTERS[i]}</Text>
                   <Text style={styles.optionText}>{opt}</Text>
                 </View>
               ))}

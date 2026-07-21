@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { ImageUpload } from '@/components/ui/ImageUpload';
 import { useToast } from '@/components/ui/ToastProvider';
 import { Layers, Pencil, Plus, Power, PowerOff, Trash2, X } from 'lucide-react';
 
@@ -16,6 +17,7 @@ interface School {
   location: string;
   phone: string;
   email: string | null;
+  logoUrl: string | null;
   joinedOn: string | null;
   isActive: boolean;
   contactName: string | null;
@@ -158,10 +160,14 @@ export default function SystemSchoolsPage() {
       });
       const data = await res.json();
       if (data.success) {
-        toast.success(`${form.name} added with ${chosen.length} class(es).`);
+        toast.success(`${form.name} added with ${chosen.length} class(es). Add its logo below.`);
         setForm(emptyForm);
         setShowForm(false);
         await load();
+        // Straight into edit: a logo cannot be uploaded until the school
+        // exists (the asset is keyed on its id), and asking for it now beats
+        // leaving papers unbranded until someone remembers.
+        setEditing(data.data);
       } else {
         toast.error(data.message ?? 'Failed to create school.');
       }
@@ -326,7 +332,22 @@ export default function SystemSchoolsPage() {
         header: 'School',
         value: (s) => s.name,
         render: (s) => (
-          <span className="inline-flex items-center gap-2">
+          <span className="inline-flex items-center gap-2.5">
+            {s.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={s.logoUrl}
+                alt=""
+                className="w-7 h-7 rounded object-contain bg-[#F1F6F8] shrink-0"
+              />
+            ) : (
+              <span
+                className="w-7 h-7 rounded bg-[#F1F6F8] text-[#9BB3BD] text-[9px] flex items-center justify-center shrink-0"
+                title="No logo — add one so it appears on question papers"
+              >
+                no logo
+              </span>
+            )}
             <span className="font-medium">{s.name}</span>
             {!s.isActive && <Badge variant="muted">Inactive</Badge>}
           </span>
@@ -579,6 +600,19 @@ export default function SystemSchoolsPage() {
                 onChange={(e) => setEditing({ ...editing, joinedOn: e.target.value })}
               />
             </div>
+            <ImageUpload
+              kind="school"
+              entityId={editing.id}
+              value={editing.logoUrl}
+              label="School logo — printed on question papers and result sheets"
+              size={80}
+              onChange={(url) => {
+                setEditing({ ...editing, logoUrl: url });
+                setSchools((current) =>
+                  current.map((s) => (s.id === editing.id ? { ...s, logoUrl: url } : s))
+                );
+              }}
+            />
             <p className="text-xs text-text-muted">
               The contact person is set from a staff account at this school, on the Staff page.
             </p>
