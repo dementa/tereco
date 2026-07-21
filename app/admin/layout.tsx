@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { AuthProvider, useAuth } from '@/components/auth/AuthContext';
 import { Button } from '@/components/ui/Button';
+import { NotificationBell } from '@/components/ui/NotificationBell';
 import {
   LayoutDashboard, FileText, GraduationCap, ClipboardList,
   CheckSquare, LogOut, ShieldAlert, ArrowLeft, School, UserCog, Contact, CalendarDays,
@@ -137,8 +138,15 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col">
+        {/* Desktop header strip: the sidebar has no room for the bell, and it
+            must stay reachable from every page. */}
+        <div className="hidden md:flex items-center justify-end gap-2 px-8 py-2 border-b border-primary-100 bg-bg-card">
+          <NotificationBell />
+        </div>
+
         {/* Mobile top nav */}
         <div className="md:hidden bg-bg-card border-b border-primary-100 p-3 flex items-center gap-2 overflow-x-auto">
+          <div className="shrink-0"><NotificationBell /></div>
           {NAV.map((item) => {
             const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
             return (

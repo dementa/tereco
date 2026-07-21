@@ -1,5 +1,7 @@
 import { getSupabaseAdmin } from "./supabase";
 import type { TablesUpdate } from "./database.types";
+import { UserFacingError } from "./apiResponse";
+import { notify } from "./entities/notifications";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -14,6 +16,7 @@ export interface Assessment {
   opensAt?: string;
   closesAt?: string;
   status: AssessmentStatus;
+  resultsReleasedAt?: string;
   targets: AssessmentTarget[];
 }
 
@@ -91,13 +94,14 @@ interface AssessmentRow {
   opens_at: string | null;
   closes_at: string | null;
   status: string;
+  results_released_at: string | null;
   targets: { id: string; school_id: string | null; level: number | null; class_id: string | null }[] | null;
 }
 
 // Single string literal — concatenation would widen it to `string` and silently
 // disable the client's column checking.
 const ASSESSMENT_COLUMNS =
-  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, targets:assessment_targets(id, school_id, level, class_id)";
+  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, results_released_at, targets:assessment_targets(id, school_id, level, class_id)";
 
 const QUESTION_COLUMNS =
   "id, position, code, question_text, type, options, correct_answer, max_score, config";
@@ -114,6 +118,7 @@ function rowToAssessment(row: AssessmentRow): Assessment {
     opensAt: row.opens_at ?? undefined,
     closesAt: row.closes_at ?? undefined,
     status: row.status as AssessmentStatus,
+    resultsReleasedAt: row.results_released_at ?? undefined,
     targets: (row.targets ?? []).map((t) => ({
       id: t.id,
       schoolId: t.school_id,
@@ -517,6 +522,75 @@ export async function getResponses(assessmentId: string): Promise<ResponseRecord
       submittedAt: row.submission?.submitted_at ?? "",
     };
   });
+}
+
+/** Whether every response on this assessment has been marked. */
+export async function isFullyMarked(assessmentId: string): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.rpc("assessment_is_fully_marked", {
+    p_assessment: assessmentId,
+  });
+  if (error) throw new Error(error.message);
+  return data === true;
+}
+
+/**
+ * Tells the learners their results are available.
+ *
+ * Refused until every response is marked: a learner opening a half-scored
+ * paper reads it as their actual result, and there is no way to un-tell them.
+ * Marking finishing is a fact; releasing is a decision, which is why this is an
+ * explicit action rather than a trigger on the last score being entered.
+ */
+export async function releaseResults(
+  assessmentId: string,
+  releasedBy: string
+): Promise<{ notified: number }> {
+  const supabase = getSupabaseAdmin();
+
+  if (!(await isFullyMarked(assessmentId))) {
+    throw new UserFacingError(
+      "Results cannot be released until every response has been marked."
+    );
+  }
+
+  const { data: assessment, error: readError } = await supabase
+    .from("assessments")
+    .select("system_id, title, results_released_at")
+    .eq("id", assessmentId)
+    .single();
+  if (readError) throw new Error(readError.message);
+  if (assessment.results_released_at) {
+    throw new UserFacingError("Results for this assessment have already been released.");
+  }
+
+  const { error } = await supabase
+    .from("assessments")
+    .update({ results_released_at: new Date().toISOString(), results_released_by: releasedBy })
+    .eq("id", assessmentId);
+  if (error) throw new Error(error.message);
+
+  const { data: submissions } = await supabase
+    .from("assessment_submissions")
+    .select("student_id")
+    .eq("assessment_id", assessmentId);
+
+  // One notification per learner rather than a broadcast: only those who
+  // actually sat it have a result to read.
+  for (const s of submissions ?? []) {
+    await notify({
+      type: "results_released",
+      title: `Results are out: ${assessment.title}`,
+      body: "Your marked paper is now available to view and download.",
+      audience: { profileId: s.student_id },
+      entityType: "assessments",
+      entityId: assessment.system_id,
+      link: `/assessment/results/${assessment.system_id}`,
+      createdBy: releasedBy,
+    });
+  }
+
+  return { notified: submissions?.length ?? 0 };
 }
 
 export interface AssessmentResult {

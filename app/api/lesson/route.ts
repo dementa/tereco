@@ -7,6 +7,7 @@ import {
   handleApiError,
   successResponse,
 } from "@/lib/apiResponse";
+import { notify } from "@/lib/entities/notifications";
 
 /**
  * Field names match the payload sent by DailyLessonWizard.
@@ -150,6 +151,28 @@ export async function POST(request: NextRequest) {
       }
       console.error("Lesson insert error:", error);
       return errorResponse("Failed to save lesson record.", 500);
+    }
+
+    // Tell the admins a lesson was filed. Best-effort by design — notify()
+    // logs rather than throws, so a notification problem can never lose the
+    // teacher's report, which is the part that actually matters.
+    const { data: school } = await supabase
+      .from("schools")
+      .select("name")
+      .eq("id", validated.schoolId)
+      .maybeSingle();
+
+    // One row per role, because a notification targets exactly one role.
+    for (const role of ["admin", "super_admin"] as const) {
+      await notify({
+        type: "lesson_filed",
+        title: `Lesson report filed by ${profile.name}`,
+        body: `${school?.name ?? "A school"} — ${validated.learningArea}, period ${validated.period} on ${validated.date} (${validated.status}).`,
+        audience: { role },
+        entityType: "lesson_reports",
+        link: "/admin/lessons",
+        createdBy: profile.id,
+      });
     }
 
     return successResponse({

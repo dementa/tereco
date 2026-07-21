@@ -9,7 +9,7 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
-import { ArrowLeft, Download, Plus, Save, Trash2 } from 'lucide-react';
+import { ArrowLeft, Download, Plus, Save, Send, Trash2 } from 'lucide-react';
 
 type QuestionType = 'mcq' | 'checkbox' | 'fill' | 'matching' | 'dragdrop' | 'short' | 'long';
 
@@ -103,14 +103,20 @@ export default function AssessmentDetailPage() {
   const [results, setResults] = useState<Result[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [release, setRelease] = useState<{ fullyMarked: boolean; releasedAt: string | null }>({
+    fullyMarked: false,
+    releasedAt: null,
+  });
+  const [releasing, setReleasing] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const [detail, schoolsRes, levelsRes, resultsRes] = await Promise.all([
+      const [detail, schoolsRes, levelsRes, resultsRes, releaseRes] = await Promise.all([
         fetch(`/api/admin/assessments/${systemId}`).then((r) => r.json()),
         fetch('/api/admin/system/schools').then((r) => r.json()),
         fetch('/api/admin/system/grade-levels').then((r) => r.json()),
         fetch(`/api/admin/assessments/${systemId}/results`).then((r) => r.json()),
+        fetch(`/api/admin/assessments/${systemId}/release`).then((r) => r.json()),
       ]);
 
       if (detail.success) {
@@ -122,6 +128,7 @@ export default function AssessmentDetailPage() {
       if (schoolsRes.success) setSchools(schoolsRes.data);
       if (levelsRes.success) setLevels(levelsRes.data);
       if (resultsRes.success) setResults(resultsRes.data.results);
+      if (releaseRes.success) setRelease(releaseRes.data);
     } catch {
       toast.error('Network error while loading the assessment.');
     } finally {
@@ -223,6 +230,24 @@ export default function AssessmentDetailPage() {
       .filter((t) => t.id !== targetId)
       .map((t) => ({ schoolId: t.schoolId, level: t.level, classId: t.classId }));
     await patchAssessment({ targets: next }, 'Audience updated.');
+  }
+
+  async function releaseResults() {
+    setReleasing(true);
+    try {
+      const res = await fetch(`/api/admin/assessments/${systemId}/release`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message);
+        await load();
+      } else {
+        toast.error(data.message ?? 'Could not release results.');
+      }
+    } catch {
+      toast.error('Network error.');
+    } finally {
+      setReleasing(false);
+    }
   }
 
   const resultColumns: DataTableColumn<Result>[] = useMemo(
@@ -513,17 +538,47 @@ export default function AssessmentDetailPage() {
 
       {/* ── Results ──────────────────────────────────────────── */}
       <Card>
-        <div className="flex items-center justify-between mb-3">
-          <h2 className="font-semibold text-primary-900">Results</h2>
-          {results.length > 0 && (
-            <a href={`/api/admin/assessments/${systemId}/results/pdf`} download>
-              <Button variant="outline">
-                <Download className="w-4 h-4 mr-1.5" aria-hidden />
-                Download PDF
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <h2 className="font-semibold text-primary-900">
+            Results
+            {release.releasedAt && (
+              <Badge variant="success">
+                Released {new Date(release.releasedAt).toLocaleDateString()}
+              </Badge>
+            )}
+          </h2>
+          <div className="flex items-center gap-2">
+            {results.length > 0 && !release.releasedAt && (
+              <Button
+                onClick={() => void releaseResults()}
+                isLoading={releasing}
+                disabled={!release.fullyMarked}
+                title={
+                  release.fullyMarked
+                    ? 'Notify every learner who sat this paper'
+                    : 'Every response must be marked before results can be released'
+                }
+              >
+                <Send className="w-4 h-4 mr-1.5" aria-hidden />
+                Release results
               </Button>
-            </a>
-          )}
+            )}
+            {results.length > 0 && (
+              <a href={`/api/admin/assessments/${systemId}/results/pdf`} download>
+                <Button variant="outline">
+                  <Download className="w-4 h-4 mr-1.5" aria-hidden />
+                  Download PDF
+                </Button>
+              </a>
+            )}
+          </div>
         </div>
+        {results.length > 0 && !release.releasedAt && !release.fullyMarked && (
+          <p className="text-xs text-[#C26565] mb-3">
+            Results stay unreleased until every response has been marked — a learner opening a
+            half-scored paper reads it as their final result.
+          </p>
+        )}
 
         <DataTable
           rows={results}

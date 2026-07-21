@@ -183,6 +183,8 @@ export type Database = {
           description: string
           id: string
           opens_at: string | null
+          results_released_at: string | null
+          results_released_by: string | null
           status: string
           system_id: string
           term_id: string | null
@@ -199,6 +201,8 @@ export type Database = {
           description?: string
           id?: string
           opens_at?: string | null
+          results_released_at?: string | null
+          results_released_by?: string | null
           status?: string
           system_id: string
           term_id?: string | null
@@ -215,6 +219,8 @@ export type Database = {
           description?: string
           id?: string
           opens_at?: string | null
+          results_released_at?: string | null
+          results_released_by?: string | null
           status?: string
           system_id?: string
           term_id?: string | null
@@ -233,6 +239,13 @@ export type Database = {
           {
             foreignKeyName: "assessments_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessments_results_released_by_fkey"
+            columns: ["results_released_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -613,6 +626,106 @@ export type Database = {
             columns: ["term_id"]
             isOneToOne: false
             referencedRelation: "terms"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_reads: {
+        Row: {
+          notification_id: number
+          profile_id: string
+          read_at: string
+        }
+        Insert: {
+          notification_id: number
+          profile_id: string
+          read_at?: string
+        }
+        Update: {
+          notification_id?: number
+          profile_id?: string
+          read_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_reads_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_reads_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notifications: {
+        Row: {
+          audience_profile_id: string | null
+          audience_role: string | null
+          audience_school_id: string | null
+          body: string
+          created_at: string
+          created_by: string | null
+          entity_id: string | null
+          entity_type: string
+          id: number
+          link: string | null
+          title: string
+          type: string
+        }
+        Insert: {
+          audience_profile_id?: string | null
+          audience_role?: string | null
+          audience_school_id?: string | null
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          entity_id?: string | null
+          entity_type?: string
+          id?: number
+          link?: string | null
+          title: string
+          type: string
+        }
+        Update: {
+          audience_profile_id?: string | null
+          audience_role?: string | null
+          audience_school_id?: string | null
+          body?: string
+          created_at?: string
+          created_by?: string | null
+          entity_id?: string | null
+          entity_type?: string
+          id?: number
+          link?: string | null
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notifications_audience_profile_id_fkey"
+            columns: ["audience_profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_audience_school_id_fkey"
+            columns: ["audience_school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notifications_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1160,6 +1273,10 @@ export type Database = {
       }
     }
     Functions: {
+      assessment_is_fully_marked: {
+        Args: { p_assessment: string }
+        Returns: boolean
+      }
       assessments_for_student: {
         Args: { p_student: string }
         Returns: {
@@ -1171,6 +1288,8 @@ export type Database = {
           description: string
           id: string
           opens_at: string | null
+          results_released_at: string | null
+          results_released_by: string | null
           status: string
           system_id: string
           term_id: string | null
@@ -1186,6 +1305,20 @@ export type Database = {
         }
       }
       generate_system_id: { Args: { p_entity_type: string }; Returns: string }
+      notifications_for_profile: {
+        Args: { p_profile: string }
+        Returns: {
+          body: string
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: number
+          is_read: boolean
+          link: string
+          title: string
+          type: string
+        }[]
+      }
       set_current_academic_year: {
         Args: { p_year_id: string }
         Returns: undefined
