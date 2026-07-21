@@ -521,6 +521,147 @@ const RESPONSE_COLUMNS =
  * their current placement — so a paper marked after they are promoted still
  * reads as the class they were in on the day.
  */
+/** How a single answer turned out. */
+export type AnswerVerdict = "correct" | "partial" | "wrong" | "unmarked";
+
+export interface MarkedAnswer {
+  questionId: string;
+  position: number;
+  code: string;
+  questionText: string;
+  questionType: QuestionType;
+  options: string[];
+  imageUrl?: string;
+  givenAnswer: string;
+  correctAnswer?: string;
+  modelAnswer?: string;
+  score: number | null;
+  maxScore: number;
+  verdict: AnswerVerdict;
+}
+
+export interface MarkedScript {
+  assessmentSystemId: string;
+  assessmentTitle: string;
+  studentName: string;
+  studentSystemId: string | null;
+  school: string;
+  className: string;
+  submittedAt: string;
+  totalScore: number | null;
+  maxScore: number;
+  percentage: number | null;
+  releasedAt: string | null;
+  answers: MarkedAnswer[];
+}
+
+function verdictFor(score: number | null, maxScore: number): AnswerVerdict {
+  if (score === null) return "unmarked";
+  if (score >= maxScore) return "correct";
+  if (score <= 0) return "wrong";
+  return "partial";
+}
+
+/**
+ * One learner's whole paper: every question in order, what they answered, what
+ * was correct, and the marks awarded.
+ *
+ * Questions are the spine rather than responses, so a question the learner
+ * skipped still appears — an absent answer is information, and dropping the row
+ * would silently renumber their paper.
+ */
+export async function getMarkedScript(
+  assessmentId: string,
+  studentId: string
+): Promise<MarkedScript | null> {
+  const supabase = getSupabaseAdmin();
+
+  const { data: submission, error } = await supabase
+    .from("assessment_submissions")
+    .select(RESULT_COLUMNS)
+    .eq("assessment_id", assessmentId)
+    .eq("student_id", studentId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!submission) return null;
+
+  const row = submission as unknown as ResultRow;
+  const [assessment, questions] = await Promise.all([
+    getAssessmentById(assessmentId),
+    getQuestions(assessmentId),
+  ]);
+  if (!assessment) return null;
+
+  const { data: responses, error: responseError } = await supabase
+    .from("responses")
+    .select("question_id, answer, score")
+    .eq("submission_id", row.id);
+  if (responseError) throw new Error(responseError.message);
+
+  const byQuestion = new Map((responses ?? []).map((r) => [r.question_id, r]));
+
+  const answers: MarkedAnswer[] = questions.map((q) => {
+    const response = byQuestion.get(q.id);
+    const score = response?.score === null || response?.score === undefined ? null : Number(response.score);
+    return {
+      questionId: q.id,
+      position: q.position,
+      code: q.code,
+      questionText: q.questionText,
+      questionType: q.questionType,
+      options: q.options,
+      imageUrl: q.imageUrl,
+      givenAnswer: response?.answer ?? "",
+      correctAnswer: q.correctAnswer,
+      modelAnswer: q.modelAnswer,
+      score,
+      maxScore: q.maxScore,
+      verdict: verdictFor(score, q.maxScore),
+    };
+  });
+
+  const student = row.student;
+  const enrollment = row.enrollment;
+  const total = row.total_score === null ? null : Number(row.total_score);
+  const maxScore = questions.reduce((sum, q) => sum + q.maxScore, 0);
+
+  return {
+    assessmentSystemId: assessment.systemId,
+    assessmentTitle: assessment.title,
+    studentName: student
+      ? [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(" ").trim()
+      : "",
+    studentSystemId: student?.system_id ?? null,
+    school: enrollment?.school?.name ?? "",
+    className: [
+      enrollment?.class?.alias ?? enrollment?.class?.grade_level?.code ?? "",
+      enrollment?.stream?.name ?? "",
+    ]
+      .filter(Boolean)
+      .join(" "),
+    submittedAt: row.submitted_at,
+    totalScore: total,
+    maxScore,
+    percentage:
+      total !== null && maxScore > 0 ? Math.round((total / maxScore) * 1000) / 10 : null,
+    releasedAt: assessment.resultsReleasedAt ?? null,
+    answers,
+  };
+}
+
+/** Internal lookup by uuid, for callers that already resolved the assessment. */
+async function getAssessmentById(assessmentId: string): Promise<Assessment | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("assessments")
+    .select(ASSESSMENT_COLUMNS)
+    .eq("id", assessmentId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? rowToAssessment(data as unknown as AssessmentRow) : null;
+}
+
 export async function getResponses(assessmentId: string): Promise<ResponseRecord[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
