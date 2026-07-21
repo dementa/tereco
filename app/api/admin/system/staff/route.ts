@@ -21,6 +21,7 @@ const CreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
   email: z.string().email("A valid email is required"),
   schoolId: z.string().uuid().optional(),
+  gender: z.enum(["male", "female"]).optional(),
 });
 
 export async function POST(request: NextRequest) {

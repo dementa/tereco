@@ -38,6 +38,7 @@ interface StudentAccount {
   name: string;
   contactEmail: string | null;
   schoolName: string | null;
+  gender: 'male' | 'female' | null;
   className: string | null;
   streamName: string | null;
   photoUrl: string | null;
@@ -59,6 +60,7 @@ const emptyForm = {
   firstName: '',
   middleName: '',
   lastName: '',
+  gender: '',
   email: '',
   schoolId: '',
   classId: '',
@@ -143,6 +145,7 @@ export default function SystemStudentsPage() {
           email: form.email || undefined,
           middleName: form.middleName || undefined,
           dateOfBirth: form.dateOfBirth || undefined,
+          gender: form.gender || undefined,
           streamId: form.streamId || undefined,
         }),
       });
@@ -260,6 +263,12 @@ export default function SystemStudentsPage() {
         },
       },
       {
+        key: 'gender',
+        header: 'Gender',
+        value: (a) => a.gender ?? '—',
+        hideOnMobile: true,
+      },
+      {
         key: 'contactEmail',
         header: 'Email',
         value: (a) => a.contactEmail ?? '—',
@@ -354,7 +363,17 @@ export default function SystemStudentsPage() {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Select
+                label="Gender"
+                options={[
+                  { value: '', label: 'Not recorded' },
+                  { value: 'male', label: 'Male' },
+                  { value: 'female', label: 'Female' },
+                ]}
+                value={form.gender}
+                onChange={(e) => setForm({ ...form, gender: e.target.value })}
+              />
               <Input
                 label="Date of birth"
                 type="date"

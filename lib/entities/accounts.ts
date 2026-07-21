@@ -6,6 +6,9 @@ import { UserFacingError } from "@/lib/apiResponse";
 
 export type AccountRole = "admin" | "staff" | "student" | "parent";
 
+/** Matches the profiles.gender check constraint. */
+export type Gender = "male" | "female";
+
 const STUDENT_PLACEHOLDER_DOMAIN = "students.tereco.internal";
 
 /**
@@ -56,6 +59,7 @@ export interface CreateAccountInput {
   classId?: string | null; // student — opens an enrollment
   streamId?: string | null; // student — only when the class has streams
   dateOfBirth?: string | null; // ISO date, student
+  gender?: Gender | null;
   createdBy: string; // profiles.id of the super admin creating this account
 }
 
@@ -76,6 +80,7 @@ export interface AccountRow {
   contactEmail: string | null;
   schoolId: string | null;
   schoolName: string | null;
+  gender: Gender | null;
   className: string | null;
   streamName: string | null;
   photoUrl: string | null;
@@ -165,6 +170,7 @@ export async function createAccount(input: CreateAccountInput): Promise<CreatedA
     email: authEmail,
     contact_email: realEmail,
     date_of_birth: input.dateOfBirth ?? null,
+    gender: input.gender ?? null,
     school_id: schoolId,
     // Students use the provided password as-is — no forced first-login
     // change screen. The only way a student's password changes is a super
@@ -265,7 +271,7 @@ export async function listAccounts(role: AccountRole | AccountRole[]): Promise<A
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, system_id, role, first_name, middle_name, last_name, contact_email, school_id, photo_url, must_change_password, is_active, created_at, school:schools!profiles_school_id_fkey(name)"
+      "id, system_id, role, first_name, middle_name, last_name, contact_email, school_id, gender, photo_url, must_change_password, is_active, created_at, school:schools!profiles_school_id_fkey(name)"
     )
     .in("role", roles)
     .order("created_at", { ascending: false });
@@ -275,19 +281,29 @@ export async function listAccounts(role: AccountRole | AccountRole[]): Promise<A
 
   // Placement is not on the profile — it is the student's open enrollment. One
   // batched lookup keyed by student id, rather than a join per row.
+  //
+  // The SCHOOL comes from here too. profiles_school_scope_ck forces
+  // profiles.school_id to be null for students, so reading their school from
+  // the profile returns blank every time — it lives on the enrolment, exactly
+  // like the class does.
   const studentIds = rows.filter((r) => r.role === "student").map((r) => r.id);
-  const placements = new Map<string, { className: string | null; streamName: string | null }>();
+  const placements = new Map<
+    string,
+    { schoolId: string | null; schoolName: string | null; className: string | null; streamName: string | null }
+  >();
 
   if (studentIds.length > 0) {
     const { data: enrollments, error: enrollError } = await supabase
       .from("current_enrollments")
-      .select("student_id, class_display_name, stream_name")
+      .select("student_id, school_id, class_display_name, stream_name, school:schools(name)")
       .in("student_id", studentIds);
     if (enrollError) throw new Error(enrollError.message);
 
     for (const e of enrollments ?? []) {
       if (e.student_id === null) continue;
       placements.set(e.student_id, {
+        schoolId: e.school_id,
+        schoolName: e.school?.name ?? null,
         className: e.class_display_name,
         streamName: e.stream_name,
       });
@@ -302,8 +318,10 @@ export async function listAccounts(role: AccountRole | AccountRole[]): Promise<A
       role: row.role,
       name: fullName(row),
       contactEmail: row.contact_email,
-      schoolId: row.school_id,
-      schoolName: row.school?.name ?? null,
+      gender: (row.gender as Gender | null) ?? null,
+      // Students get both from their enrolment; everyone else from the profile.
+      schoolId: placement?.schoolId ?? row.school_id,
+      schoolName: placement?.schoolName ?? row.school?.name ?? null,
       className: placement?.className ?? null,
       streamName: placement?.streamName ?? null,
       photoUrl: row.photo_url,

@@ -247,7 +247,11 @@ function FloatingSelect({
         className={cn(
           'peer w-full h-14 px-4 pt-5 pb-2 rounded-xl border bg-white text-sm text-[#011E28]',
           'outline-none appearance-none transition-all duration-200 cursor-pointer',
-          value === '' && 'text-transparent', // hide empty option text
+          // Deliberately NOT `text-transparent` when empty: native <option>
+          // elements inherit their colour from the <select>, so hiding the
+          // placeholder that way also hid every item in the open dropdown
+          // until something was selected. The placeholder option below has no
+          // text content, so it already renders blank on its own.
           error
             ? 'border-[#C0392B] ring-1 ring-[#C0392B]/20'
             : 'border-[#02465B]/15 hover:border-[#02465B]/30 focus:border-[#02465B] focus:ring-2 focus:ring-[#02465B]/10'

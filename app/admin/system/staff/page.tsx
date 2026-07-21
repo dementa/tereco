@@ -24,6 +24,7 @@ interface StaffAccount {
   name: string;
   contactEmail: string | null;
   schoolName: string | null;
+  gender: 'male' | 'female' | null;
   photoUrl: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
@@ -39,7 +40,7 @@ interface NewCredentials {
   hasEmail: boolean;
 }
 
-const emptyForm = { role: 'staff', name: '', email: '', schoolId: '' };
+const emptyForm = { role: 'staff', name: '', email: '', schoolId: '', gender: '' };
 
 /** Initials fallback, so a row without a photo still reads as a person. */
 function initials(name: string): string {
@@ -95,7 +96,11 @@ export default function SystemStaffPage() {
       const res = await fetch('/api/admin/system/staff', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, schoolId: form.schoolId || undefined }),
+        body: JSON.stringify({
+          ...form,
+          schoolId: form.schoolId || undefined,
+          gender: form.gender || undefined,
+        }),
       });
       const data = await res.json();
       if (data.success) {
@@ -297,6 +302,16 @@ export default function SystemStaffPage() {
                 value={form.email}
                 onChange={(e) => setForm({ ...form, email: e.target.value })}
                 required
+              />
+              <Select
+                label="Gender"
+                options={[
+                  { value: '', label: 'Not recorded' },
+                  { value: 'male', label: 'Male' },
+                  { value: 'female', label: 'Female' },
+                ]}
+                value={form.gender}
+                onChange={(e) => setForm({ ...form, gender: e.target.value })}
               />
             </div>
             <p className="text-xs text-text-muted">
