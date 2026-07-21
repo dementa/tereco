@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { generateSystemId } from "@/lib/idGenerator";
+import { UserFacingError } from "@/lib/apiResponse";
 import type { TablesUpdate } from "@/lib/database.types";
 
 export interface School {
@@ -133,5 +134,46 @@ export async function updateSchool(
   if (Object.keys(patch).length === 0) return;
 
   const { error } = await supabase.from("schools").update(patch).eq("id", schoolId);
+  if (error) {
+    if (error.code === "23505") {
+      throw new UserFacingError("Another school already uses that name.");
+    }
+    throw new Error(error.message);
+  }
+}
+
+/**
+ * Removes a school outright, but only while nothing depends on it.
+ *
+ * Classes and streams cascade, which is safe — they are structure. Enrolments,
+ * lesson reports and staff do NOT, and must not: deleting a school that has
+ * recorded history would take that history with it. Once a school has been
+ * used, deactivating it is the correct move, so this reports exactly what is
+ * in the way rather than failing with a foreign-key error.
+ */
+export async function deleteSchool(schoolId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const [enrollments, lessons, staff, targets] = await Promise.all([
+    supabase.from("enrollments").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
+    supabase.from("lesson_reports").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
+    supabase.from("profiles").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
+    supabase.from("assessment_targets").select("id", { count: "exact", head: true }).eq("school_id", schoolId),
+  ]);
+
+  const blockers = [
+    enrollments.count && `${enrollments.count} enrolment(s)`,
+    lessons.count && `${lessons.count} lesson report(s)`,
+    staff.count && `${staff.count} staff member(s)`,
+    targets.count && `${targets.count} assessment target(s)`,
+  ].filter(Boolean);
+
+  if (blockers.length) {
+    throw new UserFacingError(
+      `Cannot delete — this school still has ${blockers.join(", ")}. Deactivate it instead to keep its records.`
+    );
+  }
+
+  const { error } = await supabase.from("schools").delete().eq("id", schoolId);
   if (error) throw new Error(error.message);
 }

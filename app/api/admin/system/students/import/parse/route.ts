@@ -8,7 +8,6 @@ const HEADER_TO_FIELD: Record<string, keyof ImportRow> = {
   first_name: "firstName",
   middle_name: "middleName",
   last_name: "lastName",
-  school: "school",
   class: "class",
   stream: "stream",
   date_of_birth: "dateOfBirth",
@@ -68,7 +67,7 @@ export async function POST(request: NextRequest) {
         }
       });
       // Skip fully blank rows
-      if (!data.firstName && !data.lastName && !data.school) return;
+      if (!data.firstName && !data.lastName && !data.class) return;
       rows.push({ row: rowNumber, data: data as ImportRow });
     });
 

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
-import { Layers, Plus, Trash2, X } from 'lucide-react';
+import { Layers, Pencil, Plus, Power, PowerOff, Trash2, X } from 'lucide-react';
 
 interface School {
   id: string;
@@ -62,6 +62,8 @@ export default function SystemSchoolsPage() {
   const [ladder, setLadder] = useState<Record<number, LadderChoice>>({});
   const [creating, setCreating] = useState(false);
 
+  const [editing, setEditing] = useState<School | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const [managing, setManaging] = useState<School | null>(null);
   const [classes, setClasses] = useState<SchoolClass[]>([]);
   const [classesLoading, setClassesLoading] = useState(false);
@@ -167,6 +169,74 @@ export default function SystemSchoolsPage() {
       toast.error('Network error.');
     } finally {
       setCreating(false);
+    }
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    setSavingEdit(true);
+    try {
+      const res = await fetch(`/api/admin/system/schools/${editing.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: editing.name,
+          location: editing.location,
+          phone: editing.phone,
+          email: editing.email ?? '',
+          joinedOn: editing.joinedOn,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // Update in place rather than refetching the whole list.
+        setSchools((current) => current.map((s) => (s.id === data.data.id ? data.data : s)));
+        setEditing(null);
+        toast.success('School updated.');
+      } else {
+        toast.error(data.message ?? 'Failed to update school.');
+      }
+    } catch {
+      toast.error('Network error.');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function toggleActive(school: School) {
+    const next = !school.isActive;
+    const res = await fetch(`/api/admin/system/schools/${school.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: next }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setSchools((current) => current.map((s) => (s.id === school.id ? data.data : s)));
+      toast.success(`${school.name} ${next ? 'reactivated' : 'deactivated'}.`);
+    } else {
+      toast.error(data.message ?? 'Failed to update school.');
+    }
+  }
+
+  async function removeSchool(school: School) {
+    if (
+      !confirm(
+        `Permanently delete ${school.name}? Its classes and streams go with it. This cannot be undone.`
+      )
+    )
+      return;
+    const res = await fetch(`/api/admin/system/schools/${school.id}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      setSchools((current) => current.filter((s) => s.id !== school.id));
+      if (managing?.id === school.id) setManaging(null);
+      toast.success(`${school.name} deleted.`);
+    } else {
+      // The API refuses once a school has records and says what is in the way,
+      // so surface that verbatim rather than a generic failure.
+      toast.error(data.message ?? 'Failed to delete school.');
     }
   }
 
@@ -278,17 +348,48 @@ export default function SystemSchoolsPage() {
         sortable: false,
         align: 'right',
         render: (s) => (
-          <button
-            type="button"
-            onClick={() => openManage(s)}
-            className="inline-flex items-center gap-1 text-xs text-[#02465B] hover:underline"
-          >
-            <Layers className="w-3.5 h-3.5" aria-hidden />
-            Classes
-          </button>
+          <div className="flex justify-end items-center gap-1">
+            <button
+              type="button"
+              onClick={() => openManage(s)}
+              title={`Classes and streams for ${s.name}`}
+              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8]"
+            >
+              <Layers className="w-4 h-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(s)}
+              title={`Edit ${s.name}`}
+              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8]"
+            >
+              <Pencil className="w-4 h-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => void toggleActive(s)}
+              title={s.isActive ? `Deactivate ${s.name}` : `Reactivate ${s.name}`}
+              className="p-1.5 rounded-lg text-[#5A7D8A] hover:bg-[#F1F6F8]"
+            >
+              {s.isActive ? (
+                <PowerOff className="w-4 h-4" aria-hidden />
+              ) : (
+                <Power className="w-4 h-4" aria-hidden />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => void removeSchool(s)}
+              title={`Delete ${s.name}`}
+              className="p-1.5 rounded-lg text-[#C26565] hover:bg-[#FBF0F0]"
+            >
+              <Trash2 className="w-4 h-4" aria-hidden />
+            </button>
+          </div>
         ),
       },
     ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [openManage]
   );
 
@@ -438,6 +539,60 @@ export default function SystemSchoolsPage() {
           </Button>
         }
       />
+
+      {editing && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-primary-900">Edit — {editing.systemId}</h2>
+            <button type="button" onClick={() => setEditing(null)} aria-label="Close">
+              <X className="w-4 h-4 text-text-muted" aria-hidden />
+            </button>
+          </div>
+          <form onSubmit={saveEdit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="School name"
+                value={editing.name}
+                onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                required
+              />
+              <Input
+                label="Location"
+                value={editing.location}
+                onChange={(e) => setEditing({ ...editing, location: e.target.value })}
+              />
+              <Input
+                label="Phone"
+                value={editing.phone}
+                onChange={(e) => setEditing({ ...editing, phone: e.target.value })}
+              />
+              <Input
+                label="Email"
+                type="email"
+                value={editing.email ?? ''}
+                onChange={(e) => setEditing({ ...editing, email: e.target.value })}
+              />
+              <Input
+                label="Joined the programme on"
+                type="date"
+                value={editing.joinedOn ?? ''}
+                onChange={(e) => setEditing({ ...editing, joinedOn: e.target.value })}
+              />
+            </div>
+            <p className="text-xs text-text-muted">
+              The contact person is set from a staff account at this school, on the Staff page.
+            </p>
+            <div className="flex gap-2">
+              <Button type="submit" isLoading={savingEdit}>
+                Save changes
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setEditing(null)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Card>
+      )}
 
       {managing && (
         <Card>

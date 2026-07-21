@@ -1,16 +1,36 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
-import { generateSystemId } from "@/lib/idGenerator";
+import { UserFacingError } from "@/lib/apiResponse";
 import { createAccount } from "@/lib/entities/accounts";
 
+/**
+ * One spreadsheet row.
+ *
+ * There is deliberately NO school column. The school is chosen once, in the
+ * UI, and applies to the whole file — a spreadsheet must never be able to
+ * bring a school into existence. Previously a name that didn't match simply
+ * created one, so a typo silently produced a duplicate school that then could
+ * not be merged away.
+ */
 export interface ImportRow {
   firstName: string;
   middleName?: string;
   lastName: string;
-  school: string;
   class: string;
   stream?: string;
   dateOfBirth?: string;
   email?: string;
+}
+
+export interface ImportOptions {
+  /** The school every row in this file belongs to. */
+  schoolId: string;
+  /**
+   * Off by default. When on, classes and streams named in the file that don't
+   * exist yet are created — for genuinely onboarding a new school's structure
+   * from their own list. Otherwise an unknown class fails its row and says so.
+   */
+  allowCreateStructure: boolean;
+  createdBy: string;
 }
 
 export interface ImportRowResult {
@@ -61,29 +81,6 @@ async function findExistingStudent(
   return match ? { systemId: match.system_id } : null;
 }
 
-async function resolveSchool(
-  supabase: ReturnType<typeof getSupabaseAdmin>,
-  name: string,
-  createdBy: string
-): Promise<{ id: string }> {
-  const trimmed = name.trim();
-  const { data: existing } = await supabase.from("schools").select("id").ilike("name", trimmed).maybeSingle();
-  if (existing) return existing;
-
-  const systemId = await generateSystemId("school");
-  const { data: created, error } = await supabase
-    .from("schools")
-    .insert({ system_id: systemId, name: trimmed, created_by: createdBy })
-    .select("id")
-    .single();
-  if (error?.code === "23505") {
-    const { data: retry } = await supabase.from("schools").select("id").ilike("name", trimmed).single();
-    if (retry) return retry;
-  }
-  if (error || !created) throw new Error(error?.message ?? "Failed to create school");
-  return created;
-}
-
 /** "P.2", "p2", "P 2" all mean the same rung of the ladder. */
 function normalizeClassCode(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -112,7 +109,8 @@ async function resolveClass(
   schoolId: string,
   name: string,
   wantsStreams: boolean,
-  createdBy: string
+  createdBy: string,
+  allowCreate: boolean
 ): Promise<{ id: string; hasStreams: boolean; promoted: boolean }> {
   const { level, alias } = await resolveClassIdentity(supabase, name);
 
@@ -132,6 +130,12 @@ async function resolveClass(
     return { id: existing.id, hasStreams: existing.has_streams, promoted: false };
   }
 
+  if (!allowCreate) {
+    throw new UserFacingError(
+      `Class "${name.trim()}" does not exist at this school. Create it first, or tick "create missing classes and streams".`
+    );
+  }
+
   const { data: created, error } = await supabase
     .from("classes")
     .insert({ school_id: schoolId, level, alias, has_streams: wantsStreams, created_by: createdBy })
@@ -149,11 +153,18 @@ async function resolveStream(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   classId: string,
   name: string,
-  createdBy: string
+  createdBy: string,
+  allowCreate: boolean
 ): Promise<{ id: string }> {
   const trimmed = name.trim();
   const { data: existing } = await supabase.from("streams").select("id").eq("class_id", classId).ilike("name", trimmed).maybeSingle();
   if (existing) return existing;
+
+  if (!allowCreate) {
+    throw new UserFacingError(
+      `Stream "${trimmed}" does not exist in this class. Create it first, or tick "create missing classes and streams".`
+    );
+  }
 
   const { data: created, error } = await supabase
     .from("streams")
@@ -169,27 +180,38 @@ async function resolveStream(
 }
 
 /**
- * Processes one bulk-import row: resolves (auto-creating as needed) the
- * school/class/stream, then provisions the student account. Rows are
- * processed one at a time by the caller (not concurrently) — auto-create
- * races on the same new class/stream are handled via unique-index
- * conflict + retry above, but sequential processing avoids relying on that
- * as the only guard.
+ * Processes one bulk-import row against an already-chosen school, then
+ * provisions the student account.
+ *
+ * Rows are processed one at a time by the caller (not concurrently): when
+ * structure creation is enabled, that avoids two rows racing to create the
+ * same class or stream. The unique-index conflict + retry below is the
+ * backstop, not the primary guard.
  */
-export async function processImportRow(row: ImportRow, rowNumber: number, createdBy: string): Promise<ImportRowResult> {
+export async function processImportRow(
+  row: ImportRow,
+  rowNumber: number,
+  options: ImportOptions
+): Promise<ImportRowResult> {
   const supabase = getSupabaseAdmin();
+  const { schoolId, allowCreateStructure, createdBy } = options;
   const name = [row.firstName, row.lastName].filter(Boolean).join(" ") || `Row ${rowNumber}`;
 
   try {
     if (!row.firstName?.trim() || !row.lastName?.trim()) {
       return { row: rowNumber, name, status: "error", error: "First name and last name are required." };
     }
-    if (!row.school?.trim()) return { row: rowNumber, name, status: "error", error: "School is required." };
     if (!row.class?.trim()) return { row: rowNumber, name, status: "error", error: "Class is required." };
 
-    const school = await resolveSchool(supabase, row.school, createdBy);
     const wantsStreams = !!row.stream?.trim();
-    const cls = await resolveClass(supabase, school.id, row.class, wantsStreams, createdBy);
+    const cls = await resolveClass(
+      supabase,
+      schoolId,
+      row.class,
+      wantsStreams,
+      createdBy,
+      allowCreateStructure
+    );
 
     if (cls.hasStreams && !wantsStreams) {
       return { row: rowNumber, name, status: "error", error: `Class "${row.class}" has streams — a stream is required.` };
@@ -198,7 +220,7 @@ export async function processImportRow(row: ImportRow, rowNumber: number, create
     let streamId: string | undefined;
     let note: string | undefined;
     if (wantsStreams) {
-      const stream = await resolveStream(supabase, cls.id, row.stream!, createdBy);
+      const stream = await resolveStream(supabase, cls.id, row.stream!, createdBy, allowCreateStructure);
       streamId = stream.id;
       if (cls.promoted) note = `Class "${row.class}" was updated to support streams because this row specified stream "${row.stream}".`;
     }
@@ -225,7 +247,7 @@ export async function processImportRow(row: ImportRow, rowNumber: number, create
       lastName: row.lastName.trim(),
       email: row.email?.trim() || undefined,
       dateOfBirth: row.dateOfBirth?.trim() || undefined,
-      schoolId: school.id,
+      schoolId,
       classId: cls.id,
       streamId,
       createdBy,

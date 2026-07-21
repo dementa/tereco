@@ -15,7 +15,6 @@ const RowDataSchema = z.object({
   firstName: z.string().optional().default(""),
   middleName: z.string().optional().default(""),
   lastName: z.string().optional().default(""),
-  school: z.string().optional().default(""),
   class: z.string().optional().default(""),
   stream: z.string().optional().default(""),
   dateOfBirth: z.string().optional().default(""),
@@ -28,6 +27,10 @@ const RowSchema = z.object({
 });
 
 const RequestSchema = z.object({
+  // Chosen once in the UI and applied to every row: the file cannot name a
+  // school, so it cannot create one.
+  schoolId: z.string().uuid("Choose the school these students belong to"),
+  allowCreateStructure: z.boolean().optional().default(false),
   rows: z.array(RowSchema).min(1).max(100),
 });
 
@@ -44,13 +47,17 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { rows } = RequestSchema.parse(body);
+    const { rows, schoolId, allowCreateStructure } = RequestSchema.parse(body);
     const profile = await getCurrentProfile(request);
     if (!profile) return errorResponse("Unauthorized", 401);
 
     const results = [];
     for (const { row, data } of rows) {
-      const result = await processImportRow(data as ImportRow, row, profile.id);
+      const result = await processImportRow(data as ImportRow, row, {
+        schoolId,
+        allowCreateStructure,
+        createdBy: profile.id,
+      });
       results.push(result);
     }
 
