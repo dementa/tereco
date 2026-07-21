@@ -67,3 +67,46 @@ export async function sendCredentialsEmail(
     return { sent: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
 }
+
+export interface PdfEmailInput {
+  to: string;
+  subject: string;
+  /** Body HTML. Keep it short — the PDF is the point. */
+  html: string;
+  filename: string;
+  pdf: Buffer;
+}
+
+/**
+ * Sends a PDF as an attachment.
+ *
+ * Attached rather than linked on purpose: a link to a child's results is a URL
+ * that can be forwarded, indexed or guessed, whereas an attachment reaches
+ * exactly the address it was sent to. It also means the recipient keeps the
+ * document if the account is later closed.
+ *
+ * Returns whether it sent rather than throwing — an email failing must never
+ * undo the thing that triggered it, such as results being released.
+ */
+export async function sendPdfEmail(
+  input: PdfEmailInput
+): Promise<{ sent: boolean; error?: string }> {
+  const resend = getResend();
+  if (!resend) return { sent: false, error: "RESEND_API_KEY is not configured" };
+
+  const from = process.env.RESEND_FROM_EMAIL ?? "TERECO <onboarding@resend.dev>";
+
+  try {
+    const { error } = await resend.emails.send({
+      from,
+      to: input.to,
+      subject: input.subject,
+      html: input.html,
+      attachments: [{ filename: input.filename, content: input.pdf }],
+    });
+    if (error) return { sent: false, error: error.message };
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}

@@ -548,6 +548,7 @@ export interface MarkedAnswer {
 }
 
 export interface MarkedScript {
+  studentId: string;
   assessmentSystemId: string;
   assessmentTitle: string;
   studentName: string;
@@ -656,6 +657,7 @@ export async function getMarkedScript(
   const maxScore = questions.reduce((sum, q) => sum + q.maxScore, 0);
 
   return {
+    studentId,
     assessmentSystemId: assessment.systemId,
     assessmentTitle: assessment.title,
     studentName: student

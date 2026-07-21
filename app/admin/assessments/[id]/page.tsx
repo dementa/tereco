@@ -122,6 +122,7 @@ export default function AssessmentDetailPage() {
     releasedAt: null,
   });
   const [releasing, setReleasing] = useState(false);
+  const [emailOnRelease, setEmailOnRelease] = useState(true);
   const [instructions, setInstructions] = useState('');
 
   const load = useCallback(async () => {
@@ -253,10 +254,35 @@ export default function AssessmentDetailPage() {
     await patchAssessment({ targets: next }, 'Audience updated.');
   }
 
+  async function removeAssessment() {
+    if (
+      !confirm(
+        results.length > 0
+          ? `Delete "${assessment?.title}"? ${results.length} learner(s) have sat it — their results will no longer be visible.`
+          : `Delete "${assessment?.title}"?`
+      )
+    )
+      return;
+    const res = await fetch(`/api/admin/assessments/${systemId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      // Soft-deleted, so submissions and their scores survive the paper being
+      // withdrawn — it simply stops appearing.
+      toast.success('Assessment deleted.');
+      router.push('/admin/assessments');
+    } else {
+      toast.error(data.message ?? 'Could not delete the assessment.');
+    }
+  }
+
   async function releaseResults() {
     setReleasing(true);
     try {
-      const res = await fetch(`/api/admin/assessments/${systemId}/release`, { method: 'POST' });
+      const res = await fetch(`/api/admin/assessments/${systemId}/release`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailOnRelease }),
+      });
       const data = await res.json();
       if (data.success) {
         toast.success(data.message);
@@ -356,6 +382,14 @@ export default function AssessmentDetailPage() {
               Close
             </Button>
           )}
+          <Button
+            variant="outline"
+            className="text-error border-error/20"
+            onClick={() => void removeAssessment()}
+          >
+            <Trash2 className="w-4 h-4 mr-1.5" aria-hidden />
+            Delete
+          </Button>
         </div>
       </div>
 
@@ -722,6 +756,17 @@ export default function AssessmentDetailPage() {
             )}
           </h2>
           <div className="flex items-center gap-2">
+            {results.length > 0 && !release.releasedAt && (
+              <label className="flex items-center gap-1.5 text-xs text-[#5A7D8A] mr-1">
+                <input
+                  type="checkbox"
+                  checked={emailOnRelease}
+                  onChange={(e) => setEmailOnRelease(e.target.checked)}
+                  className="rounded border-[#D1E0E8]"
+                />
+                Email scripts to learners and parents
+              </label>
+            )}
             {results.length > 0 && !release.releasedAt && (
               <Button
                 onClick={() => void releaseResults()}

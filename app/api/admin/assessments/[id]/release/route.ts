@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { getAssessmentBySystemId, isFullyMarked, releaseResults } from "@/lib/assessments";
 import { getCurrentProfile, requireRole } from "@/lib/auth/session";
+import { emailResultsForAssessment } from "@/lib/entities/result-delivery";
+import { z } from "zod";
 import { canManageAssessment } from "@/lib/auth/access";
 import { errorResponse, handleApiError, successResponse } from "@/lib/apiResponse";
 
@@ -50,10 +52,24 @@ export async function POST(
       return errorResponse("You can only work with assessments you created.", 403);
     }
 
+    const body = await request.json().catch(() => ({}));
+    const { email } = z.object({ email: z.boolean().optional() }).parse(body ?? {});
+
     const { notified } = await releaseResults(assessment.id, profile.id);
+
+    // Emailing is opt-in and happens after release: a mail provider being down
+    // must not stop learners being told their results exist.
+    let delivery = null;
+    if (email) delivery = await emailResultsForAssessment(assessment.id);
+
+    const suffix = delivery
+      ? ` ${delivery.sent} email(s) sent, ${delivery.skipped} learner(s) had no address` +
+        (delivery.failures.length ? `, ${delivery.failures.length} failed.` : ".")
+      : "";
+
     return successResponse({
-      message: `Results released — ${notified} learner(s) notified.`,
-      data: { notified },
+      message: `Results released — ${notified} learner(s) notified.${suffix}`,
+      data: { notified, delivery },
     });
   } catch (error) {
     return handleApiError(error, "Failed to release results");
