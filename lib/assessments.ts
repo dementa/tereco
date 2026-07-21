@@ -451,6 +451,7 @@ interface ResponseRow {
   score: number | null;
   question: { id: string; code: string; max_score: number } | null;
   submission: {
+    assessment_id: string;
     submitted_at: string;
     student: { first_name: string; middle_name: string | null; last_name: string } | null;
     enrollment: {
@@ -461,8 +462,17 @@ interface ResponseRow {
   } | null;
 }
 
+// The profiles embed MUST name its foreign key: assessment_submissions points
+// at profiles twice (student_id and marked_by), so an unqualified
+// `student:profiles(...)` is ambiguous and PostgREST refuses the query rather
+// than guessing which one you meant.
+// `!inner` is load-bearing, not decoration: this query filters on
+// `submission.assessment_id`, and PostgREST only applies a filter against an
+// embedded table when that embed is an inner join. Without it the filter is
+// silently ignored and EVERY response in the database comes back — which reads
+// as working right up until a second assessment exists.
 const RESPONSE_COLUMNS =
-  "id, submission_id, answer, score, question:questions(id, code, max_score), submission:assessment_submissions(submitted_at, student:profiles(first_name, middle_name, last_name), enrollment:enrollments(school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name)))";
+  "id, submission_id, answer, score, question:questions(id, code, max_score), submission:assessment_submissions!inner(assessment_id, submitted_at, student:profiles!assessment_submissions_student_id_fkey(first_name, middle_name, last_name), enrollment:enrollments(school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name)))";
 
 /**
  * Every response to an assessment, for marking.
@@ -539,8 +549,9 @@ interface ResultRow {
   } | null;
 }
 
+// Same disambiguation as RESPONSE_COLUMNS: student_id, not marked_by.
 const RESULT_COLUMNS =
-  "id, submitted_at, time_spent_seconds, total_score, max_score, status, student:profiles(system_id, first_name, middle_name, last_name), enrollment:enrollments(school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name))";
+  "id, submitted_at, time_spent_seconds, total_score, max_score, status, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments(school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name))";
 
 /**
  * One row per student who sat the assessment, with their marked total.

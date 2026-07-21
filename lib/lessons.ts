@@ -62,7 +62,7 @@ interface LessonRow {
 // Single string literal: the Supabase client infers the row shape from this
 // select's literal type, and concatenation would widen it to `string`.
 const LESSON_COLUMNS =
-  "id, lesson_date, period, status, missed_reason, missed_explanation, learning_area, specific_skill, approach, present, absent, computer_access, overall_progress, achievement, had_challenges, challenge_details, support_required, reference, created_at, school:schools(name), class:classes(level, alias, grade_level:grade_levels(code)), stream:streams(name), staff:profiles(first_name, middle_name, last_name)";
+  "id, lesson_date, period, status, missed_reason, missed_explanation, learning_area, specific_skill, approach, present, absent, computer_access, overall_progress, achievement, had_challenges, challenge_details, support_required, reference, created_at, school:schools(name), class:classes(level, alias, grade_level:grade_levels(code)), stream:streams(name), staff:profiles!lesson_reports_staff_id_fkey(first_name, middle_name, last_name)";
 
 function rowToLesson(row: LessonRow): LessonRecord {
   const staff = row.staff;
