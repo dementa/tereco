@@ -3,6 +3,7 @@ import { generateSystemId, SystemIdEntity } from "@/lib/idGenerator";
 import { generateTemporaryPassword } from "@/lib/auth/password";
 import { sendCredentialsEmail } from "@/lib/email";
 import { UserFacingError } from "@/lib/apiResponse";
+import type { TablesUpdate } from "@/lib/database.types";
 
 export type AccountRole = "admin" | "staff" | "student" | "parent";
 
@@ -256,12 +257,107 @@ export async function resetAccountPassword(profileId: string): Promise<{ tempora
   return { temporaryPassword };
 }
 
-export async function deactivateAccount(profileId: string): Promise<void> {
+export async function setAccountActive(profileId: string, isActive: boolean): Promise<void> {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("profiles")
-    .update({ is_active: false, updated_at: new Date().toISOString() })
+    .update({ is_active: isActive, updated_at: new Date().toISOString() })
     .eq("id", profileId);
+  if (error) throw new Error(error.message);
+}
+
+export async function deactivateAccount(profileId: string): Promise<void> {
+  await setAccountActive(profileId, false);
+}
+
+export interface UpdateAccountInput {
+  firstName?: string;
+  middleName?: string | null;
+  lastName?: string;
+  contactEmail?: string | null;
+  gender?: Gender | null;
+  dateOfBirth?: string | null;
+  phonePrimary?: string | null;
+  schoolId?: string | null;
+  isActive?: boolean;
+}
+
+/**
+ * Edits a person's details.
+ *
+ * Deliberately cannot change `role` or `system_id`: the id encodes the role
+ * (TSF/TST/TPR) and is referenced by enrolments, submissions and audit rows, so
+ * a role change would leave someone holding an id that contradicts what they
+ * are. Deactivate and create the correct account instead.
+ */
+export async function updateAccount(
+  profileId: string,
+  updates: UpdateAccountInput
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const { data: existing, error: readError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", profileId)
+    .single();
+  if (readError) throw new Error(readError.message);
+
+  const patch: TablesUpdate<"profiles"> = { updated_at: new Date().toISOString() };
+  if (updates.firstName !== undefined) patch.first_name = updates.firstName.trim();
+  if (updates.middleName !== undefined) patch.middle_name = updates.middleName?.trim() || null;
+  if (updates.lastName !== undefined) patch.last_name = updates.lastName.trim();
+  if (updates.contactEmail !== undefined) patch.contact_email = updates.contactEmail || null;
+  if (updates.gender !== undefined) patch.gender = updates.gender;
+  if (updates.dateOfBirth !== undefined) patch.date_of_birth = updates.dateOfBirth || null;
+  if (updates.phonePrimary !== undefined) patch.phone_primary = updates.phonePrimary || null;
+  if (updates.isActive !== undefined) patch.is_active = updates.isActive;
+
+  // profiles_school_scope_ck forbids a school on admins and students; a student's
+  // school comes from their enrolment. Silently ignoring it here beats a
+  // constraint violation the caller cannot interpret.
+  if (updates.schoolId !== undefined && existing.role !== "admin" && existing.role !== "student") {
+    patch.school_id = updates.schoolId;
+  }
+
+  const { error } = await supabase.from("profiles").update(patch).eq("id", profileId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Removes an account outright, but only while it holds no history.
+ *
+ * Deactivation is the right move for anyone who has actually done anything —
+ * deleting a student who has sat papers would take those results with them, and
+ * a teacher's lesson reports are the programme's record. This reports what is in
+ * the way rather than failing with a foreign-key error.
+ */
+export async function deleteAccount(profileId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const [submissions, lessons, enrollments, children] = await Promise.all([
+    supabase.from("assessment_submissions").select("id", { count: "exact", head: true }).eq("student_id", profileId),
+    supabase.from("lesson_reports").select("id", { count: "exact", head: true }).eq("staff_id", profileId),
+    supabase.from("enrollments").select("id", { count: "exact", head: true }).eq("student_id", profileId),
+    supabase.from("parent_students").select("parent_id", { count: "exact", head: true }).eq("parent_id", profileId),
+  ]);
+
+  const blockers = [
+    submissions.count && `${submissions.count} assessment submission(s)`,
+    lessons.count && `${lessons.count} lesson report(s)`,
+    enrollments.count && `${enrollments.count} enrolment(s)`,
+    children.count && `${children.count} linked child(ren)`,
+  ].filter(Boolean);
+
+  if (blockers.length) {
+    throw new UserFacingError(
+      `Cannot delete — this account has ${blockers.join(", ")}. Deactivate it instead to keep those records.`
+    );
+  }
+
+  // Deleting the auth user cascades the profile; doing it the other way round
+  // would leave a sign-in that resolves to nobody.
+  const { error } = await supabase.auth.admin.deleteUser(profileId);
   if (error) throw new Error(error.message);
 }
 

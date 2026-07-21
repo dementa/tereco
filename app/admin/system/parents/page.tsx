@@ -10,13 +10,14 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { ImageUpload } from '@/components/ui/ImageUpload';
 import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
-import { Ban, KeyRound, Link2, UserPlus, X } from 'lucide-react';
+import { Eye, KeyRound, Link2, Pencil, Power, PowerOff, Trash2, UserPlus, X } from 'lucide-react';
 
 interface ParentAccount {
   id: string;
   systemId: string | null;
   name: string;
   contactEmail: string | null;
+  gender: 'male' | 'female' | null;
   photoUrl: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
@@ -51,6 +52,15 @@ interface NewCredentials {
 const emptyForm = { name: '', email: '' };
 const RELATIONSHIPS = ['mother', 'father', 'guardian'];
 
+const VIEW_FIELDS: [string, (a: ParentAccount) => string][] = [
+  ['Parent ID', (a) => a.systemId ?? ''],
+  ['Email', (a) => a.contactEmail ?? ''],
+  ['Gender', (a) => a.gender ?? ''],
+  ['Status', (a) => (a.isActive ? 'Active' : 'Deactivated')],
+  ['First login', (a) => (a.mustChangePassword ? 'Pending' : 'Done')],
+  ['Created', (a) => new Date(a.createdAt).toLocaleDateString()],
+];
+
 function initials(name: string): string {
   return name
     .split(/\s+/)
@@ -71,6 +81,9 @@ export default function SystemParentsPage() {
   const [creating, setCreating] = useState(false);
   const [newCredentials, setNewCredentials] = useState<NewCredentials | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [viewing, setViewing] = useState<ParentAccount | null>(null);
+  const [editing, setEditing] = useState<ParentAccount | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const [managing, setManaging] = useState<ParentAccount | null>(null);
   const [linked, setLinked] = useState<LinkedStudent[]>([]);
@@ -185,22 +198,6 @@ export default function SystemParentsPage() {
     }
   }
 
-  async function handleDeactivate(account: ParentAccount) {
-    if (!confirm(`Deactivate ${account.name}?`)) return;
-    setBusyId(account.id);
-    try {
-      const res = await fetch(`/api/admin/system/accounts/${account.id}`, { method: 'DELETE' });
-      const data = await res.json();
-      if (data.success) {
-        await load();
-        toast.success(`${account.name} deactivated.`);
-      } else {
-        toast.error(data.message ?? 'Failed to deactivate.');
-      }
-    } finally {
-      setBusyId(null);
-    }
-  }
 
   async function linkStudent() {
     if (!managing || !linkForm.studentId) return;
@@ -232,6 +229,74 @@ export default function SystemParentsPage() {
       toast.success(`${student.name} unlinked.`);
     } else {
       toast.error(data.message ?? 'Failed to unlink.');
+    }
+  }
+
+  async function saveEdit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing) return;
+    setSavingEdit(true);
+    try {
+      const [firstName, ...rest] = editing.name.trim().split(/\s+/);
+      const res = await fetch(`/api/admin/system/accounts/${editing.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firstName,
+          lastName: rest.join(' '),
+          contactEmail: editing.contactEmail ?? '',
+          gender: editing.gender,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setAccounts((current) =>
+          current.map((a) => (a.id === editing.id ? editing : a))
+        );
+        setEditing(null);
+        toast.success('Account updated.');
+      } else {
+        toast.error(data.message ?? 'Failed to update account.');
+      }
+    } catch {
+      toast.error('Network error.');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  async function toggleActive(account: ParentAccount) {
+    const next = !account.isActive;
+    const res = await fetch(`/api/admin/system/accounts/${account.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ isActive: next }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      setAccounts((current) =>
+        current.map((a) => (a.id === account.id ? { ...a, isActive: next } : a))
+      );
+      toast.success(`${account.name} ${next ? 'reactivated' : 'deactivated'}.`);
+    } else {
+      toast.error(data.message ?? 'Failed to update account.');
+    }
+  }
+
+  async function removeAccount(account: ParentAccount) {
+    if (!confirm(`Permanently delete ${account.name}? This cannot be undone.`)) return;
+    const res = await fetch(`/api/admin/system/accounts/${account.id}?hard=true`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    if (data.success) {
+      setAccounts((current) => current.filter((a) => a.id !== account.id));
+      if (viewing?.id === account.id) setViewing(null);
+      if (editing?.id === account.id) setEditing(null);
+      toast.success(`${account.name} deleted.`);
+    } else {
+      // Refused when the account holds history; the message names what.
+      toast.error(data.message ?? 'Failed to delete account.');
     }
   }
 
@@ -275,14 +340,22 @@ export default function SystemParentsPage() {
         sortable: false,
         align: 'right',
         render: (a) => (
-          <div className="flex justify-end gap-1.5">
+          <div className="flex justify-end gap-1">
             <button
               type="button"
-              onClick={() => openManage(a)}
-              title={`Manage children for ${a.name}`}
+              onClick={() => setViewing(a)}
+              title={`View ${a.name}`}
               className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8]"
             >
-              <Link2 className="w-4 h-4" aria-hidden />
+              <Eye className="w-4 h-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => setEditing(a)}
+              title={`Edit ${a.name}`}
+              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8]"
+            >
+              <Pencil className="w-4 h-4" aria-hidden />
             </button>
             <button
               type="button"
@@ -293,17 +366,26 @@ export default function SystemParentsPage() {
             >
               <KeyRound className="w-4 h-4" aria-hidden />
             </button>
-            {a.isActive && (
-              <button
-                type="button"
-                onClick={() => void handleDeactivate(a)}
-                disabled={busyId === a.id}
-                title={`Deactivate ${a.name}`}
-                className="p-1.5 rounded-lg text-[#C26565] hover:bg-[#FBF0F0] disabled:opacity-40"
-              >
-                <Ban className="w-4 h-4" aria-hidden />
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => void toggleActive(a)}
+              title={a.isActive ? `Deactivate ${a.name}` : `Reactivate ${a.name}`}
+              className="p-1.5 rounded-lg text-[#5A7D8A] hover:bg-[#F1F6F8]"
+            >
+              {a.isActive ? (
+                <PowerOff className="w-4 h-4" aria-hidden />
+              ) : (
+                <Power className="w-4 h-4" aria-hidden />
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => void removeAccount(a)}
+              title={`Delete ${a.name}`}
+              className="p-1.5 rounded-lg text-[#C26565] hover:bg-[#FBF0F0]"
+            >
+              <Trash2 className="w-4 h-4" aria-hidden />
+            </button>
           </div>
         ),
       },
@@ -474,6 +556,90 @@ export default function SystemParentsPage() {
               </div>
             </div>
           )}
+        </Card>
+      )}
+
+      {viewing && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-primary-900">{viewing.name}</h2>
+            <button type="button" onClick={() => setViewing(null)} aria-label="Close">
+              <X className="w-4 h-4 text-text-muted" aria-hidden />
+            </button>
+          </div>
+          <div className="flex flex-col sm:flex-row gap-5">
+            {viewing.photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={viewing.photoUrl}
+                alt=""
+                className="w-24 h-24 rounded-2xl object-cover border border-[#E8EFF3] shrink-0"
+              />
+            ) : (
+              <div className="w-24 h-24 rounded-2xl bg-[#F1F6F8] text-[#5A7D8A] text-2xl font-medium flex items-center justify-center shrink-0">
+                {initials(viewing.name) || '—'}
+              </div>
+            )}
+            <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 flex-1 text-sm">
+              {VIEW_FIELDS.map(([label, value]) => (
+                <div key={label} className="flex justify-between gap-4 border-b border-[#F1F6F8] py-1.5">
+                  <dt className="text-[#5A7D8A]">{label}</dt>
+                  <dd className="text-[#12333F] text-right">{value(viewing) || '—'}</dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+        </Card>
+      )}
+
+      {editing && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-primary-900">Edit — {editing.systemId}</h2>
+            <button type="button" onClick={() => setEditing(null)} aria-label="Close">
+              <X className="w-4 h-4 text-text-muted" aria-hidden />
+            </button>
+          </div>
+          <form onSubmit={saveEdit} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Input
+                label="Full name"
+                value={editing.name}
+                onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                required
+              />
+              <Input
+                label="Email"
+                type="email"
+                value={editing.contactEmail ?? ''}
+                onChange={(e) => setEditing({ ...editing, contactEmail: e.target.value })}
+              />
+              <Select
+                label="Gender"
+                options={[
+                  { value: '', label: 'Not recorded' },
+                  { value: 'male', label: 'Male' },
+                  { value: 'female', label: 'Female' },
+                ]}
+                value={editing.gender ?? ''}
+                onChange={(e) =>
+                  setEditing({ ...editing, gender: (e.target.value || null) as 'male' | 'female' | null })
+                }
+              />
+            </div>
+            <p className="text-xs text-text-muted">
+              Role and System ID cannot be changed: the ID encodes the role and is referenced by
+              enrolments, submissions and audit records.
+            </p>
+            <div className="flex gap-2">
+              <Button type="submit" isLoading={savingEdit}>
+                Save changes
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setEditing(null)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
         </Card>
       )}
 
