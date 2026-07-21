@@ -182,6 +182,7 @@ export type Database = {
           deleted_at: string | null
           description: string
           id: string
+          instructions: string
           opens_at: string | null
           results_released_at: string | null
           results_released_by: string | null
@@ -200,6 +201,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string
           id?: string
+          instructions?: string
           opens_at?: string | null
           results_released_at?: string | null
           results_released_by?: string | null
@@ -218,6 +220,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string
           id?: string
+          instructions?: string
           opens_at?: string | null
           results_released_at?: string | null
           results_released_by?: string | null
@@ -864,7 +867,10 @@ export type Database = {
           correct_answer: string | null
           created_at: string
           id: string
+          image_public_id: string | null
+          image_url: string | null
           max_score: number
+          model_answer: string | null
           options: Json
           position: number
           question_text: string
@@ -877,7 +883,10 @@ export type Database = {
           correct_answer?: string | null
           created_at?: string
           id?: string
+          image_public_id?: string | null
+          image_url?: string | null
           max_score?: number
+          model_answer?: string | null
           options?: Json
           position: number
           question_text: string
@@ -890,7 +899,10 @@ export type Database = {
           correct_answer?: string | null
           created_at?: string
           id?: string
+          image_public_id?: string | null
+          image_url?: string | null
           max_score?: number
+          model_answer?: string | null
           options?: Json
           position?: number
           question_text?: string
@@ -1287,6 +1299,7 @@ export type Database = {
           deleted_at: string | null
           description: string
           id: string
+          instructions: string
           opens_at: string | null
           results_released_at: string | null
           results_released_by: string | null
@@ -1303,6 +1316,10 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      correct_answer_is_valid: {
+        Args: { p_correct: string; p_options: Json; p_type: string }
+        Returns: boolean
       }
       generate_system_id: { Args: { p_entity_type: string }; Returns: string }
       notifications_for_profile: {

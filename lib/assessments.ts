@@ -16,6 +16,8 @@ export interface Assessment {
   opensAt?: string;
   closesAt?: string;
   status: AssessmentStatus;
+  /** Printed at the top of the question paper. */
+  instructions: string;
   resultsReleasedAt?: string;
   targets: AssessmentTarget[];
 }
@@ -39,6 +41,7 @@ export interface AssessmentTarget {
 export type QuestionType =
   | "mcq"
   | "checkbox"
+  | "true_false"
   | "fill"
   | "matching"
   | "dragdrop"
@@ -49,8 +52,19 @@ export type QuestionType =
 export const AUTO_SCORED_TYPES: ReadonlySet<QuestionType> = new Set<QuestionType>([
   "mcq",
   "checkbox",
+  "true_false",
   "fill",
 ]);
+
+/** Types whose correct answer must be one of the entered options. */
+export const CHOICE_TYPES: ReadonlySet<QuestionType> = new Set<QuestionType>([
+  "mcq",
+  "checkbox",
+  "true_false",
+]);
+
+/** The fixed options for a true/false question — never author-supplied. */
+export const TRUE_FALSE_OPTIONS = ["True", "False"];
 
 export interface Question {
   id: string;
@@ -60,6 +74,10 @@ export interface Question {
   questionType: QuestionType;
   options: string[];
   correctAnswer?: string;
+  /** Expected answer / mark split for hand-marked questions. Optional. */
+  modelAnswer?: string;
+  imageUrl?: string;
+  imagePublicId?: string;
   maxScore: number;
   config?: unknown;
 }
@@ -71,6 +89,7 @@ export interface CreateAssessmentInput {
   opensAt?: string;
   closesAt?: string;
   status?: AssessmentStatus;
+  instructions?: string;
   targets?: Omit<AssessmentTarget, "id">[];
   createdBy?: string;
 }
@@ -82,6 +101,7 @@ export interface UpdateAssessmentInput {
   opensAt?: string | null;
   closesAt?: string | null;
   status?: AssessmentStatus;
+  instructions?: string;
   targets?: Omit<AssessmentTarget, "id">[];
 }
 
@@ -94,6 +114,7 @@ interface AssessmentRow {
   opens_at: string | null;
   closes_at: string | null;
   status: string;
+  instructions: string;
   results_released_at: string | null;
   targets: { id: string; school_id: string | null; level: number | null; class_id: string | null }[] | null;
 }
@@ -101,10 +122,10 @@ interface AssessmentRow {
 // Single string literal — concatenation would widen it to `string` and silently
 // disable the client's column checking.
 const ASSESSMENT_COLUMNS =
-  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, results_released_at, targets:assessment_targets(id, school_id, level, class_id)";
+  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, instructions, results_released_at, targets:assessment_targets(id, school_id, level, class_id)";
 
 const QUESTION_COLUMNS =
-  "id, position, code, question_text, type, options, correct_answer, max_score, config";
+  "id, position, code, question_text, type, options, correct_answer, model_answer, image_url, image_public_id, max_score, config";
 
 // ─── Mappers ──────────────────────────────────────────────
 
@@ -118,6 +139,7 @@ function rowToAssessment(row: AssessmentRow): Assessment {
     opensAt: row.opens_at ?? undefined,
     closesAt: row.closes_at ?? undefined,
     status: row.status as AssessmentStatus,
+    instructions: row.instructions ?? "",
     resultsReleasedAt: row.results_released_at ?? undefined,
     targets: (row.targets ?? []).map((t) => ({
       id: t.id,
@@ -136,6 +158,9 @@ interface QuestionRow {
   type: string;
   options: unknown;
   correct_answer: string | null;
+  model_answer: string | null;
+  image_url: string | null;
+  image_public_id: string | null;
   max_score: number;
   config: unknown;
 }
@@ -149,6 +174,9 @@ function rowToQuestion(row: QuestionRow): Question {
     questionType: row.type as QuestionType,
     options: Array.isArray(row.options) ? (row.options as string[]) : [],
     correctAnswer: row.correct_answer ?? undefined,
+    modelAnswer: row.model_answer ?? undefined,
+    imageUrl: row.image_url ?? undefined,
+    imagePublicId: row.image_public_id ?? undefined,
     maxScore: Number(row.max_score),
     config: row.config ?? undefined,
   };
@@ -257,6 +285,7 @@ export async function createAssessment(input: CreateAssessmentInput): Promise<As
       opens_at: input.opensAt ?? null,
       closes_at: input.closesAt ?? null,
       status: input.status ?? "draft",
+      instructions: input.instructions ?? "",
       created_by: input.createdBy ?? null,
     })
     .select("id")
@@ -288,6 +317,7 @@ export async function updateAssessment(
   if (updates.opensAt !== undefined) patch.opens_at = updates.opensAt;
   if (updates.closesAt !== undefined) patch.closes_at = updates.closesAt;
   if (updates.status !== undefined) patch.status = updates.status;
+  if (updates.instructions !== undefined) patch.instructions = updates.instructions;
 
   const { error } = await supabase.from("assessments").update(patch).eq("id", existing.id);
   if (error) throw new Error(error.message);
@@ -362,8 +392,13 @@ export async function saveQuestions(
     code: q.code || `Q${index + 1}`,
     question_text: q.questionText,
     type: q.questionType,
-    options: q.options ?? [],
+    // True/false always has the same two options — taking them from the author
+    // would let "Ture" through and break auto-scoring.
+    options: q.questionType === "true_false" ? TRUE_FALSE_OPTIONS : (q.options ?? []),
     correct_answer: q.correctAnswer ?? null,
+    model_answer: q.modelAnswer?.trim() || null,
+    image_url: q.imageUrl ?? null,
+    image_public_id: q.imagePublicId ?? null,
     max_score: q.maxScore,
     config: (q.config ?? null) as never,
   }));
