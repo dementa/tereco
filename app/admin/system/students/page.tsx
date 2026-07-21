@@ -11,7 +11,7 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { ImageUpload } from '@/components/ui/ImageUpload';
 import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
-import { Eye, KeyRound, Pencil, Power, PowerOff, Trash2, Upload, UserPlus, X } from 'lucide-react';
+import { ArrowRightLeft, Eye, KeyRound, Pencil, Power, PowerOff, Trash2, Upload, UserPlus, X } from 'lucide-react';
 
 interface School {
   id: string;
@@ -31,6 +31,25 @@ interface SchoolClass {
   hasStreams: boolean;
   streams: Stream[];
 }
+
+interface EnrollmentHistoryEntry {
+  id: string;
+  schoolName: string;
+  className: string;
+  streamName: string | null;
+  academicYear: string;
+  status: string;
+  enrolledOn: string;
+  exitedOn: string | null;
+  exitReason: string | null;
+}
+
+const MOVES = [
+  { value: 'promote', label: 'Promote to the next class' },
+  { value: 'transfer', label: 'Transfer to another class or school' },
+  { value: 'repeat', label: 'Repeat the year' },
+  { value: 'withdraw', label: 'Withdraw from the programme' },
+];
 
 interface StudentAccount {
   id: string;
@@ -103,6 +122,18 @@ export default function SystemStudentsPage() {
   const [editing, setEditing] = useState<StudentAccount | null>(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [photoFor, setPhotoFor] = useState<StudentAccount | null>(null);
+  const [moving, setMoving] = useState<StudentAccount | null>(null);
+  const [history, setHistory] = useState<EnrollmentHistoryEntry[]>([]);
+  const [moveClasses, setMoveClasses] = useState<SchoolClass[]>([]);
+  const [moveForm, setMoveForm] = useState({
+    move: 'promote',
+    effectiveDate: new Date().toISOString().slice(0, 10),
+    schoolId: '',
+    classId: '',
+    streamId: '',
+    reason: '',
+  });
+  const [movingBusy, setMovingBusy] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -276,6 +307,68 @@ export default function SystemStudentsPage() {
     }
   }
 
+  async function openMove(student: StudentAccount) {
+    setMoving(student);
+    setHistory([]);
+    setMoveClasses([]);
+    setMoveForm({
+      move: 'promote',
+      effectiveDate: new Date().toISOString().slice(0, 10),
+      schoolId: '',
+      classId: '',
+      streamId: '',
+      reason: '',
+    });
+    try {
+      const res = await fetch(`/api/admin/system/students/${student.id}/enrollment`);
+      const data = await res.json();
+      if (data.success) setHistory(data.data);
+    } catch {
+      toast.error('Could not load their enrolment history.');
+    }
+  }
+
+  async function chooseMoveSchool(schoolId: string) {
+    setMoveForm((f) => ({ ...f, schoolId, classId: '', streamId: '' }));
+    setMoveClasses([]);
+    if (!schoolId) return;
+    const res = await fetch(`/api/admin/system/schools/${schoolId}/classes`);
+    const data = await res.json();
+    if (data.success) setMoveClasses(data.data);
+  }
+
+  async function submitMove(e: React.FormEvent) {
+    e.preventDefault();
+    if (!moving) return;
+    setMovingBusy(true);
+    try {
+      const res = await fetch(`/api/admin/system/students/${moving.id}/enrollment`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          move: moveForm.move,
+          effectiveDate: moveForm.effectiveDate,
+          toSchoolId: moveForm.schoolId || undefined,
+          toClassId: moveForm.classId || undefined,
+          toStreamId: moveForm.streamId || null,
+          reason: moveForm.reason || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message);
+        setMoving(null);
+        await load();
+      } else {
+        toast.error(data.message ?? 'Could not move the student.');
+      }
+    } catch {
+      toast.error('Network error.');
+    } finally {
+      setMovingBusy(false);
+    }
+  }
+
   const columns: DataTableColumn<StudentAccount>[] = useMemo(
     () => [
       {
@@ -353,6 +446,14 @@ export default function SystemStudentsPage() {
               className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8]"
             >
               <Eye className="w-4 h-4" aria-hidden />
+            </button>
+            <button
+              type="button"
+              onClick={() => void openMove(a)}
+              title={`Move or withdraw ${a.name}`}
+              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8]"
+            >
+              <ArrowRightLeft className="w-4 h-4" aria-hidden />
             </button>
             <button
               type="button"
@@ -660,6 +761,125 @@ export default function SystemStudentsPage() {
               </Button>
             </div>
           </form>
+        </Card>
+      )}
+
+      {moving && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-primary-900">
+              Move — {moving.name}
+              <span className="block text-xs font-normal text-text-muted">
+                Currently {[moving.className, moving.streamName].filter(Boolean).join(' ') || 'not enrolled'}
+              </span>
+            </h2>
+            <button type="button" onClick={() => setMoving(null)} aria-label="Close">
+              <X className="w-4 h-4 text-text-muted" aria-hidden />
+            </button>
+          </div>
+
+          <form onSubmit={submitMove} className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Select
+                label="What is happening"
+                options={MOVES}
+                value={moveForm.move}
+                onChange={(e) => setMoveForm({ ...moveForm, move: e.target.value })}
+              />
+              <Input
+                label="Effective from"
+                type="date"
+                value={moveForm.effectiveDate}
+                onChange={(e) => setMoveForm({ ...moveForm, effectiveDate: e.target.value })}
+                required
+              />
+            </div>
+
+            {moveForm.move !== 'withdraw' && (
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Select
+                  label="School"
+                  options={[
+                    { value: '', label: 'Same school' },
+                    ...schools.map((s) => ({ value: s.id, label: s.name })),
+                  ]}
+                  value={moveForm.schoolId}
+                  onChange={(e) => void chooseMoveSchool(e.target.value)}
+                />
+                <Select
+                  label="Class"
+                  options={[
+                    { value: '', label: moveForm.schoolId ? 'Select a class' : 'Choose a school first' },
+                    ...moveClasses.map((c) => ({
+                      value: c.id,
+                      label: c.displayName + (c.hasStreams ? ' (has streams)' : ''),
+                    })),
+                  ]}
+                  value={moveForm.classId}
+                  disabled={!moveForm.schoolId}
+                  onChange={(e) => setMoveForm({ ...moveForm, classId: e.target.value, streamId: '' })}
+                  required
+                />
+                <Select
+                  label="Stream"
+                  options={[
+                    { value: '', label: 'Not applicable' },
+                    ...(moveClasses.find((c) => c.id === moveForm.classId)?.streams ?? []).map((s) => ({
+                      value: s.id,
+                      label: s.name,
+                    })),
+                  ]}
+                  value={moveForm.streamId}
+                  disabled={!moveClasses.find((c) => c.id === moveForm.classId)?.hasStreams}
+                  onChange={(e) => setMoveForm({ ...moveForm, streamId: e.target.value })}
+                />
+              </div>
+            )}
+
+            <Input
+              label={moveForm.move === 'withdraw' ? 'Reason for leaving' : 'Note (optional)'}
+              value={moveForm.reason}
+              onChange={(e) => setMoveForm({ ...moveForm, reason: e.target.value })}
+            />
+
+            <p className="text-xs text-text-muted">
+              Their current placement is closed on this date and a new one opened — the old record
+              is kept, so past lesson reports and results still show the class they were actually in.
+            </p>
+
+            <div className="flex gap-2">
+              <Button type="submit" isLoading={movingBusy}>
+                {moveForm.move === 'withdraw' ? 'Withdraw student' : 'Move student'}
+              </Button>
+              <Button type="button" variant="outline" onClick={() => setMoving(null)}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+
+          {history.length > 0 && (
+            <div className="mt-6 pt-4 border-t border-[#F1F6F8]">
+              <p className="text-xs font-medium text-[#5A7D8A] mb-2">ENROLMENT HISTORY</p>
+              <div className="space-y-1.5">
+                {history.map((h) => (
+                  <div
+                    key={h.id}
+                    className="flex flex-wrap items-center gap-2 text-sm border-b border-[#F1F6F8] pb-1.5"
+                  >
+                    <span className="font-medium text-[#12333F]">
+                      {[h.className, h.streamName].filter(Boolean).join(' ')}
+                    </span>
+                    <span className="text-xs text-text-muted">{h.schoolName}</span>
+                    <Badge variant={h.exitedOn ? 'muted' : 'success'}>{h.status}</Badge>
+                    <span className="text-xs text-text-muted ml-auto">
+                      {h.enrolledOn} → {h.exitedOn ?? 'present'}
+                      {h.exitReason ? ` · ${h.exitReason}` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
       )}
 
