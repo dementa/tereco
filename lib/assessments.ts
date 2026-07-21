@@ -570,6 +570,29 @@ function verdictFor(score: number | null, maxScore: number): AnswerVerdict {
  * skipped still appears — an absent answer is information, and dropping the row
  * would silently renumber their paper.
  */
+/**
+ * Every learner's script for one assessment, in the order they are listed.
+ *
+ * Sequential rather than parallel: this is a printing path, not a hot one, and
+ * a class of forty firing forty concurrent query bundles at Supabase is a good
+ * way to get rate-limited mid-download.
+ */
+export async function getAllMarkedScripts(assessmentId: string): Promise<MarkedScript[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("assessment_submissions")
+    .select("student_id")
+    .eq("assessment_id", assessmentId);
+  if (error) throw new Error(error.message);
+
+  const scripts: MarkedScript[] = [];
+  for (const row of data ?? []) {
+    const script = await getMarkedScript(assessmentId, row.student_id);
+    if (script) scripts.push(script);
+  }
+  return scripts.sort((a, b) => a.studentName.localeCompare(b.studentName));
+}
+
 export async function getMarkedScript(
   assessmentId: string,
   studentId: string
@@ -771,6 +794,8 @@ export async function releaseResults(
 
 export interface AssessmentResult {
   submissionId: string;
+  /** Needed to open that learner's script; results are per submission. */
+  studentId: string;
   studentName: string;
   studentSystemId: string | null;
   school: string;
@@ -786,6 +811,7 @@ export interface AssessmentResult {
 
 interface ResultRow {
   id: string;
+  student_id: string;
   submitted_at: string;
   time_spent_seconds: number;
   total_score: number | null;
@@ -801,7 +827,7 @@ interface ResultRow {
 
 // Same disambiguation as RESPONSE_COLUMNS: student_id, not marked_by.
 const RESULT_COLUMNS =
-  "id, submitted_at, time_spent_seconds, total_score, max_score, status, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments(school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name))";
+  "id, student_id, submitted_at, time_spent_seconds, total_score, max_score, status, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments(school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name))";
 
 /**
  * One row per student who sat the assessment, with their marked total.
@@ -830,6 +856,7 @@ export async function getAssessmentResults(assessmentId: string): Promise<Assess
     const max = row.max_score === null ? null : Number(row.max_score);
     return {
       submissionId: row.id,
+      studentId: row.student_id,
       studentName: student
         ? [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(" ").trim()
         : "",

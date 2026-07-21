@@ -65,14 +65,14 @@ function formatAnswer(value: string, type: string): string {
     : value;
 }
 
-export function MarkedScriptDocument({ script }: { script: MarkedScript }) {
+/**
+ * One learner's script as a single page-set. Extracted so the whole-class
+ * bundle renders exactly the same document per child rather than a second,
+ * drifting copy of this layout.
+ */
+function ScriptPages({ script }: { script: MarkedScript }) {
   return (
-    <Document
-      title={`${script.assessmentSystemId} — ${script.studentName}`}
-      author="TERECO"
-      subject="Marked script"
-    >
-      <Page size="A4" style={styles.page}>
+    <Page size="A4" style={styles.page}>
         <View style={styles.header} fixed>
           <Text style={styles.org}>TERECO</Text>
           <Text style={styles.school}>{script.school || 'TERECO Programme'}</Text>
@@ -155,13 +155,51 @@ export function MarkedScriptDocument({ script }: { script: MarkedScript }) {
           );
         })}
 
-        <View style={styles.footer} fixed>
-          <Text>
-            {script.assessmentSystemId} · {script.studentName} · Issued by TERECO
-          </Text>
-          <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
-        </View>
-      </Page>
+      <View style={styles.footer} fixed>
+        <Text>
+          {script.assessmentSystemId} · {script.studentName} · Issued by TERECO
+        </Text>
+        {/* Numbering runs across the whole document, so in a class bundle this
+            counts the printed stack rather than restarting per learner. The
+            learner's name sits alongside it, which is what actually identifies
+            a loose page. */}
+        <Text render={({ pageNumber }) => `Page ${pageNumber}`} />
+      </View>
+    </Page>
+  );
+}
+
+export function MarkedScriptDocument({ script }: { script: MarkedScript }) {
+  return (
+    <Document
+      title={`${script.assessmentSystemId} — ${script.studentName}`}
+      author="TERECO"
+      subject="Marked script"
+    >
+      <ScriptPages script={script} />
+    </Document>
+  );
+}
+
+/** Every learner's script in one file, each starting on a fresh page. */
+export function MarkedScriptsDocument({
+  scripts,
+  assessmentTitle,
+  assessmentSystemId,
+}: {
+  scripts: MarkedScript[];
+  assessmentTitle: string;
+  assessmentSystemId: string;
+}) {
+  return (
+    <Document
+      title={`${assessmentSystemId} — ${assessmentTitle} scripts`}
+      author="TERECO"
+      subject="Marked scripts"
+    >
+      {scripts.map((script) => (
+        <ScriptPages key={script.studentSystemId ?? script.studentName} script={script} />
+      ))}
     </Document>
   );
 }
