@@ -8,27 +8,52 @@ export type AccountRole = "admin" | "staff" | "student" | "parent";
 
 const STUDENT_PLACEHOLDER_DOMAIN = "students.tereco.internal";
 
-function composeName(input: {
-  name?: string;
-  firstName?: string;
-  middleName?: string;
-  lastName?: string;
-}): string {
+/**
+ * `profiles` stores names split, never as one display string. Callers that only
+ * have a single typed-in name get it split here: first token is the first name,
+ * the remainder is the last name (middle names are only captured when the
+ * caller supplies the fields separately).
+ */
+function splitName(name: string): { firstName: string; lastName: string } {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
+
+function resolveNameParts(input: CreateAccountInput): {
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
+} {
   if (input.firstName || input.lastName) {
-    return [input.firstName, input.middleName, input.lastName].filter(Boolean).join(" ").trim();
+    return {
+      firstName: (input.firstName ?? "").trim(),
+      middleName: input.middleName?.trim() || null,
+      lastName: (input.lastName ?? "").trim(),
+    };
   }
-  return (input.name ?? "").trim();
+  const split = splitName(input.name ?? "");
+  return { ...split, middleName: null };
+}
+
+export function fullName(parts: {
+  first_name: string;
+  middle_name?: string | null;
+  last_name: string;
+}): string {
+  return [parts.first_name, parts.middle_name, parts.last_name].filter(Boolean).join(" ").trim();
 }
 
 export interface CreateAccountInput {
   role: AccountRole;
-  name?: string; // admin/staff/parent — a single display name
-  firstName?: string; // student — split name
+  name?: string; // admin/staff/parent — a single display name, split on save
+  firstName?: string; // preferred: supply the parts directly
   middleName?: string;
   lastName?: string;
   email?: string | null; // optional for students — a placeholder auth identifier is used when absent
-  schoolId?: string | null;
-  classId?: string | null; // student
+  schoolId?: string | null; // staff/parent only; must be null for admin and student
+  classId?: string | null; // student — opens an enrollment
   streamId?: string | null; // student — only when the class has streams
   dateOfBirth?: string | null; // ISO date, student
   createdBy: string; // profiles.id of the super admin creating this account
@@ -53,9 +78,27 @@ export interface AccountRow {
   schoolName: string | null;
   className: string | null;
   streamName: string | null;
+  photoUrl: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
   createdAt: string;
+}
+
+/** The academic year an enrollment opened today belongs to. */
+async function currentAcademicYearId(): Promise<string> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("academic_years")
+    .select("id")
+    .eq("is_current", true)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) {
+    throw new UserFacingError(
+      "No academic year is marked as current — set one before enrolling students."
+    );
+  }
+  return data.id;
 }
 
 /**
@@ -69,15 +112,33 @@ export interface AccountRow {
  * placeholder address is used purely as the Supabase Auth identifier —
  * invisible everywhere else. Login is by System ID regardless, so this
  * changes nothing about how the account actually signs in.
+ *
+ * A student's class is NOT written onto the profile — it opens a row in
+ * `enrollments`. Placement is a dated span, so that promoting or transferring
+ * a student later cannot rewrite which class their past records belong to.
  */
 export async function createAccount(input: CreateAccountInput): Promise<CreatedAccount> {
   const supabase = getSupabaseAdmin();
+
+  // Enforced by profiles_school_scope_ck; checked here so the caller gets a
+  // sentence rather than a constraint violation.
+  const schoolId =
+    input.role === "admin" || input.role === "student" ? null : input.schoolId ?? null;
+
+  if (input.role === "student" && input.classId && !input.schoolId) {
+    throw new UserFacingError("A student's enrollment needs a school.");
+  }
+
+  // Resolve this before creating anything, so a missing academic year fails
+  // before we have an auth user to roll back.
+  const academicYearId =
+    input.role === "student" && input.classId ? await currentAcademicYearId() : null;
 
   const systemId = await generateSystemId(input.role as SystemIdEntity);
   const temporaryPassword = generateTemporaryPassword();
   const realEmail = input.email?.trim() || null;
   const authEmail = realEmail || `${systemId.toLowerCase()}@${STUDENT_PLACEHOLDER_DOMAIN}`;
-  const name = composeName(input);
+  const { firstName, middleName, lastName } = resolveNameParts(input);
 
   const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
     email: authEmail,
@@ -94,38 +155,17 @@ export async function createAccount(input: CreateAccountInput): Promise<CreatedA
     throw new Error(authError?.message ?? "Failed to create auth user");
   }
 
-  // Mirror a display-friendly class_name so anything still reading that
-  // legacy text column (e.g. today's flat-string assessment targeting)
-  // keeps working for display purposes until that's migrated. Best-effort —
-  // never blocks account creation.
-  let classNameDisplay: string | null = null;
-  if (input.classId) {
-    const { data: classRow } = await supabase.from("classes").select("name").eq("id", input.classId).maybeSingle();
-    let streamNameDisplay: string | null = null;
-    if (input.streamId) {
-      const { data: streamRow } = await supabase.from("streams").select("name").eq("id", input.streamId).maybeSingle();
-      streamNameDisplay = streamRow?.name ?? null;
-    }
-    if (classRow?.name) {
-      classNameDisplay = streamNameDisplay ? `${classRow.name} ${streamNameDisplay}` : classRow.name;
-    }
-  }
-
   const { error: profileError } = await supabase.from("profiles").insert({
     id: authUser.user.id,
     system_id: systemId,
     role: input.role,
-    name,
+    first_name: firstName,
+    middle_name: middleName,
+    last_name: lastName,
     email: authEmail,
     contact_email: realEmail,
-    first_name: input.firstName ?? null,
-    middle_name: input.middleName ?? null,
-    last_name: input.lastName ?? null,
     date_of_birth: input.dateOfBirth ?? null,
-    school_id: input.schoolId ?? null,
-    class_id: input.classId ?? null,
-    stream_id: input.streamId ?? null,
-    class_name: classNameDisplay,
+    school_id: schoolId,
     // Students use the provided password as-is — no forced first-login
     // change screen. The only way a student's password changes is a super
     // admin issuing a reset (which does force a change at that point — see
@@ -137,13 +177,49 @@ export async function createAccount(input: CreateAccountInput): Promise<CreatedA
   if (profileError) {
     await supabase.auth.admin.deleteUser(authUser.user.id);
     if (profileError.code === "23503") {
-      throw new UserFacingError("The selected school, class, or stream no longer exists — refresh and try again.");
+      throw new UserFacingError("The selected school no longer exists — refresh and try again.");
     }
     throw new Error(profileError.message);
   }
 
+  if (input.classId && input.schoolId && academicYearId) {
+    const { error: enrollError } = await supabase.from("enrollments").insert({
+      student_id: authUser.user.id,
+      school_id: input.schoolId,
+      class_id: input.classId,
+      stream_id: input.streamId ?? null,
+      academic_year_id: academicYearId,
+      enrolled_on: new Date().toISOString().slice(0, 10),
+      created_by: input.createdBy,
+    });
+
+    // Roll the whole thing back: an account created without the placement the
+    // caller asked for is worse than no account, because nothing surfaces it
+    // as incomplete. Deleting the auth user cascades the profile away.
+    if (enrollError) {
+      await supabase.auth.admin.deleteUser(authUser.user.id);
+      if (enrollError.code === "23503") {
+        throw new UserFacingError(
+          "The selected class or stream no longer exists — refresh and try again."
+        );
+      }
+      throw new Error(enrollError.message);
+    }
+  }
+
+  const displayName = fullName({
+    first_name: firstName,
+    middle_name: middleName,
+    last_name: lastName,
+  });
   const emailResult = realEmail
-    ? await sendCredentialsEmail({ to: realEmail, name, systemId, temporaryPassword, role: input.role })
+    ? await sendCredentialsEmail({
+        to: realEmail,
+        name: displayName,
+        systemId,
+        temporaryPassword,
+        role: input.role,
+      })
     : { sent: false, error: undefined as string | undefined };
 
   return {
@@ -189,41 +265,51 @@ export async function listAccounts(role: AccountRole | AccountRole[]): Promise<A
   const { data, error } = await supabase
     .from("profiles")
     .select(
-      "id, system_id, role, name, contact_email, school_id, must_change_password, is_active, created_at, " +
-        "schools!profiles_school_id_fkey(name), classes!profiles_class_id_fkey(name), streams!profiles_stream_id_fkey(name)"
+      "id, system_id, role, first_name, middle_name, last_name, contact_email, school_id, photo_url, must_change_password, is_active, created_at, school:schools!profiles_school_id_fkey(name)"
     )
     .in("role", roles)
     .order("created_at", { ascending: false });
 
   if (error) throw new Error(error.message);
+  const rows = data ?? [];
 
-  interface Row {
-    id: string;
-    system_id: string | null;
-    role: string;
-    name: string | null;
-    contact_email: string | null;
-    school_id: string | null;
-    must_change_password: boolean;
-    is_active: boolean;
-    created_at: string;
-    schools: { name: string } | null;
-    classes: { name: string } | null;
-    streams: { name: string } | null;
+  // Placement is not on the profile — it is the student's open enrollment. One
+  // batched lookup keyed by student id, rather than a join per row.
+  const studentIds = rows.filter((r) => r.role === "student").map((r) => r.id);
+  const placements = new Map<string, { className: string | null; streamName: string | null }>();
+
+  if (studentIds.length > 0) {
+    const { data: enrollments, error: enrollError } = await supabase
+      .from("current_enrollments")
+      .select("student_id, class_display_name, stream_name")
+      .in("student_id", studentIds);
+    if (enrollError) throw new Error(enrollError.message);
+
+    for (const e of enrollments ?? []) {
+      if (e.student_id === null) continue;
+      placements.set(e.student_id, {
+        className: e.class_display_name,
+        streamName: e.stream_name,
+      });
+    }
   }
 
-  return ((data ?? []) as unknown as Row[]).map((row) => ({
-    id: row.id,
-    systemId: row.system_id,
-    role: row.role,
-    name: row.name ?? "",
-    contactEmail: row.contact_email,
-    schoolId: row.school_id,
-    schoolName: row.schools?.name ?? null,
-    className: row.classes?.name ?? null,
-    streamName: row.streams?.name ?? null,
-    mustChangePassword: row.must_change_password,
-    isActive: row.is_active,
-    createdAt: row.created_at,
-  }));
+  return rows.map((row) => {
+    const placement = placements.get(row.id);
+    return {
+      id: row.id,
+      systemId: row.system_id,
+      role: row.role,
+      name: fullName(row),
+      contactEmail: row.contact_email,
+      schoolId: row.school_id,
+      schoolName: row.school?.name ?? null,
+      className: placement?.className ?? null,
+      streamName: placement?.streamName ?? null,
+      photoUrl: row.photo_url,
+      mustChangePassword: row.must_change_password,
+      isActive: row.is_active,
+      createdAt: row.created_at,
+    };
+  });
 }

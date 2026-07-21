@@ -23,6 +23,11 @@ export interface ImportRowResult {
   error?: string;
 }
 
+/**
+ * Two queries rather than one embedded filter: find students with this name,
+ * then ask whether any of them is currently enrolled in this class/stream.
+ * Placement lives in `enrollments`, so it cannot be filtered on the profile.
+ */
 async function findExistingStudent(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   firstName: string,
@@ -30,18 +35,30 @@ async function findExistingStudent(
   classId: string,
   streamId: string | undefined
 ): Promise<{ systemId: string | null } | null> {
-  let query = supabase
+  const { data: candidates } = await supabase
     .from("profiles")
-    .select("system_id")
+    .select("id, system_id")
     .eq("role", "student")
     .ilike("first_name", firstName.trim())
-    .ilike("last_name", lastName.trim())
-    .eq("class_id", classId);
+    .ilike("last_name", lastName.trim());
 
+  if (!candidates || candidates.length === 0) return null;
+
+  let query = supabase
+    .from("current_enrollments")
+    .select("student_id")
+    .eq("class_id", classId)
+    .in(
+      "student_id",
+      candidates.map((c) => c.id)
+    );
   query = streamId ? query.eq("stream_id", streamId) : query.is("stream_id", null);
 
-  const { data } = await query.maybeSingle();
-  return data ? { systemId: data.system_id } : null;
+  const { data: enrolled } = await query.limit(1);
+  if (!enrolled || enrolled.length === 0) return null;
+
+  const match = candidates.find((c) => c.id === enrolled[0].student_id);
+  return match ? { systemId: match.system_id } : null;
 }
 
 async function resolveSchool(
@@ -56,7 +73,7 @@ async function resolveSchool(
   const systemId = await generateSystemId("school");
   const { data: created, error } = await supabase
     .from("schools")
-    .insert({ system_id: systemId, name: trimmed, classes: [], created_by: createdBy })
+    .insert({ system_id: systemId, name: trimmed, created_by: createdBy })
     .select("id")
     .single();
   if (error?.code === "23505") {
@@ -67,6 +84,29 @@ async function resolveSchool(
   return created;
 }
 
+/** "P.2", "p2", "P 2" all mean the same rung of the ladder. */
+function normalizeClassCode(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Maps a spreadsheet class label onto the canonical ladder where it matches a
+ * grade level code ("P.2" → level 2), and treats anything else as a school's
+ * own named class ("ELITE" → alias, no level).
+ */
+async function resolveClassIdentity(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  label: string
+): Promise<{ level: number | null; alias: string | null }> {
+  const trimmed = label.trim();
+  const { data: levels, error } = await supabase.from("grade_levels").select("level, code");
+  if (error) throw new Error(error.message);
+
+  const target = normalizeClassCode(trimmed);
+  const match = (levels ?? []).find((l) => normalizeClassCode(l.code) === target);
+  return match ? { level: match.level, alias: null } : { level: null, alias: trimmed };
+}
+
 async function resolveClass(
   supabase: ReturnType<typeof getSupabaseAdmin>,
   schoolId: string,
@@ -74,13 +114,15 @@ async function resolveClass(
   wantsStreams: boolean,
   createdBy: string
 ): Promise<{ id: string; hasStreams: boolean; promoted: boolean }> {
-  const trimmed = name.trim();
-  const { data: existing } = await supabase
-    .from("classes")
-    .select("id, has_streams")
-    .eq("school_id", schoolId)
-    .ilike("name", trimmed)
-    .maybeSingle();
+  const { level, alias } = await resolveClassIdentity(supabase, name);
+
+  // Ladder classes are unique per (school, level); named ones per (school, alias).
+  const findExisting = () => {
+    const query = supabase.from("classes").select("id, has_streams").eq("school_id", schoolId);
+    return level !== null ? query.eq("level", level) : query.ilike("alias", alias ?? "");
+  };
+
+  const { data: existing } = await findExisting().maybeSingle();
 
   if (existing) {
     if (wantsStreams && !existing.has_streams) {
@@ -92,16 +134,11 @@ async function resolveClass(
 
   const { data: created, error } = await supabase
     .from("classes")
-    .insert({ school_id: schoolId, name: trimmed, has_streams: wantsStreams, created_by: createdBy })
+    .insert({ school_id: schoolId, level, alias, has_streams: wantsStreams, created_by: createdBy })
     .select("id, has_streams")
     .single();
   if (error?.code === "23505") {
-    const { data: retry } = await supabase
-      .from("classes")
-      .select("id, has_streams")
-      .eq("school_id", schoolId)
-      .ilike("name", trimmed)
-      .single();
+    const { data: retry } = await findExisting().single();
     if (retry) return { id: retry.id, hasStreams: retry.has_streams, promoted: false };
   }
   if (error || !created) throw new Error(error?.message ?? "Failed to create class");

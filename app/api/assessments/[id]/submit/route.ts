@@ -1,28 +1,31 @@
 import { NextRequest } from 'next/server';
-import { saveResponses, getAssessmentById, getQuestions } from '@/lib/assessments';
+import {
+  AUTO_SCORED_TYPES,
+  getAssessmentBySystemId,
+  getQuestions,
+  saveSubmission,
+  type SubmissionAnswer,
+} from '@/lib/assessments';
 import { z } from 'zod';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { getCurrentProfile } from '@/lib/auth/session';
-import { getSupabaseAdmin } from '@/lib/supabase';
+import { getCurrentEnrollment } from '@/lib/entities/enrollments';
 
-// ─── Validation ─────────────────────────────────────────────
-// studentName/school/className are no longer accepted from the client —
-// identity is resolved server-side from the verified session, closing the
-// gap that let anyone submit as anyone (and, combined with the unique
-// constraint on responses(assessment_id, student_id), the gap that let the
-// same student submit the same assessment repeatedly).
+// Identity is resolved server-side from the verified session — the client
+// sends answers and nothing else. Combined with the unique constraint on
+// assessment_submissions(assessment_id, student_id), that closes both the
+// "submit as someone else" and the "submit repeatedly" holes.
 const SubmitSchema = z.object({
+  // Keyed by question id.
   answers: z.record(z.string(), z.string()),
-  timeSpent: z.number().optional(),
+  timeSpent: z.number().min(0).optional(),
 });
 
-// ─── POST ──────────────────────────────────────────────────
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const assessmentId = id;
 
   const profile = await getCurrentProfile(request);
   if (!profile || profile.role !== 'student') {
@@ -30,71 +33,74 @@ export async function POST(
   }
 
   try {
-    const body = await request.json();
-    const validated = SubmitSchema.parse(body);
+    const validated = SubmitSchema.parse(await request.json());
 
-    // 1. Fetch assessment to validate time limit
-    const assessment = await getAssessmentById(assessmentId);
+    const assessment = await getAssessmentBySystemId(id);
     if (!assessment) {
       return errorResponse('Assessment not found', 404);
     }
+    if (assessment.status !== 'published') {
+      return errorResponse('This assessment is not open for submission.', 409);
+    }
 
-    // 2. Optional: time limit validation
-    const timeLimitSeconds = assessment.timeLimit * 60;
-    if (validated.timeSpent && validated.timeSpent > timeLimitSeconds + 60) {
+    const now = Date.now();
+    if (assessment.opensAt && now < Date.parse(assessment.opensAt)) {
+      return errorResponse('This assessment has not opened yet.', 409);
+    }
+    if (assessment.closesAt && now > Date.parse(assessment.closesAt)) {
+      return errorResponse('This assessment has closed.', 409);
+    }
+
+    const timeSpent = validated.timeSpent ?? 0;
+    if (timeSpent > assessment.timeLimit * 60 + 60) {
       return errorResponse('Time limit exceeded', 400);
     }
 
-    // 3. Get questions to auto‑score MCQ
-    const questions = await getQuestions(assessment.id);
-
-    let schoolName = '';
-    if (profile.schoolId) {
-      const admin = getSupabaseAdmin();
-      const { data: school } = await admin.from('schools').select('name').eq('id', profile.schoolId).maybeSingle();
-      schoolName = school?.name ?? '';
+    // The answers are recorded against the enrolment the student sat under, so
+    // promoting or transferring them later cannot rewrite which class the
+    // result belongs to.
+    const enrollment = await getCurrentEnrollment(profile.id);
+    if (!enrollment) {
+      return errorResponse(
+        'You are not currently enrolled in a class, so this assessment cannot be recorded.',
+        409
+      );
     }
 
-    // 4. Build responses array
-    const timestamp = new Date().toISOString();
+    const questions = await getQuestions(assessment.id);
+
     const norm = (s: string) => s.trim().toLowerCase();
-    const AUTO_GRADED = new Set(['mcq', 'fill', 'checkbox']);
+    const answers: SubmissionAnswer[] = questions.map((q) => {
+      const given = validated.answers[q.id] ?? '';
 
-    const responses = questions.map(q => {
-      const userAnswer = validated.answers[q.questionId] || '';
-      const maxScore = q.maxScore ?? 1;
-
-      // Auto-score objective questions; leave text answers (short/long/matching/
-      // dragdrop) as null so an admin can mark them manually.
+      // Objective questions are marked now; everything else is left null for a
+      // human. null means "not yet marked" — distinct from 0, "marked wrong".
       let score: number | undefined;
-      if (AUTO_GRADED.has(q.questionType) && q.correctAnswer) {
+      if (AUTO_SCORED_TYPES.has(q.questionType) && q.correctAnswer) {
         if (q.questionType === 'checkbox') {
-          const given = userAnswer.split('|').map(s => norm(s)).filter(Boolean).sort();
-          const correct = q.correctAnswer.split('|').map(s => norm(s)).filter(Boolean).sort();
-          const match = given.length === correct.length && given.every((v, i) => v === correct[i]);
-          score = match ? maxScore : 0;
+          const a = given.split('|').map(norm).filter(Boolean).sort();
+          const b = q.correctAnswer.split('|').map(norm).filter(Boolean).sort();
+          score = a.length === b.length && a.every((v, i) => v === b[i]) ? q.maxScore : 0;
         } else {
-          score = norm(userAnswer) === norm(q.correctAnswer) ? maxScore : 0;
+          score = norm(given) === norm(q.correctAnswer) ? q.maxScore : 0;
         }
       }
 
       return {
-        studentName: profile.name,
-        school: schoolName,
-        class: profile.className ?? '',
-        assessmentId,
-        questionId: q.questionId,
-        answer: userAnswer,
-        timestamp,
-        timeSpent: validated.timeSpent || 0,
+        questionId: q.id,
+        answer: given,
         score,
-        studentId: profile.id,
-        schoolId: profile.schoolId ?? undefined,
+        isAutoScored: score !== undefined,
       };
     });
 
-    // 5. Persist responses to Supabase
-    await saveResponses(responses);
+    await saveSubmission({
+      assessmentId: assessment.id,
+      studentId: profile.id,
+      enrollmentId: enrollment.enrollmentId,
+      timeSpentSeconds: timeSpent,
+      answers,
+    });
 
     return successResponse({ message: 'Assessment submitted successfully' });
   } catch (error) {

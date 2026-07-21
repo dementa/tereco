@@ -20,10 +20,18 @@ export async function GET(
   }
 }
 
-const CreateSchema = z.object({
-  name: z.string().min(1, "Class name is required"),
-  hasStreams: z.boolean().default(false),
-});
+// A class is either a rung on the canonical P.1-P.7 ladder or a school's own
+// named class (ELITE). `alias` relabels a ladder class for schools that use
+// their own naming; analysis still groups on `level`.
+const CreateSchema = z
+  .object({
+    level: z.number().int().min(1).max(7).nullable().optional(),
+    alias: z.string().optional(),
+    hasStreams: z.boolean().default(false),
+  })
+  .refine((v) => v.level != null || (v.alias ?? "").trim() !== "", {
+    message: "Choose a grade level, or give the class a name",
+  });
 
 export async function POST(
   request: NextRequest,
@@ -38,7 +46,13 @@ export async function POST(
     const profile = await getCurrentProfile(request);
     if (!profile) return errorResponse("Unauthorized", 401);
 
-    const schoolClass = await createClass({ schoolId: id, ...validated, createdBy: profile.id });
+    const schoolClass = await createClass({
+      schoolId: id,
+      level: validated.level ?? null,
+      alias: validated.alias ?? null,
+      hasStreams: validated.hasStreams,
+      createdBy: profile.id,
+    });
     return successResponse({ data: schoolClass });
   } catch (error) {
     return handleApiError(error, "Failed to create class");

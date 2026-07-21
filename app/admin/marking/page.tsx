@@ -1,189 +1,284 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
-import { CheckSquare, Save } from 'lucide-react';
+import { Badge } from '@/components/ui/Badge';
+import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { useToast } from '@/components/ui/ToastProvider';
+import { CheckSquare, Download } from 'lucide-react';
 
-interface Assessment { id: string; title: string; }
-interface Question { questionId: string; questionText: string; questionType: string; correctAnswer?: string; maxScore: number; }
+interface AssessmentOption {
+  id: string;
+  systemId: string;
+  title: string;
+  status: string;
+}
+
+interface Question {
+  id: string;
+  code: string;
+  position: number;
+  questionText: string;
+  questionType: string;
+  maxScore: number;
+  correctAnswer?: string;
+}
+
 interface ResponseRecord {
   id: string;
+  submissionId: string;
   studentName: string;
-  className: string;
   school: string;
+  className: string;
   questionId: string;
+  questionCode: string;
   answer: string;
   score: number | null;
+  maxScore: number;
   submittedAt: string;
 }
 
-interface StudentGroup {
-  key: string;
-  studentName: string;
-  className: string;
-  submittedAt: string;
-  responses: ResponseRecord[];
-}
-
-export default function AdminMarkingPage() {
-  const [assessments, setAssessments] = useState<Assessment[]>([]);
+export default function MarkingPage() {
+  const toast = useToast();
+  const [assessments, setAssessments] = useState<AssessmentOption[]>([]);
   const [selected, setSelected] = useState('');
+  const [responses, setResponses] = useState<ResponseRecord[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
-  const [groups, setGroups] = useState<StudentGroup[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [scores, setScores] = useState<Record<string, string>>({});
-  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadingResponses, setLoadingResponses] = useState(false);
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/assessments');
+      const data = await res.json();
+      if (data.success) setAssessments(data.data);
+      else toast.error(data.message ?? 'Failed to load assessments.');
+    } catch {
+      toast.error('Network error while loading assessments.');
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
-    fetch('/api/admin/assessments')
-      .then((r) => r.json())
-      .then((d) => { if (d.success) setAssessments(d.data); });
-  }, []);
+    const controller = new AbortController();
+    void (async () => {
+      if (!controller.signal.aborted) await load();
+    })();
+    return () => controller.abort();
+  }, [load]);
 
-  const loadResponses = useCallback((assessmentId: string) => {
-    if (!assessmentId) { setGroups([]); setQuestions([]); return; }
-    setLoading(true);
-    fetch(`/api/admin/responses?assessmentId=${encodeURIComponent(assessmentId)}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!d.success) return;
-        const qs: Question[] = d.data.questions ?? [];
-        const responses: ResponseRecord[] = d.data.responses ?? [];
-        setQuestions(qs);
-
-        const map = new Map<string, StudentGroup>();
-        for (const r of responses) {
-          const key = `${r.studentName}__${r.className}__${r.submittedAt}`;
-          if (!map.has(key)) {
-            map.set(key, { key, studentName: r.studentName, className: r.className, submittedAt: r.submittedAt, responses: [] });
-          }
-          map.get(key)!.responses.push(r);
+  const loadResponses = useCallback(
+    async (systemId: string) => {
+      if (!systemId) {
+        setResponses([]);
+        setQuestions([]);
+        return;
+      }
+      setLoadingResponses(true);
+      try {
+        const res = await fetch(`/api/admin/responses?assessmentId=${encodeURIComponent(systemId)}`);
+        const data = await res.json();
+        if (data.success) {
+          setResponses(data.data.responses);
+          setQuestions(data.data.questions);
+        } else {
+          toast.error(data.message ?? 'Failed to load responses.');
         }
-        setGroups(Array.from(map.values()));
+      } catch {
+        toast.error('Network error loading responses.');
+      } finally {
+        setLoadingResponses(false);
+      }
+    },
+    [toast]
+  );
 
-        const initial: Record<string, string> = {};
-        for (const r of responses) initial[r.id] = r.score === null ? '' : String(r.score);
-        setScores(initial);
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  const questionById = (qid: string) => questions.find((q) => q.questionId === qid);
-
-  const groupTotal = (g: StudentGroup) => {
-    let earned = 0;
-    let max = 0;
-    for (const r of g.responses) {
-      const q = questionById(r.questionId);
-      max += q?.maxScore ?? 0;
-      const v = scores[r.id];
-      if (v !== '' && v !== undefined && !Number.isNaN(Number(v))) earned += Number(v);
+  async function saveScore(response: ResponseRecord, raw: string) {
+    const score = Number(raw);
+    if (Number.isNaN(score) || score < 0) {
+      toast.error('Enter a score of 0 or more.');
+      return;
     }
-    return { earned, max };
-  };
+    // The database rejects anything above the question maximum; catching it
+    // here means the marker gets told before a request is wasted.
+    if (score > response.maxScore) {
+      toast.error(`${response.questionCode} is out of ${response.maxScore}.`);
+      return;
+    }
 
-  const saveGroup = async (g: StudentGroup) => {
-    setSavingKey(g.key);
+    setSavingId(response.id);
     try {
-      await Promise.all(
-        g.responses.map((r) => {
-          const v = scores[r.id];
-          if (v === '' || v === undefined) return null;
-          const num = Number(v);
-          if (Number.isNaN(num)) return null;
-          if (r.score !== null && r.score === num) return null;
-          return fetch(`/api/admin/responses/${r.id}`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ score: num }),
-          });
-        }).filter(Boolean) as Promise<Response>[]
-      );
-      loadResponses(selected);
+      const res = await fetch(`/api/admin/responses/${response.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ score }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setResponses((current) =>
+          current.map((r) => (r.id === response.id ? { ...r, score } : r))
+        );
+      } else {
+        toast.error(data.message ?? 'Could not save the score.');
+      }
+    } catch {
+      toast.error('Network error saving the score.');
     } finally {
-      setSavingKey(null);
+      setSavingId(null);
     }
-  };
+  }
+
+  const questionById = useMemo(
+    () => new Map(questions.map((q) => [q.id, q])),
+    [questions]
+  );
+
+  const columns: DataTableColumn<ResponseRecord>[] = useMemo(
+    () => [
+      { key: 'studentName', header: 'Student', value: (r) => r.studentName },
+      { key: 'className', header: 'Class', value: (r) => r.className || '—' },
+      { key: 'questionCode', header: 'Q', value: (r) => r.questionCode },
+      {
+        key: 'question',
+        header: 'Question',
+        sortable: false,
+        value: (r) => questionById.get(r.questionId)?.questionText ?? '',
+        render: (r) => (
+          <span className="text-xs text-[#5A7D8A] line-clamp-2">
+            {questionById.get(r.questionId)?.questionText ?? '—'}
+          </span>
+        ),
+        hideOnMobile: true,
+      },
+      {
+        key: 'answer',
+        header: 'Answer',
+        sortable: false,
+        value: (r) => r.answer,
+        render: (r) => (
+          <span className="whitespace-pre-wrap break-words">{r.answer || '—'}</span>
+        ),
+      },
+      {
+        key: 'score',
+        header: 'Score',
+        align: 'right',
+        value: (r) => r.score ?? -1,
+        render: (r) => (
+          <div className="flex items-center justify-end gap-1.5">
+            <input
+              type="number"
+              min={0}
+              max={r.maxScore}
+              step="0.5"
+              defaultValue={r.score ?? ''}
+              disabled={savingId === r.id}
+              aria-label={`Score for ${r.studentName}, ${r.questionCode}`}
+              onBlur={(e) => {
+                if (e.target.value === '' || Number(e.target.value) === r.score) return;
+                void saveScore(r, e.target.value);
+              }}
+              className="w-16 rounded-lg border-2 border-[#D1E0E8] px-2 py-1 text-sm text-right focus:border-[#02465B] focus:outline-none disabled:opacity-50"
+            />
+            <span className="text-xs text-[#9BB3BD]">/ {r.maxScore}</span>
+          </div>
+        ),
+      },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [questionById, savingId]
+  );
+
+  const unmarked = responses.filter((r) => r.score === null).length;
 
   return (
-    <div className="max-w-5xl">
-      <h1 className="text-2xl font-bold text-primary-900 mb-1">Marking</h1>
-      <p className="text-sm text-text-muted mb-6">Review student responses. Objective questions are auto-scored; edit any score and save.</p>
-
-      <div className="max-w-sm mb-6">
-        <Select
-          label="Assessment"
-          options={[{ value: '', label: 'Select an assessment…' }, ...assessments.map((a) => ({ value: a.id, label: a.title }))]}
-          value={selected}
-          onChange={(e) => { setSelected(e.target.value); loadResponses(e.target.value); }}
-        />
+    <div className="max-w-6xl space-y-4">
+      <div>
+        <h1 className="text-2xl font-bold text-primary-900 mb-1">Marking</h1>
+        <p className="text-sm text-text-muted">
+          Objective questions are scored automatically on submission. Written answers appear here
+          for marking — totals update themselves as you go.
+        </p>
       </div>
 
-      {loading ? (
-        <p className="text-text-muted">Loading responses…</p>
-      ) : !selected ? null : groups.length === 0 ? (
-        <Card className="p-8 text-center">
-          <CheckSquare className="w-10 h-10 text-text-faint mx-auto mb-3" />
-          <p className="text-text-muted">No submissions for this assessment yet.</p>
+      <Card>
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
+          <div className="flex-1">
+            <Select
+              label="Assessment"
+              options={[
+                { value: '', label: loading ? 'Loading…' : 'Select an assessment' },
+                ...assessments.map((a) => ({
+                  value: a.systemId,
+                  label: `${a.systemId} — ${a.title}`,
+                })),
+              ]}
+              value={selected}
+              onChange={(e) => {
+                setSelected(e.target.value);
+                void loadResponses(e.target.value);
+              }}
+            />
+          </div>
+          {selected && (
+            <div className="flex items-center gap-3">
+              <Badge variant={unmarked === 0 ? 'success' : 'accent'}>
+                {unmarked === 0 ? 'Fully marked' : `${unmarked} awaiting marking`}
+              </Badge>
+              <a href={`/api/admin/assessments/${selected}/results/pdf`} download>
+                <Button variant="outline">
+                  <Download className="w-4 h-4 mr-1.5" aria-hidden />
+                  Results PDF
+                </Button>
+              </a>
+            </div>
+          )}
+        </div>
+      </Card>
+
+      {!selected ? (
+        <Card>
+          <p className="text-sm text-text-muted flex items-center gap-2">
+            <CheckSquare className="w-4 h-4" aria-hidden />
+            Choose an assessment above to start marking.
+          </p>
         </Card>
       ) : (
-        <div className="space-y-5">
-          {groups.map((g) => {
-            const total = groupTotal(g);
-            return (
-              <Card key={g.key} className="p-5">
-                <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-                  <div>
-                    <p className="font-semibold text-primary-900">{g.studentName}</p>
-                    <p className="text-xs text-text-muted">{g.className} • {g.submittedAt ? new Date(g.submittedAt).toLocaleString() : ''}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-lg font-bold text-primary-900">{total.earned} / {total.max}</p>
-                    <p className="text-xs text-text-muted">total score</p>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {g.responses.map((r) => {
-                    const q = questionById(r.questionId);
-                    return (
-                      <div key={r.id} className="border border-primary-100 rounded-xl p-3">
-                        <p className="text-sm font-medium text-primary-900">{q?.questionText ?? r.questionId}</p>
-                        <p className="text-sm text-text-secondary mt-1">
-                          <span className="text-text-muted">Answer: </span>{r.answer || '—'}
-                        </p>
-                        {q?.correctAnswer && (
-                          <p className="text-xs text-success mt-0.5">Correct: {q.correctAnswer}</p>
-                        )}
-                        <div className="flex items-center gap-2 mt-2">
-                          <label className="text-xs text-text-muted">Score</label>
-                          <input
-                            type="number"
-                            min={0}
-                            max={q?.maxScore ?? undefined}
-                            step="0.5"
-                            value={scores[r.id] ?? ''}
-                            onChange={(e) => setScores((prev) => ({ ...prev, [r.id]: e.target.value }))}
-                            className="w-20 rounded-lg border-2 border-[#D1E0E8] px-2 py-1 text-sm focus:border-primary-700 focus:outline-none"
-                          />
-                          <span className="text-xs text-text-muted">/ {q?.maxScore ?? 1}</span>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                <div className="mt-4">
-                  <Button variant="primary" onClick={() => saveGroup(g)} isLoading={savingKey === g.key}>
-                    <Save className="w-4 h-4 mr-1" /> Save marks
-                  </Button>
-                </div>
-              </Card>
-            );
-          })}
-        </div>
+        <DataTable
+          rows={responses}
+          columns={columns}
+          rowKey={(r) => r.id}
+          loading={loadingResponses}
+          initialSort={{ key: 'studentName', direction: 'asc' }}
+          searchPlaceholder="Search by student, class, question or answer…"
+          emptyMessage="No responses recorded for this assessment yet."
+          pageSize={50}
+          mobileTitle={(r) => `${r.studentName} · ${r.questionCode}`}
+          filters={[
+            {
+              key: 'marking',
+              label: 'Marking',
+              options: [
+                { value: 'pending', label: 'Awaiting marking' },
+                { value: 'marked', label: 'Marked' },
+              ],
+              matches: (r, v) => (v === 'pending' ? r.score === null : r.score !== null),
+            },
+            {
+              key: 'question',
+              label: 'Question',
+              options: questions
+                .slice()
+                .sort((a, b) => a.position - b.position)
+                .map((q) => ({ value: q.code, label: q.code })),
+              matches: (r, v) => r.questionCode === v,
+            },
+          ]}
+        />
       )}
     </div>
   );

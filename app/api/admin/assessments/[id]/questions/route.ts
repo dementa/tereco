@@ -1,20 +1,18 @@
 import { NextRequest } from 'next/server';
-import { getQuestions, saveQuestions } from '@/lib/assessments';
+import { getAssessmentBySystemId, getQuestions, saveQuestions } from '@/lib/assessments';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { requireRole } from '@/lib/auth/session';
 import { z } from 'zod';
 
-// Only auto-markable types for now — matching/dragdrop/short/long need manual
-// marking, which isn't confirmed/tested yet. questionId is NOT accepted from
-// the client — it's assigned server-side from array order (Q1, Q2, ...) so
-// it can never be user-mistyped, duplicated, or raced.
+// position/code are NOT accepted from the client — they are assigned from array
+// order (Q1, Q2, ...) so they can never be mistyped, duplicated or raced.
 const QuestionSchema = z.object({
   questionText: z.string().min(1),
-  questionType: z.enum(['mcq', 'checkbox', 'fill']),
+  questionType: z.enum(['mcq', 'checkbox', 'fill', 'matching', 'dragdrop', 'short', 'long']),
   options: z.array(z.string()).default([]),
   correctAnswer: z.string().optional(),
-  maxScore: z.number().min(0).default(1),
-  config: z.any().optional(),
+  maxScore: z.number().positive().default(1),
+  config: z.unknown().optional(),
 });
 
 const SaveQuestionsSchema = z.object({
@@ -29,7 +27,10 @@ export async function GET(
   if (denied) return denied;
   const { id } = await params;
   try {
-    const questions = await getQuestions(id);
+    const assessment = await getAssessmentBySystemId(id);
+    if (!assessment) return errorResponse('Assessment not found', 404);
+
+    const questions = await getQuestions(assessment.id);
     return successResponse({ data: questions });
   } catch (error) {
     console.error('Error fetching questions:', error);
@@ -45,10 +46,24 @@ export async function POST(
   if (denied) return denied;
   const { id } = await params;
   try {
-    const body = await request.json();
-    const validated = SaveQuestionsSchema.parse(body);
-    const withIds = validated.questions.map((q, i) => ({ ...q, questionId: `Q${i + 1}` }));
-    await saveQuestions(id, withIds);
+    const validated = SaveQuestionsSchema.parse(await request.json());
+
+    const assessment = await getAssessmentBySystemId(id);
+    if (!assessment) return errorResponse('Assessment not found', 404);
+
+    await saveQuestions(
+      assessment.id,
+      validated.questions.map((q, i) => ({
+        position: i + 1,
+        code: `Q${i + 1}`,
+        questionText: q.questionText,
+        questionType: q.questionType,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        maxScore: q.maxScore,
+        config: q.config,
+      }))
+    );
     return successResponse({ message: 'Questions saved' });
   } catch (error) {
     console.error('Error saving questions:', error);

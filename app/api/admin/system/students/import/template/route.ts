@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
     studentsSheet.addRow([
       "Jane", "", "Doe",
       directory[0]?.name ?? "Example School",
-      directory[0]?.classes[0]?.name ?? "P.1",
+      directory[0]?.classes[0]?.displayName ?? "P.1",
       directory[0]?.classes[0]?.hasStreams ? (directory[0].classes[0].streams[0]?.name ?? "A") : "",
       "2015-06-01",
       "",
@@ -37,7 +37,7 @@ export async function GET(request: NextRequest) {
         continue;
       }
       for (const cls of school.classes) {
-        referenceSheet.addRow([school.name, cls.name, cls.hasStreams ? "yes" : "no", cls.streams.map((s) => s.name).join(", ")]);
+        referenceSheet.addRow([school.name, cls.displayName, cls.hasStreams ? "yes" : "no", cls.streams.map((s) => s.name).join(", ")]);
       }
     }
     referenceSheet.columns.forEach((col) => { col.width = 26; });

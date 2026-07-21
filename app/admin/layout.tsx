@@ -6,23 +6,25 @@ import { usePathname, useRouter } from 'next/navigation';
 import { AuthProvider, useAuth } from '@/components/auth/AuthContext';
 import { Button } from '@/components/ui/Button';
 import {
-  LayoutDashboard, FileText, Users, GraduationCap, ClipboardList,
-  CheckSquare, LogOut, ShieldAlert, ArrowLeft, School, UserCog, Contact,
+  LayoutDashboard, FileText, GraduationCap, ClipboardList,
+  CheckSquare, LogOut, ShieldAlert, ArrowLeft, School, UserCog, Contact, CalendarDays,
 } from 'lucide-react';
 
+// The old /admin/students and /admin/users roster pages are gone: they were the
+// pre-Supabase-Auth surface, built on the dropped `students`/`users` tables and
+// a hardcoded school list. Their replacements are under System below.
 const NAV = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/admin/lessons', label: 'Lesson Submissions', icon: FileText },
   { href: '/admin/assessments', label: 'Assessments', icon: ClipboardList },
   { href: '/admin/marking', label: 'Marking', icon: CheckSquare },
-  { href: '/admin/students', label: 'Students', icon: GraduationCap },
-  { href: '/admin/users', label: 'Staff Users', icon: Users },
 ];
 
 // Super-admin-only account provisioning — separate from the day-to-day
 // roster pages above (route-level guarded by requireSuperAdmin too, this is
 // just nav visibility).
 const SYSTEM_NAV = [
+  { href: '/admin/system/academic-years', label: 'Academic Years', icon: CalendarDays },
   { href: '/admin/system/schools', label: 'Schools', icon: School },
   { href: '/admin/system/staff', label: 'Staff & Admins', icon: UserCog },
   { href: '/admin/system/students', label: 'Student Accounts', icon: GraduationCap },

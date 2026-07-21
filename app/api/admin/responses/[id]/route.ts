@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { updateResponseScore } from '@/lib/assessments';
-import { handleApiError, successResponse } from '@/lib/apiResponse';
-import { requireRole } from '@/lib/auth/session';
+import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
+import { getCurrentProfile, requireRole } from '@/lib/auth/session';
 import { z } from 'zod';
 
 const ScoreSchema = z.object({
@@ -19,7 +19,10 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
     const { score } = ScoreSchema.parse(body);
-    await updateResponseScore(id, score);
+    const marker = await getCurrentProfile(request);
+    if (!marker) return errorResponse('Unauthorized', 401);
+    // Who marked it is recorded, not inferred later.
+    await updateResponseScore(id, score, marker.id);
     return successResponse({ message: 'Score updated' });
   } catch (error) {
     return handleApiError(error, 'Update failed');

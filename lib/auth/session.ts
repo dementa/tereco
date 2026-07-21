@@ -7,34 +7,44 @@ export type Role = "super_admin" | "admin" | "staff" | "student" | "parent";
 export interface SessionProfile {
   id: string;
   role: Role;
+  /** Convenience join of the name parts — profiles has no single `name` column. */
   name: string;
+  firstName: string;
+  lastName: string;
   email: string;
   systemId: string | null;
+  /**
+   * Null for super_admin, admin (TERECO-wide) and student (derived from the
+   * student's current enrollment, never stored on the profile — a student can
+   * change school mid-year). Only meaningful for staff and parents.
+   */
   schoolId: string | null;
-  className: string | null;
   mustChangePassword: boolean;
 }
 
 interface ProfileRow {
   id: string;
   role: Role;
-  name: string | null;
+  first_name: string | null;
+  last_name: string | null;
   email: string;
   system_id: string | null;
   school_id: string | null;
-  class_name: string | null;
   must_change_password: boolean;
 }
 
 function rowToProfile(row: ProfileRow): SessionProfile {
+  const firstName = row.first_name ?? "";
+  const lastName = row.last_name ?? "";
   return {
     id: row.id,
     role: row.role,
-    name: row.name ?? "",
+    name: [firstName, lastName].filter(Boolean).join(" "),
+    firstName,
+    lastName,
     email: row.email,
     systemId: row.system_id,
     schoolId: row.school_id,
-    className: row.class_name,
     mustChangePassword: row.must_change_password,
   };
 }
@@ -74,7 +84,7 @@ export async function getCurrentProfile(
   const admin = getSupabaseAdmin();
   const { data: profile, error } = await admin
     .from("profiles")
-    .select("id, role, name, email, system_id, school_id, class_name, must_change_password")
+    .select("id, role, first_name, last_name, email, system_id, school_id, must_change_password")
     .eq("id", userId)
     .eq("is_active", true)
     .single();

@@ -1,398 +1,551 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { AlertCircle, Trash2, Plus, Save, X } from 'lucide-react';
+import { Badge } from '@/components/ui/Badge';
+import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
+import { ArrowLeft, Download, Plus, Save, Trash2 } from 'lucide-react';
 
-// Only auto-markable types for now — matching/dragdrop/short/long need manual
-// marking, which isn't confirmed/tested yet.
-type QuestionType = 'mcq' | 'checkbox' | 'fill';
+type QuestionType = 'mcq' | 'checkbox' | 'fill' | 'matching' | 'dragdrop' | 'short' | 'long';
+
+const AUTO_SCORED: QuestionType[] = ['mcq', 'checkbox', 'fill'];
+const NEEDS_OPTIONS: QuestionType[] = ['mcq', 'checkbox'];
+
+const QUESTION_TYPES: { value: QuestionType; label: string }[] = [
+  { value: 'mcq', label: 'Multiple choice (one answer)' },
+  { value: 'checkbox', label: 'Multiple choice (several answers)' },
+  { value: 'fill', label: 'Fill in the blank' },
+  { value: 'short', label: 'Short answer (marked by hand)' },
+  { value: 'long', label: 'Long answer (marked by hand)' },
+];
 
 interface Question {
-  questionId: string; // server-assigned on save (Q1, Q2, ...) — display only, never user-editable
+  id?: string;
+  position: number;
+  code: string;
   questionText: string;
   questionType: QuestionType;
   options: string[];
   correctAnswer?: string;
   maxScore: number;
-  config?: unknown;
+}
+
+interface AssessmentTarget {
+  id: string;
+  schoolId: string | null;
+  level: number | null;
+  classId: string | null;
 }
 
 interface Assessment {
   id: string;
+  systemId: string;
   title: string;
   description: string;
   timeLimit: number;
-  startTime?: string;
-  targetType: string;
-  targetValue: string;
-  questionsSheet?: string; // deprecated
+  opensAt?: string;
+  closesAt?: string;
+  status: 'draft' | 'published' | 'closed';
+  targets: AssessmentTarget[];
+  questions: Question[];
 }
 
-export default function EditAssessmentPage() {
+interface School {
+  id: string;
+  name: string;
+}
+
+interface GradeLevel {
+  level: number;
+  code: string;
+}
+
+interface Result {
+  submissionId: string;
+  studentName: string;
+  studentSystemId: string | null;
+  school: string;
+  className: string;
+  submittedAt: string;
+  totalScore: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  status: string;
+}
+
+function blankQuestion(position: number): Question {
+  return {
+    position,
+    code: `Q${position}`,
+    questionText: '',
+    questionType: 'mcq',
+    options: ['', ''],
+    correctAnswer: '',
+    maxScore: 1,
+  };
+}
+
+export default function AssessmentDetailPage() {
   const params = useParams<{ id: string }>();
+  const systemId = params.id;
   const router = useRouter();
   const toast = useToast();
-  const assessmentId = params.id;
 
-  // Assessment metadata state
+  const [assessment, setAssessment] = useState<Assessment | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [schools, setSchools] = useState<School[]>([]);
+  const [levels, setLevels] = useState<GradeLevel[]>([]);
+  const [results, setResults] = useState<Result[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
-  const [assessment, setAssessment] = useState<Assessment | null>(null);
 
-  // Form fields
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [timeLimit, setTimeLimit] = useState(30);
-  const [startTime, setStartTime] = useState('');
-  const [targetType, setTargetType] = useState<'general' | 'class' | 'school+class'>('general');
-  const [targetValue, setTargetValue] = useState('');
-
-  // Questions state
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [loadingQuestions, setLoadingQuestions] = useState(true);
-  const [savingQuestions, setSavingQuestions] = useState(false);
-  const savingQuestionsRef = useRef(false); // synchronous guard: state updates aren't visible until re-render, so a fast double-click can pass the state check alone
-  const [editingQuestionId, setEditingQuestionId] = useState<string | null>(null);
-  const [newQuestion, setNewQuestion] = useState<Partial<Question>>({
-    questionType: 'mcq',
-    options: [],
-    maxScore: 1,
-  });
-
-  // Fetch assessment data
-  useEffect(() => {
-    async function fetchData() {
-      try {
-        const res = await fetch(`/api/admin/assessments/${assessmentId}`);
-        if (!res.ok) throw new Error('Failed to fetch');
-        const data = await res.json();
-        if (data.success) {
-          const a = data.data;
-          setAssessment(a);
-          setTitle(a.title);
-          setDescription(a.description || '');
-          setTimeLimit(a.timeLimit);
-          setStartTime(a.startTime || '');
-          setTargetType(a.targetType);
-          setTargetValue(a.targetValue || '');
-        } else {
-          setError(data.message);
-        }
-      } catch (err) {
-        setError('Failed to load assessment');
-      } finally {
-        setLoading(false);
-      }
-    }
-    fetchData();
-  }, [assessmentId]);
-
-  // Fetch questions — also called after a successful save to pick up the
-  // real server-assigned IDs (see handleSaveQuestions).
-  const fetchQuestions = async () => {
+  const load = useCallback(async () => {
     try {
-      const res = await fetch(`/api/admin/assessments/${assessmentId}/questions`);
-      if (!res.ok) throw new Error('Failed to fetch questions');
-      const data = await res.json();
-      if (data.success) {
-        setQuestions(data.data);
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoadingQuestions(false);
-    }
-  };
-  useEffect(() => { fetchQuestions(); }, [assessmentId]); // eslint-disable-line react-hooks/exhaustive-deps
+      const [detail, schoolsRes, levelsRes, resultsRes] = await Promise.all([
+        fetch(`/api/admin/assessments/${systemId}`).then((r) => r.json()),
+        fetch('/api/admin/system/schools').then((r) => r.json()),
+        fetch('/api/admin/system/grade-levels').then((r) => r.json()),
+        fetch(`/api/admin/assessments/${systemId}/results`).then((r) => r.json()),
+      ]);
 
-  // ─── Metadata save ────────────────────────────────────────
-  const handleSaveMetadata = async (e: React.FormEvent) => {
-    e.preventDefault();
+      if (detail.success) {
+        setAssessment(detail.data);
+        setQuestions(detail.data.questions ?? []);
+      } else {
+        toast.error(detail.message ?? 'Failed to load assessment.');
+      }
+      if (schoolsRes.success) setSchools(schoolsRes.data);
+      if (levelsRes.success) setLevels(levelsRes.data);
+      if (resultsRes.success) setResults(resultsRes.data.results);
+    } catch {
+      toast.error('Network error while loading the assessment.');
+    } finally {
+      setLoading(false);
+    }
+  }, [systemId, toast]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      if (!controller.signal.aborted) await load();
+    })();
+    return () => controller.abort();
+  }, [load]);
+
+  // Once anyone has sat the paper, the questions are frozen: rewriting them
+  // under existing answers would invalidate every score already recorded.
+  const locked = results.length > 0;
+
+  function updateQuestion(index: number, patch: Partial<Question>) {
+    setQuestions((current) =>
+      current.map((q, i) => (i === index ? { ...q, ...patch } : q))
+    );
+  }
+
+  function removeQuestion(index: number) {
+    setQuestions((current) =>
+      current
+        .filter((_, i) => i !== index)
+        .map((q, i) => ({ ...q, position: i + 1, code: `Q${i + 1}` }))
+    );
+  }
+
+  async function saveQuestions() {
     setSaving(true);
     try {
-      const payload = { title, description, timeLimit, startTime: startTime || undefined, targetType, targetValue: targetValue || undefined };
-      const res = await fetch(`/api/admin/assessments/${assessmentId}`, {
-        method: 'PUT',
+      const res = await fetch(`/api/admin/assessments/${systemId}/questions`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          questions: questions.map((q) => ({
+            questionText: q.questionText,
+            questionType: q.questionType,
+            options: NEEDS_OPTIONS.includes(q.questionType)
+              ? q.options.filter((o) => o.trim())
+              : [],
+            correctAnswer: AUTO_SCORED.includes(q.questionType)
+              ? q.correctAnswer || undefined
+              : undefined,
+            maxScore: Number(q.maxScore),
+          })),
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success('Assessment updated.');
+        toast.success('Questions saved.');
+        await load();
       } else {
-        toast.error(data.message || 'Update failed.');
+        toast.error(data.message ?? 'Failed to save questions.');
       }
-    } catch (err) {
-      toast.error('Network error — please try again.');
+    } catch {
+      toast.error('Network error.');
     } finally {
       setSaving(false);
     }
-  };
+  }
 
-  // ─── Save all questions ──────────────────────────────────
-  const handleSaveQuestions = async () => {
-    if (savingQuestionsRef.current) return; // guard against double-submit racing the delete+insert on the server
-    savingQuestionsRef.current = true;
-    // Normalize options (trim each, drop empties) and correct answers before
-    // validating/sending so multi-word options keep their internal spaces.
-    const normalized: Question[] = questions.map((q) => ({
-      ...q,
-      options: q.options.map((o) => o.trim()).filter(Boolean),
-      correctAnswer: q.correctAnswer?.trim(),
-    }));
-
-    // ── Validate before sending ──
-    const errors: string[] = [];
-    for (const q of normalized) {
-      if (!q.questionText.trim()) errors.push(`Question text is required for "${q.questionId || 'a new question'}".`);
-      if (['mcq', 'checkbox'].includes(q.questionType)) {
-        if (q.options.length === 0) errors.push(`Options are required for ${q.questionType} question "${q.questionId}".`);
-      }
-      if (!q.correctAnswer?.trim()) errors.push(`Correct answer is required for question "${q.questionId}".`);
+  async function patchAssessment(patch: Record<string, unknown>, message: string) {
+    const res = await fetch(`/api/admin/assessments/${systemId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const data = await res.json();
+    if (data.success) {
+      toast.success(message);
+      await load();
+    } else {
+      toast.error(data.message ?? 'Update failed.');
     }
+  }
 
-    if (errors.length > 0) {
-      toast.error(`Validation errors:\n${errors.join('\n')}`);
-      savingQuestionsRef.current = false;
-      return;
-    }
+  async function addTarget(target: { schoolId?: string; level?: number }) {
+    if (!assessment) return;
+    const next = [
+      ...assessment.targets.map((t) => ({
+        schoolId: t.schoolId,
+        level: t.level,
+        classId: t.classId,
+      })),
+      { schoolId: target.schoolId ?? null, level: target.level ?? null, classId: null },
+    ];
+    await patchAssessment({ targets: next }, 'Audience updated.');
+  }
 
-    setSavingQuestions(true);
-    try {
-      setQuestions(normalized);
-      const res = await fetch(`/api/admin/assessments/${assessmentId}/questions`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questions: normalized }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success('Questions saved successfully!');
-        await fetchQuestions(); // pick up the real server-assigned question IDs
-      } else {
-        // Show detailed validation errors from server
-        if (data.errors && Array.isArray(data.errors)) {
-          const serverErrors = data.errors
-            .map((e: { path?: unknown; message?: string }) => `${Array.isArray(e.path) ? e.path.join('.') : e.path}: ${e.message}`)
-            .join('\n');
-          toast.error(`Server validation failed:\n${serverErrors}`);
-        } else {
-          toast.error(data.message || 'Failed to save questions.');
-        }
-      }
-    } catch (err) {
-      toast.error('Network error — please try again.');
-    } finally {
-      setSavingQuestions(false);
-      savingQuestionsRef.current = false;
-    }
-  };
+  async function removeTarget(targetId: string) {
+    if (!assessment) return;
+    const next = assessment.targets
+      .filter((t) => t.id !== targetId)
+      .map((t) => ({ schoolId: t.schoolId, level: t.level, classId: t.classId }));
+    await patchAssessment({ targets: next }, 'Audience updated.');
+  }
 
-  // ─── Question CRUD helpers ──────────────────────────────
-  const addQuestion = () => {
-    const existingIds = new Set(questions.map((q) => q.questionId));
-    let n = questions.length + 1;
-    let newId = `Q${n}`;
-    while (existingIds.has(newId)) newId = `Q${++n}`;
-    setQuestions([
-      ...questions,
+  const resultColumns: DataTableColumn<Result>[] = useMemo(
+    () => [
+      { key: 'studentName', header: 'Student', value: (r) => r.studentName },
+      { key: 'studentSystemId', header: 'Student ID', value: (r) => r.studentSystemId ?? '—' },
+      { key: 'school', header: 'School', value: (r) => r.school || '—', hideOnMobile: true },
+      { key: 'className', header: 'Class', value: (r) => r.className || '—' },
       {
-        questionId: newId,
-        questionText: '',
-        questionType: 'mcq',
-        options: [],
-        correctAnswer: '',
-        maxScore: 1,
+        key: 'score',
+        header: 'Score',
+        align: 'right',
+        value: (r) => r.totalScore ?? -1,
+        render: (r) =>
+          r.totalScore === null ? '—' : `${r.totalScore} / ${r.maxScore ?? '—'}`,
       },
-    ]);
-    setEditingQuestionId(newId);
+      {
+        key: 'percentage',
+        header: '%',
+        align: 'right',
+        value: (r) => r.percentage ?? -1,
+        // An unmarked paper says so rather than showing a misleading number.
+        render: (r) =>
+          r.percentage === null ? (
+            <span className="text-[#9BB3BD]">pending</span>
+          ) : (
+            `${r.percentage}%`
+          ),
+      },
+    ],
+    []
+  );
+
+  if (loading) return <p className="text-text-muted">Loading…</p>;
+  if (!assessment) return <p className="text-error">Assessment not found.</p>;
+
+  const targetLabel = (t: AssessmentTarget) => {
+    const parts = [
+      t.schoolId ? (schools.find((s) => s.id === t.schoolId)?.name ?? 'Unknown school') : null,
+      t.level !== null ? (levels.find((l) => l.level === t.level)?.code ?? `Level ${t.level}`) : null,
+    ].filter(Boolean);
+    return parts.join(' · ');
   };
-
-  const updateQuestion = (index: number, field: keyof Question, value: Question[keyof Question]) => {
-    const updated = [...questions];
-    updated[index] = { ...updated[index], [field]: value };
-    setQuestions(updated);
-  };
-
-  const deleteQuestion = (index: number) => {
-    if (window.confirm('Delete this question?')) {
-      setQuestions(questions.filter((_, i) => i !== index));
-    }
-  };
-
-  // ─── Render question editor ──────────────────────────────
-  const renderQuestionEditor = (q: Question, index: number) => {
-    const isEditing = editingQuestionId === q.questionId;
-    const isNew = q.questionId.startsWith('Q') && q.questionText === '' && !q.options.length;
-
-    return (
-      <div key={index} className="border border-[#02465B]/10 rounded-xl p-4 mb-4 relative">
-        {!isEditing && !isNew ? (
-          // Read-only view
-          <div className="flex justify-between items-start">
-            <div className="flex-1">
-              <p className="font-medium text-[#011E28]">{q.questionId}: {q.questionText}</p>
-              <p className="text-xs text-[#5A7A85]">
-                {q.questionType} • {q.options.length} options • {q.maxScore} marks
-                {q.correctAnswer && ` • Answer: ${q.correctAnswer}`}
-              </p>
-            </div>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setEditingQuestionId(q.questionId)}>
-                Edit
-              </Button>
-              <Button variant="outline" className="text-[#C0392B]" onClick={() => deleteQuestion(index)}>
-                <Trash2 className="w-4 h-4" />
-              </Button>
-            </div>
-          </div>
-        ) : (
-          // Edit mode
-          <div className="space-y-3">
-            <Input
-              label="Question Text"
-              value={q.questionText}
-              onChange={(e) => updateQuestion(index, 'questionText', e.target.value)}
-              required
-            />
-            <div className="grid grid-cols-2 gap-3">
-              <Select
-                label="Type"
-                options={[
-                  { value: 'mcq', label: 'Multiple Choice' },
-                  { value: 'checkbox', label: 'Checkbox' },
-                  { value: 'fill', label: 'Fill in the Blank' },
-                ]}
-                value={q.questionType}
-                onChange={(e) => updateQuestion(index, 'questionType', e.target.value as Question['questionType'])}
-                required
-              />
-              <Input
-                label="Max Score"
-                type="number"
-                value={q.maxScore}
-                onChange={(e) => updateQuestion(index, 'maxScore', parseFloat(e.target.value) || 1)}
-                required
-              />
-            </div>
-            {['mcq', 'checkbox'].includes(q.questionType) && (
-              <div>
-                <label className="text-xs font-medium text-[#5A7A85]">Options (comma separated)</label>
-                <Input
-                  value={q.options.join(', ')}
-                  onChange={(e) => updateQuestion(index, 'options', e.target.value.split(','))}
-                  placeholder="e.g. A, B, C, D"
-                />
-              </div>
-            )}
-            <Input
-              label={q.questionType === 'checkbox' ? 'Correct Answer(s) — separate multiple with |' : 'Correct Answer'}
-              value={q.correctAnswer || ''}
-              onChange={(e) => updateQuestion(index, 'correctAnswer', e.target.value)}
-              required
-            />
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setEditingQuestionId(null)}>
-                <X className="w-4 h-4 mr-1" /> Cancel
-              </Button>
-              <Button variant="primary" onClick={() => setEditingQuestionId(null)}>
-                <Save className="w-4 h-4 mr-1" /> Done
-              </Button>
-            </div>
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  if (loading) {
-    return <div className="p-8 text-center text-[#5A7A85]">Loading assessment...</div>;
-  }
-
-  if (error) {
-    return (
-      <div className="min-h-screen bg-[#F5FDFF] flex items-center justify-center">
-        <div className="text-center">
-          <AlertCircle className="w-12 h-12 text-[#C0392B] mx-auto mb-4" />
-          <p className="text-[#C0392B]">{error}</p>
-          <Button className="mt-4" variant="outline" onClick={() => router.push('/admin/assessments')}>
-            Back to List
-          </Button>
-        </div>
-      </div>
-    );
-  }
 
   return (
-    <div className="min-h-screen bg-[#F5FDFF] p-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-2xl font-bold text-[#011E28] mb-6">Edit Assessment</h1>
+    <div className="max-w-5xl space-y-4">
+      <button
+        type="button"
+        onClick={() => router.push('/admin/assessments')}
+        className="inline-flex items-center gap-1.5 text-sm text-[#5A7D8A] hover:text-[#02465B]"
+      >
+        <ArrowLeft className="w-4 h-4" aria-hidden />
+        All assessments
+      </button>
 
-        {/* Metadata Form */}
-        <Card className="p-6 mb-8">
-          <h2 className="text-lg font-semibold text-[#011E28] mb-4">Metadata</h2>
-          <form onSubmit={handleSaveMetadata} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Title" value={title} onChange={(e) => setTitle(e.target.value)} required />
-              <Input label="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
-              <Input label="Time Limit (minutes)" type="number" value={timeLimit} onChange={(e) => setTimeLimit(parseInt(e.target.value) || 0)} required />
-              <Input label="Start Time (optional)" type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
-              <Select
-                label="Target Type"
-                options={[
-                  { value: 'general', label: 'General' },
-                  { value: 'class', label: 'Class' },
-                  { value: 'school+class', label: 'School + Class' },
-                ]}
-                value={targetType}
-                onChange={(e) => setTargetType(e.target.value as 'general' | 'class' | 'school+class')}
-                required
-              />
-              {targetType !== 'general' && (
-                <Input
-                  label="Target Value"
-                  value={targetValue}
-                  onChange={(e) => setTargetValue(e.target.value)}
-                  placeholder={targetType === 'class' ? 'e.g., Form 3A' : 'e.g., Nairobi Academy|Form 4A'}
-                  required
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-primary-900 mb-1 flex items-center gap-2">
+            {assessment.title}
+            <Badge variant={assessment.status === 'published' ? 'success' : 'muted'}>
+              {assessment.status}
+            </Badge>
+          </h1>
+          <p className="text-sm text-text-muted">
+            {assessment.systemId} · {assessment.timeLimit} minutes ·{' '}
+            {questions.length} question{questions.length === 1 ? '' : 's'}
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          {assessment.status === 'draft' && (
+            <Button
+              onClick={() => void patchAssessment({ status: 'published' }, 'Assessment published.')}
+              disabled={questions.length === 0}
+              title={questions.length === 0 ? 'Add at least one question first' : undefined}
+            >
+              Publish
+            </Button>
+          )}
+          {assessment.status === 'published' && (
+            <Button
+              variant="outline"
+              onClick={() => void patchAssessment({ status: 'closed' }, 'Assessment closed.')}
+            >
+              Close
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Audience ─────────────────────────────────────────── */}
+      <Card>
+        <h2 className="font-semibold text-primary-900 mb-1">Audience</h2>
+        <p className="text-xs text-text-muted mb-3">
+          With no targets, every student may sit this. Add a target to narrow it by school or grade
+          level — a student matching any target qualifies.
+        </p>
+
+        <div className="flex flex-wrap gap-2 mb-3">
+          {assessment.targets.length === 0 ? (
+            <Badge variant="accent">All students</Badge>
+          ) : (
+            assessment.targets.map((t) => (
+              <span
+                key={t.id}
+                className="inline-flex items-center gap-1 rounded-lg bg-[#F1F6F8] px-2 py-1 text-xs text-[#12333F]"
+              >
+                {targetLabel(t)}
+                <button
+                  type="button"
+                  onClick={() => void removeTarget(t.id)}
+                  aria-label={`Remove target ${targetLabel(t)}`}
+                  className="text-[#5A7D8A] hover:text-[#C26565]"
+                >
+                  <Trash2 className="w-3 h-3" aria-hidden />
+                </button>
+              </span>
+            ))
+          )}
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <Select
+            label="Add: whole school"
+            options={[
+              { value: '', label: 'Select a school' },
+              ...schools.map((s) => ({ value: s.id, label: s.name })),
+            ]}
+            value=""
+            onChange={(e) => e.target.value && void addTarget({ schoolId: e.target.value })}
+          />
+          <Select
+            label="Add: grade level (all schools)"
+            options={[
+              { value: '', label: 'Select a level' },
+              ...levels.map((l) => ({ value: String(l.level), label: l.code })),
+            ]}
+            value=""
+            onChange={(e) => e.target.value && void addTarget({ level: Number(e.target.value) })}
+          />
+        </div>
+      </Card>
+
+      {/* ── Questions ────────────────────────────────────────── */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-primary-900">Questions</h2>
+          {!locked && (
+            <Button variant="outline" onClick={() => setQuestions((q) => [...q, blankQuestion(q.length + 1)])}>
+              <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+              Add question
+            </Button>
+          )}
+        </div>
+
+        {locked && (
+          <p className="text-xs text-[#C26565] mb-3">
+            {results.length} student{results.length === 1 ? ' has' : 's have'} already sat this
+            paper, so the questions are locked — editing them would invalidate the scores already
+            recorded against them.
+          </p>
+        )}
+
+        <div className="space-y-3">
+          {questions.length === 0 && (
+            <p className="text-sm text-text-muted">No questions yet.</p>
+          )}
+
+          {questions.map((q, index) => (
+            <div key={q.id ?? index} className="rounded-xl border border-[#E8EFF3] p-3 space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-medium text-[#5A7D8A] w-8">{q.code}</span>
+                <input
+                  type="text"
+                  value={q.questionText}
+                  disabled={locked}
+                  onChange={(e) => updateQuestion(index, { questionText: e.target.value })}
+                  placeholder="Question text"
+                  aria-label={`${q.code} text`}
+                  className="flex-1 rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
                 />
+                {!locked && (
+                  <button
+                    type="button"
+                    onClick={() => removeQuestion(index)}
+                    aria-label={`Remove ${q.code}`}
+                    className="text-[#C26565] hover:text-[#A34C4C]"
+                  >
+                    <Trash2 className="w-4 h-4" aria-hidden />
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <Select
+                  label="Type"
+                  options={QUESTION_TYPES}
+                  value={q.questionType}
+                  disabled={locked}
+                  onChange={(e) =>
+                    updateQuestion(index, {
+                      questionType: e.target.value as QuestionType,
+                      options: NEEDS_OPTIONS.includes(e.target.value as QuestionType)
+                        ? q.options.length
+                          ? q.options
+                          : ['', '']
+                        : [],
+                    })
+                  }
+                />
+                <Input
+                  label="Marks"
+                  type="number"
+                  min={1}
+                  step="0.5"
+                  value={q.maxScore}
+                  disabled={locked}
+                  onChange={(e) => updateQuestion(index, { maxScore: Number(e.target.value) })}
+                />
+                {AUTO_SCORED.includes(q.questionType) && (
+                  <Input
+                    label={q.questionType === 'checkbox' ? 'Correct (separate with |)' : 'Correct answer'}
+                    value={q.correctAnswer ?? ''}
+                    disabled={locked}
+                    onChange={(e) => updateQuestion(index, { correctAnswer: e.target.value })}
+                  />
+                )}
+              </div>
+
+              {NEEDS_OPTIONS.includes(q.questionType) && (
+                <div className="space-y-1.5">
+                  <span className="text-xs font-medium text-[#5A7D8A]">Choices</span>
+                  {q.options.map((option, oi) => (
+                    <div key={oi} className="flex gap-2">
+                      <input
+                        type="text"
+                        value={option}
+                        disabled={locked}
+                        onChange={(e) =>
+                          updateQuestion(index, {
+                            options: q.options.map((o, i) => (i === oi ? e.target.value : o)),
+                          })
+                        }
+                        placeholder={`Choice ${oi + 1}`}
+                        aria-label={`${q.code} choice ${oi + 1}`}
+                        className="flex-1 rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
+                      />
+                      {!locked && q.options.length > 2 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateQuestion(index, {
+                              options: q.options.filter((_, i) => i !== oi),
+                            })
+                          }
+                          aria-label={`Remove choice ${oi + 1}`}
+                          className="text-[#C26565]"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" aria-hidden />
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {!locked && (
+                    <button
+                      type="button"
+                      onClick={() => updateQuestion(index, { options: [...q.options, ''] })}
+                      className="text-xs text-[#02465B] hover:underline"
+                    >
+                      + Add choice
+                    </button>
+                  )}
+                </div>
               )}
             </div>
-            <Button type="submit" isLoading={saving}>Save Metadata</Button>
-          </form>
-        </Card>
+          ))}
+        </div>
 
-        {/* Questions Manager */}
-        <Card className="p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold text-[#011E28]">Questions</h2>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={addQuestion}>
-                <Plus className="w-4 h-4 mr-1" /> Add Question
-              </Button>
-              <Button variant="primary" onClick={handleSaveQuestions} isLoading={savingQuestions} disabled={savingQuestions}>
-                <Save className="w-4 h-4 mr-1" /> Save All
-              </Button>
-            </div>
+        {!locked && questions.length > 0 && (
+          <div className="mt-4">
+            <Button onClick={() => void saveQuestions()} isLoading={saving}>
+              <Save className="w-4 h-4 mr-1.5" aria-hidden />
+              Save questions
+            </Button>
           </div>
-          {loadingQuestions ? (
-            <p className="text-[#5A7A85]">Loading questions...</p>
-          ) : questions.length === 0 ? (
-            <p className="text-[#5A7A85]">No questions yet. Add one above.</p>
-          ) : (
-            <div className="space-y-2">
-              {questions.map((q, idx) => renderQuestionEditor(q, idx))}
-            </div>
+        )}
+      </Card>
+
+      {/* ── Results ──────────────────────────────────────────── */}
+      <Card>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-semibold text-primary-900">Results</h2>
+          {results.length > 0 && (
+            <a href={`/api/admin/assessments/${systemId}/results/pdf`} download>
+              <Button variant="outline">
+                <Download className="w-4 h-4 mr-1.5" aria-hidden />
+                Download PDF
+              </Button>
+            </a>
           )}
-        </Card>
-      </div>
+        </div>
+
+        <DataTable
+          rows={results}
+          columns={resultColumns}
+          rowKey={(r) => r.submissionId}
+          initialSort={{ key: 'studentName', direction: 'asc' }}
+          searchPlaceholder="Search results by student, ID, school or class…"
+          emptyMessage="Nobody has sat this assessment yet."
+          mobileTitle={(r) => r.studentName}
+          filters={[
+            {
+              key: 'marked',
+              label: 'Marking',
+              options: [
+                { value: 'marked', label: 'Fully marked' },
+                { value: 'pending', label: 'Awaiting marking' },
+              ],
+              matches: (r, v) => (v === 'marked' ? r.percentage !== null : r.percentage === null),
+            },
+          ]}
+        />
+      </Card>
     </div>
   );
 }

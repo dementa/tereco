@@ -6,8 +6,13 @@ import { supabaseAnonKey, supabaseUrl } from "@/lib/auth/env";
  * Refreshes an expiring Supabase Auth session on every request. Without this,
  * Server Components can read but not write cookies, so a session would go
  * stale silently mid-navigation instead of being refreshed.
+ *
+ * Renamed from `middleware` in Next.js 16 (the `middleware` file convention
+ * and named export are both deprecated). This deliberately only refreshes the
+ * token — authorization lives in the route handlers and the admin layout,
+ * because Proxy runs at the network boundary and must not be the only gate.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(supabaseUrl(), supabaseAnonKey(), {

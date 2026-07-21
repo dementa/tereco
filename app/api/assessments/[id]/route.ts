@@ -1,14 +1,15 @@
 import { NextRequest } from 'next/server';
-import { getAssessmentById } from '@/lib/assessments';
+import { getAssessmentBySystemId } from '@/lib/assessments';
 import { errorResponse, successResponse } from '@/lib/apiResponse';
 
+// [id] is the public ASS#### system id.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const { id } = await params;
-    const assessment = await getAssessmentById(id);
+    const assessment = await getAssessmentBySystemId(id);
     if (!assessment) {
       return errorResponse('Assessment not found', 404);
     }

@@ -3,41 +3,33 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
-import { FileText, Users, GraduationCap, ClipboardList } from 'lucide-react';
+import { Building2, Users, GraduationCap, UserRound } from 'lucide-react';
 
 interface Stats {
-  lessons: number;
-  assessments: number;
+  schools: number;
+  staff: number;
   students: number;
-  users: number;
+  parents: number;
 }
 
 const CARDS = [
-  { key: 'lessons' as const, label: 'Lesson Submissions', href: '/admin/lessons', icon: FileText },
-  { key: 'assessments' as const, label: 'Assessments', href: '/admin/assessments', icon: ClipboardList },
-  { key: 'students' as const, label: 'Students', href: '/admin/students', icon: GraduationCap },
-  { key: 'users' as const, label: 'Staff Users', href: '/admin/users', icon: Users },
+  { key: 'schools' as const, label: 'Schools', href: '/admin/system/schools', icon: Building2 },
+  { key: 'staff' as const, label: 'Staff', href: '/admin/system/staff', icon: Users },
+  { key: 'students' as const, label: 'Students', href: '/admin/system/students', icon: GraduationCap },
+  { key: 'parents' as const, label: 'Parents', href: '/admin/system/parents', icon: UserRound },
 ];
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<Stats>({ lessons: 0, assessments: 0, students: 0, users: 0 });
+  const [stats, setStats] = useState<Stats>({ schools: 0, staff: 0, students: 0, parents: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const [lessons, assessments, students, users] = await Promise.all([
-          fetch('/api/admin/lessons').then((r) => r.json()),
-          fetch('/api/admin/assessments').then((r) => r.json()),
-          fetch('/api/admin/students').then((r) => r.json()),
-          fetch('/api/admin/users').then((r) => r.json()),
-        ]);
-        setStats({
-          lessons: lessons.data?.length ?? 0,
-          assessments: assessments.data?.length ?? 0,
-          students: students.data?.length ?? 0,
-          users: users.data?.length ?? 0,
-        });
+        // One counted query per entity, server-side — not four full list
+        // fetches whose lengths happen to be the numbers we want.
+        const res = await fetch('/api/admin/system/stats').then((r) => r.json());
+        if (res.data) setStats(res.data);
       } finally {
         setLoading(false);
       }

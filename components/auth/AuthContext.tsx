@@ -54,7 +54,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  useEffect(() => { refresh(); }, [refresh]);
+  useEffect(() => {
+    const controller = new AbortController();
+    // Kicked off asynchronously so no state is set synchronously in the effect
+    // body — `loading` already starts true and is cleared when the request
+    // settles.
+    void (async () => {
+      if (!controller.signal.aborted) await refresh();
+    })();
+    return () => controller.abort();
+  }, [refresh]);
 
   const login = (loggedInUser: User & { mustChangePassword?: boolean }) => {
     setUser(loggedInUser);

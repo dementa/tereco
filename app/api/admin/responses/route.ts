@@ -1,5 +1,5 @@
 import { NextRequest } from 'next/server';
-import { getResponses, getQuestions, getAssessmentById } from '@/lib/assessments';
+import { getResponses, getQuestions, getAssessmentBySystemId } from '@/lib/assessments';
 import { errorResponse, successResponse } from '@/lib/apiResponse';
 import { requireRole } from '@/lib/auth/session';
 
@@ -12,10 +12,14 @@ export async function GET(request: NextRequest) {
     return errorResponse('assessmentId is required', 400);
   }
   try {
-    const [assessment, responses, questions] = await Promise.all([
-      getAssessmentById(assessmentId),
-      getResponses(assessmentId),
-      getQuestions(assessmentId),
+    // assessmentId in the query string is the public ASS#### id; the response
+    // and question lookups key off the internal uuid.
+    const assessment = await getAssessmentBySystemId(assessmentId);
+    if (!assessment) return errorResponse('Assessment not found', 404);
+
+    const [responses, questions] = await Promise.all([
+      getResponses(assessment.id),
+      getQuestions(assessment.id),
     ]);
     return successResponse({ data: { assessment, responses, questions } });
   } catch (error) {

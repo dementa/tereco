@@ -2,6 +2,8 @@ import { NextRequest } from "next/server";
 import { createClient } from "@/lib/auth/supabase-server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { errorResponse, successResponse } from "@/lib/apiResponse";
+import { fullName } from "@/lib/entities/accounts";
+import { enrollmentClassLabel, getCurrentEnrollment } from "@/lib/entities/enrollments";
 
 /**
  * Accepts either a system ID (TA-2026-0001, TSF-..., TST-..., TPR-...) or an
@@ -46,7 +48,7 @@ export async function POST(request: NextRequest) {
 
     const { data: profile } = await admin
       .from("profiles")
-      .select("id, system_id, role, name, email, school_id, class_name, must_change_password, schools!profiles_school_id_fkey(name)")
+      .select("id, system_id, role, first_name, middle_name, last_name, email, school_id, must_change_password, school:schools!profiles_school_id_fkey(name)")
       .eq("id", data.user.id)
       .eq("is_active", true)
       .maybeSingle();
@@ -56,18 +58,32 @@ export async function POST(request: NextRequest) {
       return errorResponse("Invalid credentials", 401);
     }
 
-    const schoolName = (profile.schools as unknown as { name: string } | null)?.name ?? "";
+    // A student's school and class come from their open enrollment, never from
+    // the profile — those columns do not exist, precisely so that a transfer
+    // cannot retroactively rewrite where their past records belong.
+    const enrollment =
+      profile.role === "student" ? await getCurrentEnrollment(profile.id) : null;
+
+    let schoolName = profile.school?.name ?? "";
+    if (enrollment) {
+      const { data: school } = await admin
+        .from("schools")
+        .select("name")
+        .eq("id", enrollment.schoolId)
+        .maybeSingle();
+      schoolName = school?.name ?? "";
+    }
 
     return successResponse({
       user: {
         id: profile.id,
         staffId: profile.system_id ?? "",
         role: profile.role,
-        name: profile.name,
+        name: fullName(profile),
         email: profile.email,
         school: schoolName,
-        schoolId: profile.school_id,
-        className: profile.class_name,
+        schoolId: enrollment?.schoolId ?? profile.school_id,
+        className: enrollmentClassLabel(enrollment) || null,
         mustChangePassword: profile.must_change_password,
       },
     });

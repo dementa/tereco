@@ -18,7 +18,7 @@ export const COLORS = {
 };
 
 // School → classes mapping (extend as needed)
-export const SCHOOLS: Record<string, string[]> = {
-  'Ebenezer Standard Junior School': ['P.1B', 'P.1C', 'P.1S', 'P.2B', 'P.2C', 'P.2S','P.3B', 'P.3C', 'P.3S','P.4B', 'P.4V', 'P.4S','P.5B', 'P.5V', 'P.5S','P.6B', 'P.6V'],
-  'Little Pines Junior School': ['J1A', 'J1B', 'J2', 'J3A', 'J3B', 'J4', 'J5', 'J6', 'ELITE'],
-};
+// The hardcoded school -> class list that used to live here is gone: schools,
+// classes and streams are database tables now. Read them through
+// lib/entities/classes.ts (listSchoolsDirectory) instead of a constant that
+// silently goes stale the moment a school renames a class.

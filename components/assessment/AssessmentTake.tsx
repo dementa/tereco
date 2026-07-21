@@ -10,7 +10,12 @@ import { useAuth } from '@/components/auth/AuthContext';
 type QuestionType = 'mcq' | 'checkbox' | 'fill' | 'matching' | 'dragdrop' | 'short' | 'long';
 
 interface Question {
-  questionId: string;
+  /** The question's uuid. Answers are keyed by this — the submit route
+   *  matches on it, so it must not be confused with the display code. */
+  id: string;
+  /** Human-facing label shown to the student: Q1, Q2, ... */
+  code: string;
+  position: number;
   questionText: string;
   questionType: QuestionType;
   options: string[];
@@ -205,15 +210,15 @@ export function AssessmentTake() {
   const total = questions.length;
   const isLast = currentIndex === total - 1;
   const isFirst = currentIndex === 0;
-  const answeredCount = questions.filter(qq => (answers[qq.questionId] ?? '').trim() !== '').length;
+  const answeredCount = questions.filter(qq => (answers[qq.id] ?? '').trim() !== '').length;
 
   const mins = Math.floor(remaining / 60);
   const secs = remaining % 60;
   const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
   const isTimeLow = timeLimit > 0 && remaining < 60;
 
-  const checkboxSelected = q.questionType === 'checkbox' && answers[q.questionId]
-    ? answers[q.questionId].split(CHECKBOX_SEP)
+  const checkboxSelected = q.questionType === 'checkbox' && answers[q.id]
+    ? answers[q.id].split(CHECKBOX_SEP)
     : [];
 
   return (
@@ -254,10 +259,10 @@ export function AssessmentTake() {
                 <label key={idx} className="flex items-center gap-3 p-3 rounded-xl border border-primary-700/10 hover:bg-primary-50 cursor-pointer transition-colors">
                   <input
                     type="radio"
-                    name={`question-${q.questionId}`}
+                    name={`question-${q.id}`}
                     value={opt}
-                    checked={answers[q.questionId] === opt}
-                    onChange={() => handleAnswer(q.questionId, opt)}
+                    checked={answers[q.id] === opt}
+                    onChange={() => handleAnswer(q.id, opt)}
                     className="w-4 h-4 accent-primary-700"
                   />
                   <span className="text-sm text-primary-900">{opt}</span>
@@ -273,7 +278,7 @@ export function AssessmentTake() {
                   <input
                     type="checkbox"
                     checked={checkboxSelected.includes(opt)}
-                    onChange={() => toggleCheckbox(q.questionId, opt)}
+                    onChange={() => toggleCheckbox(q.id, opt)}
                     className="w-4 h-4 accent-primary-700"
                   />
                   <span className="text-sm text-primary-900">{opt}</span>
@@ -285,8 +290,8 @@ export function AssessmentTake() {
           {(q.questionType === 'fill' || q.questionType === 'short') && (
             <input
               type="text"
-              value={answers[q.questionId] || ''}
-              onChange={(e) => handleAnswer(q.questionId, e.target.value)}
+              value={answers[q.id] || ''}
+              onChange={(e) => handleAnswer(q.id, e.target.value)}
               placeholder="Type your answer..."
               className="w-full p-3 rounded-xl border border-primary-700/15 focus:border-primary-700 focus:ring-2 focus:ring-primary-700/10 outline-none transition-all"
             />
@@ -294,8 +299,8 @@ export function AssessmentTake() {
 
           {(q.questionType === 'long' || q.questionType === 'matching' || q.questionType === 'dragdrop') && (
             <textarea
-              value={answers[q.questionId] || ''}
-              onChange={(e) => handleAnswer(q.questionId, e.target.value)}
+              value={answers[q.id] || ''}
+              onChange={(e) => handleAnswer(q.id, e.target.value)}
               placeholder="Type your answer here..."
               rows={5}
               className="w-full p-3 rounded-xl border border-primary-700/15 focus:border-primary-700 focus:ring-2 focus:ring-primary-700/10 outline-none transition-all"
@@ -323,11 +328,11 @@ export function AssessmentTake() {
       {/* Question navigator */}
       <div className="max-w-4xl mx-auto mt-4 flex flex-wrap gap-2">
         {questions.map((qq, idx) => {
-          const answered = (answers[qq.questionId] ?? '').trim() !== '';
+          const answered = (answers[qq.id] ?? '').trim() !== '';
           const active = idx === currentIndex;
           return (
             <button
-              key={qq.questionId}
+              key={qq.id}
               onClick={() => goToQuestion(idx)}
               className={`w-9 h-9 rounded-lg text-sm font-medium transition-all ${
                 active

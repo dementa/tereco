@@ -59,7 +59,17 @@ interface FormData {
 interface FieldError { [key: string]: string }
 
 interface DirectoryStream { id: string; name: string }
-interface DirectoryClass { id: string; name: string; hasStreams: boolean; streams: DirectoryStream[] }
+/**
+ * `displayName` is what the school calls this class — its own alias if it has
+ * one, else the canonical P.n code. There is no longer a `name` column.
+ */
+interface DirectoryClass {
+  id: string
+  level: number | null
+  displayName: string
+  hasStreams: boolean
+  streams: DirectoryStream[]
+}
 interface DirectorySchool { id: string; name: string; classes: DirectoryClass[] }
 
 /* ─────────────────────────────────────────────────
@@ -156,10 +166,9 @@ function cn(...c: (string | false | undefined | null)[]) { return c.filter(Boole
 function FloatingInput({
   label, type = 'text', value, onChange, error, hint, required,
   ...rest
-}: {
+}: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & {
   label: string; type?: string; value: string; onChange: (v: string) => void
   error?: string; hint?: string; required?: boolean
-  [k: string]: any
 }) {
   const id = useId()
   const [focused, setFocused] = useState(false)
@@ -542,7 +551,7 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   const hasChallenges = data.challenges === 'Yes'
   const selectedSchool   = directory.find(s => s.name === data.school)
   const availableClasses = selectedSchool?.classes ?? []
-  const selectedClass    = availableClasses.find(c => c.name === data.className)
+  const selectedClass    = availableClasses.find(c => c.displayName === data.className)
   const availableStreams = selectedClass?.streams ?? []
   const skillsForArea    = SKILLS[data.learningArea] || []
 
@@ -617,7 +626,7 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
           />
           <FloatingSelect
             label="Class"
-            options={availableClasses.map(c => c.name)}
+            options={availableClasses.map(c => c.displayName)}
             value={data.className}
             onChange={v => { set('className', v); set('stream', ''); clearErr('className') }}
             error={errors.className}
@@ -670,7 +679,20 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
                 label={o.v}
                 description={o.d}
                 selected={data.status === o.v}
-                onChange={v => { set('status', v as FormData['status']); clearErr('status') }}
+                onChange={v => {
+                  const next = v as FormData['status']
+                  // A lesson that happened carries no missed reason — the
+                  // database enforces that, so switching away from "Missed"
+                  // must clear these or the submission is rejected with a
+                  // constraint error the teacher cannot act on.
+                  setData(p => ({
+                    ...p,
+                    status: next,
+                    missedReason: next === 'Missed' ? p.missedReason : '',
+                    missedExplanation: next === 'Missed' ? p.missedExplanation : '',
+                  }))
+                  clearErr('status')
+                }}
               />
             ))}
           </div>

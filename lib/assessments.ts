@@ -1,30 +1,36 @@
 import { getSupabaseAdmin } from "./supabase";
+import type { TablesUpdate } from "./database.types";
 
 // ─── Types ────────────────────────────────────────────────
 
+export type AssessmentStatus = "draft" | "published" | "closed";
+
 export interface Assessment {
-  id: string;
+  id: string; // uuid, internal
+  systemId: string; // ASS0001 — the public identifier, used in URLs
   title: string;
   description: string;
   timeLimit: number; // minutes
-  startTime?: string; // ISO datetime
-  targetType: "general" | "class" | "school+class";
-  targetValue: string; // e.g. 'Form 3A' or 'Nairobi Academy|Form 3A'
-  questionsSheet: string;
+  opensAt?: string;
+  closesAt?: string;
+  status: AssessmentStatus;
+  targets: AssessmentTarget[];
 }
 
-export interface StudentResponse {
-  studentName: string;
-  school: string;
-  class: string;
-  assessmentId: string;
-  questionId: string;
-  answer: string;
-  timestamp: string;
-  timeSpent: number; // seconds
-  score?: number;
-  studentId?: string;
-  schoolId?: string;
+/**
+ * One narrowing rule for who may sit an assessment. An assessment with NO
+ * targets is available to everyone — that is the "general" case, and it needs
+ * no sentinel value.
+ *
+ * This replaces `target_type` + a pipe-delimited `target_value` such as
+ * "Nairobi Academy|Form 3A", which could not be joined, indexed or validated,
+ * and broke silently whenever a school renamed a class.
+ */
+export interface AssessmentTarget {
+  id: string;
+  schoolId: string | null;
+  level: number | null;
+  classId: string | null;
 }
 
 export type QuestionType =
@@ -36,8 +42,17 @@ export type QuestionType =
   | "short"
   | "long";
 
+/** Types the server can mark on its own. The rest need a human. */
+export const AUTO_SCORED_TYPES: ReadonlySet<QuestionType> = new Set<QuestionType>([
+  "mcq",
+  "checkbox",
+  "fill",
+]);
+
 export interface Question {
-  questionId: string;
+  id: string;
+  position: number;
+  code: string; // 'Q1', shown to the student
   questionText: string;
   questionType: QuestionType;
   options: string[];
@@ -47,14 +62,13 @@ export interface Question {
 }
 
 export interface CreateAssessmentInput {
-  id: string;
   title: string;
   description?: string;
   timeLimit: number;
-  startTime?: string;
-  targetType: Assessment["targetType"];
-  targetValue?: string;
-  questionsSheet: string;
+  opensAt?: string;
+  closesAt?: string;
+  status?: AssessmentStatus;
+  targets?: Omit<AssessmentTarget, "id">[];
   createdBy?: string;
 }
 
@@ -62,361 +76,544 @@ export interface UpdateAssessmentInput {
   title?: string;
   description?: string;
   timeLimit?: number;
-  startTime?: string;
-  targetType?: Assessment["targetType"];
-  targetValue?: string;
-  questionsSheet?: string;
+  opensAt?: string | null;
+  closesAt?: string | null;
+  status?: AssessmentStatus;
+  targets?: Omit<AssessmentTarget, "id">[];
 }
 
 interface AssessmentRow {
   id: string;
-  title: string | null;
-  description: string | null;
-  time_limit: number | null;
-  start_time: string | null;
-  target_type: string | null;
-  target_value: string | null;
-  questions_sheet: string | null;
+  system_id: string;
+  title: string;
+  description: string;
+  time_limit_minutes: number;
+  opens_at: string | null;
+  closes_at: string | null;
+  status: string;
+  targets: { id: string; school_id: string | null; level: number | null; class_id: string | null }[] | null;
 }
 
-interface QuestionRow {
-  question_id: string | null;
-  question_text: string | null;
-  type: string | null;
-  options: string[] | null;
-  correct_answer: string | null;
-  max_score: number | null;
-  config: unknown;
-}
+// Single string literal — concatenation would widen it to `string` and silently
+// disable the client's column checking.
+const ASSESSMENT_COLUMNS =
+  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, targets:assessment_targets(id, school_id, level, class_id)";
+
+const QUESTION_COLUMNS =
+  "id, position, code, question_text, type, options, correct_answer, max_score, config";
 
 // ─── Mappers ──────────────────────────────────────────────
 
 function rowToAssessment(row: AssessmentRow): Assessment {
   return {
     id: row.id,
-    title: row.title ?? "",
-    description: row.description ?? "",
-    timeLimit: row.time_limit ?? 0,
-    startTime: row.start_time || undefined,
-    targetType: (row.target_type as Assessment["targetType"]) ?? "general",
-    targetValue: row.target_value ?? "",
-    questionsSheet: row.questions_sheet ?? "",
+    systemId: row.system_id,
+    title: row.title,
+    description: row.description,
+    timeLimit: row.time_limit_minutes,
+    opensAt: row.opens_at ?? undefined,
+    closesAt: row.closes_at ?? undefined,
+    status: row.status as AssessmentStatus,
+    targets: (row.targets ?? []).map((t) => ({
+      id: t.id,
+      schoolId: t.school_id,
+      level: t.level,
+      classId: t.class_id,
+    })),
   };
+}
+
+interface QuestionRow {
+  id: string;
+  position: number;
+  code: string;
+  question_text: string;
+  type: string;
+  options: unknown;
+  correct_answer: string | null;
+  max_score: number;
+  config: unknown;
 }
 
 function rowToQuestion(row: QuestionRow): Question {
   return {
-    questionId: row.question_id ?? "",
-    questionText: row.question_text ?? "",
-    questionType: (row.type as QuestionType) ?? "short",
-    options: row.options ?? [],
+    id: row.id,
+    position: row.position,
+    code: row.code,
+    questionText: row.question_text,
+    questionType: row.type as QuestionType,
+    options: Array.isArray(row.options) ? (row.options as string[]) : [],
     correctAnswer: row.correct_answer ?? undefined,
-    maxScore: row.max_score ?? 1,
+    maxScore: Number(row.max_score),
     config: row.config ?? undefined,
   };
 }
 
 // ─── Assessments ──────────────────────────────────────────
 
-/**
- * Get all assessments, optionally filtered by school and class.
- */
-export async function getAssessments(
-  school?: string,
-  className?: string
-): Promise<Assessment[]> {
+/** Every assessment, for the admin console. Soft-deleted ones are excluded. */
+export async function getAssessments(): Promise<Assessment[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("assessments")
-    .select(
-      "id, title, description, time_limit, start_time, target_type, target_value, questions_sheet"
-    )
-    .eq("deleted", false)
-    .order("created_at", { ascending: true });
+    .select(ASSESSMENT_COLUMNS)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: false });
 
   if (error) {
     console.error("Error fetching assessments:", error);
     return [];
   }
-
-  const assessments = (data ?? []).map(rowToAssessment);
-
-  return assessments.filter((assessment) => {
-    if (school && className) {
-      if (assessment.targetType === "general") return true;
-      if (assessment.targetType === "class") {
-        return assessment.targetValue === className;
-      }
-      if (assessment.targetType === "school+class") {
-        const [s, c] = assessment.targetValue.split("|");
-        return s === school && c === className;
-      }
-    } else if (school && !className) {
-      if (assessment.targetType === "class") return false;
-      if (assessment.targetType === "school+class") {
-        const [s] = assessment.targetValue.split("|");
-        return s === school;
-      }
-    }
-    return true;
-  });
+  return (data as unknown as AssessmentRow[]).map(rowToAssessment);
 }
 
 /**
- * Get a single assessment by its ID.
+ * The assessments a student may currently sit.
+ *
+ * Targeting, publication status and the open/close window are all evaluated by
+ * `assessments_for_student` in the database, so there is exactly one
+ * implementation of "may this student see this paper" rather than one per
+ * caller.
  */
-export async function getAssessmentById(
-  id: string
-): Promise<Assessment | null> {
+export async function getAssessmentsForStudent(studentId: string): Promise<Assessment[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase.rpc("assessments_for_student", {
+    p_student: studentId,
+  });
+
+  if (error) {
+    console.error("Error fetching student assessments:", error);
+    return [];
+  }
+
+  return (data ?? []).map((row) =>
+    rowToAssessment({ ...(row as unknown as AssessmentRow), targets: [] })
+  );
+}
+
+/** Look up by the public ASS#### identifier. */
+export async function getAssessmentBySystemId(systemId: string): Promise<Assessment | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("assessments")
-    .select(
-      "id, title, description, time_limit, start_time, target_type, target_value, questions_sheet"
-    )
-    .eq("id", id)
-    .eq("deleted", false)
+    .select(ASSESSMENT_COLUMNS)
+    .eq("system_id", systemId)
+    .is("deleted_at", null)
     .maybeSingle();
 
   if (error) {
-    console.error("Error fetching assessment by ID:", error);
+    console.error("Error fetching assessment:", error);
     return null;
   }
-  return data ? rowToAssessment(data) : null;
+  return data ? rowToAssessment(data as unknown as AssessmentRow) : null;
 }
 
-export async function createAssessment(input: CreateAssessmentInput) {
+async function replaceTargets(
+  assessmentId: string,
+  targets: Omit<AssessmentTarget, "id">[]
+): Promise<void> {
   const supabase = getSupabaseAdmin();
-  const { error } = await supabase.from("assessments").insert({
-    id: input.id,
-    title: input.title,
-    description: input.description ?? "",
-    time_limit: input.timeLimit,
-    start_time: input.startTime ?? "",
-    target_type: input.targetType,
-    target_value: input.targetValue ?? "",
-    questions_sheet: input.questionsSheet,
-    deleted: false,
-    created_by: input.createdBy ?? null,
-  });
+  const { error: clearError } = await supabase
+    .from("assessment_targets")
+    .delete()
+    .eq("assessment_id", assessmentId);
+  if (clearError) throw new Error(clearError.message);
 
-  if (error) {
-    throw new Error(error.message);
+  // An all-null row would mean "everyone" and defeat every sibling target, so
+  // it is dropped here as well as rejected by the table's check constraint.
+  const rows = targets
+    .filter((t) => t.schoolId !== null || t.level !== null || t.classId !== null)
+    .map((t) => ({
+      assessment_id: assessmentId,
+      school_id: t.schoolId,
+      level: t.level,
+      class_id: t.classId,
+    }));
+  if (rows.length === 0) return;
+
+  const { error } = await supabase.from("assessment_targets").insert(rows);
+  if (error) throw new Error(error.message);
+}
+
+export async function createAssessment(input: CreateAssessmentInput): Promise<Assessment> {
+  const supabase = getSupabaseAdmin();
+  const { data: systemId, error: idError } = await supabase.rpc("generate_system_id", {
+    p_entity_type: "assessment",
+  });
+  if (idError) throw new Error(idError.message);
+
+  const { data, error } = await supabase
+    .from("assessments")
+    .insert({
+      system_id: systemId as string,
+      title: input.title,
+      description: input.description ?? "",
+      time_limit_minutes: input.timeLimit,
+      opens_at: input.opensAt ?? null,
+      closes_at: input.closesAt ?? null,
+      status: input.status ?? "draft",
+      created_by: input.createdBy ?? null,
+    })
+    .select("id")
+    .single();
+
+  if (error) throw new Error(error.message);
+
+  if (input.targets?.length) {
+    await replaceTargets(data.id, input.targets);
   }
+
+  const created = await getAssessmentBySystemId(systemId as string);
+  if (!created) throw new Error("Assessment was created but could not be read back");
+  return created;
 }
 
 export async function updateAssessment(
-  id: string,
+  systemId: string,
   updates: UpdateAssessmentInput
-) {
+): Promise<void> {
   const supabase = getSupabaseAdmin();
-  const patch: Record<string, unknown> = {};
+  const existing = await getAssessmentBySystemId(systemId);
+  if (!existing) throw new Error("Assessment not found");
+
+  const patch: TablesUpdate<"assessments"> = { updated_at: new Date().toISOString() };
   if (updates.title !== undefined) patch.title = updates.title;
   if (updates.description !== undefined) patch.description = updates.description;
-  if (updates.timeLimit !== undefined) patch.time_limit = updates.timeLimit;
-  if (updates.startTime !== undefined) patch.start_time = updates.startTime;
-  if (updates.targetType !== undefined) patch.target_type = updates.targetType;
-  if (updates.targetValue !== undefined)
-    patch.target_value = updates.targetValue;
-  if (updates.questionsSheet !== undefined)
-    patch.questions_sheet = updates.questionsSheet;
+  if (updates.timeLimit !== undefined) patch.time_limit_minutes = updates.timeLimit;
+  if (updates.opensAt !== undefined) patch.opens_at = updates.opensAt;
+  if (updates.closesAt !== undefined) patch.closes_at = updates.closesAt;
+  if (updates.status !== undefined) patch.status = updates.status;
 
-  if (Object.keys(patch).length === 0) return;
+  const { error } = await supabase.from("assessments").update(patch).eq("id", existing.id);
+  if (error) throw new Error(error.message);
 
-  const { error } = await supabase
-    .from("assessments")
-    .update(patch)
-    .eq("id", id);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  if (updates.targets) await replaceTargets(existing.id, updates.targets);
 }
 
 /**
- * Soft-delete an assessment (sets deleted = true).
+ * Soft-delete. Submissions reference assessments, and removing a paper must
+ * never take students' answers with it.
  */
-export async function softDeleteAssessment(id: string) {
+export async function softDeleteAssessment(systemId: string): Promise<void> {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("assessments")
-    .update({ deleted: true })
-    .eq("id", id);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+    .update({ deleted_at: new Date().toISOString() })
+    .eq("system_id", systemId);
+  if (error) throw new Error(error.message);
 }
 
 // ─── Questions ────────────────────────────────────────────
 
-/**
- * Get questions for a specific assessment.
- */
 export async function getQuestions(assessmentId: string): Promise<Question[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("questions")
-    .select(
-      "question_id, question_text, type, options, correct_answer, max_score, config"
-    )
+    .select(QUESTION_COLUMNS)
     .eq("assessment_id", assessmentId)
-    .order("created_at", { ascending: true });
+    .order("position", { ascending: true });
 
   if (error) {
     console.error("Error fetching questions:", error);
     return [];
   }
-  return (data ?? []).map(rowToQuestion);
-}
-
-export async function deleteQuestionsForAssessment(assessmentId: string) {
-  const supabase = getSupabaseAdmin();
-  const { error } = await supabase
-    .from("questions")
-    .delete()
-    .eq("assessment_id", assessmentId);
-
-  if (error) {
-    throw new Error(error.message);
-  }
+  return (data as unknown as QuestionRow[]).map(rowToQuestion);
 }
 
 /**
- * Replace all questions for an assessment.
+ * Replace the whole paper.
+ *
+ * Refused once anyone has sat it: rewriting questions under existing answers
+ * would silently invalidate every score already recorded against them.
  */
 export async function saveQuestions(
   assessmentId: string,
-  questions: Question[]
-) {
-  await deleteQuestionsForAssessment(assessmentId);
+  questions: Omit<Question, "id">[]
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const { count, error: countError } = await supabase
+    .from("assessment_submissions")
+    .select("id", { count: "exact", head: true })
+    .eq("assessment_id", assessmentId);
+  if (countError) throw new Error(countError.message);
+  if (count && count > 0) {
+    throw new Error(
+      `Cannot change the questions — ${count} student(s) have already submitted this assessment.`
+    );
+  }
+
+  const { error: deleteError } = await supabase
+    .from("questions")
+    .delete()
+    .eq("assessment_id", assessmentId);
+  if (deleteError) throw new Error(deleteError.message);
+
   if (!questions.length) return;
 
-  const supabase = getSupabaseAdmin();
-  const rows = questions.map((q) => ({
+  const rows = questions.map((q, index) => ({
     assessment_id: assessmentId,
-    question_id: q.questionId,
+    position: q.position ?? index + 1,
+    code: q.code || `Q${index + 1}`,
     question_text: q.questionText,
     type: q.questionType,
     options: q.options ?? [],
     correct_answer: q.correctAnswer ?? null,
     max_score: q.maxScore,
-    config: q.config ?? null,
+    config: (q.config ?? null) as never,
   }));
 
   const { error } = await supabase.from("questions").insert(rows);
-  if (error) {
-    throw new Error(error.message);
-  }
+  if (error) throw new Error(error.message);
 }
 
-// ─── Responses ────────────────────────────────────────────
+// ─── Submissions & responses ──────────────────────────────
+
+export interface SubmissionAnswer {
+  questionId: string;
+  answer: string;
+  score?: number;
+  isAutoScored: boolean;
+}
 
 export interface ResponseRecord {
   id: string;
+  submissionId: string;
   studentName: string;
   school: string;
   className: string;
-  assessmentId: string;
   questionId: string;
+  questionCode: string;
   answer: string;
   score: number | null;
+  maxScore: number;
   submittedAt: string;
-  timeSpent: number;
+}
+
+/**
+ * Record a student's sitting: one submission row plus one response per
+ * question, written together.
+ *
+ * The (assessment_id, student_id) unique constraint is what makes "already
+ * submitted" a database guarantee rather than a race between two in-flight
+ * requests — so a duplicate is surfaced as its own error, not a generic one.
+ */
+export async function saveSubmission(input: {
+  assessmentId: string;
+  studentId: string;
+  enrollmentId: string;
+  timeSpentSeconds: number;
+  answers: SubmissionAnswer[];
+}): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const { data: submission, error: submissionError } = await supabase
+    .from("assessment_submissions")
+    .insert({
+      assessment_id: input.assessmentId,
+      student_id: input.studentId,
+      enrollment_id: input.enrollmentId,
+      time_spent_seconds: input.timeSpentSeconds,
+      submitted_at: new Date().toISOString(),
+    })
+    .select("id")
+    .single();
+
+  if (submissionError) {
+    if (submissionError.code === "23505") throw new Error("ALREADY_SUBMITTED");
+    throw new Error(submissionError.message);
+  }
+
+  if (!input.answers.length) return;
+
+  const { error: responseError } = await supabase.from("responses").insert(
+    input.answers.map((a) => ({
+      submission_id: submission.id,
+      question_id: a.questionId,
+      answer: a.answer,
+      score: a.score ?? null,
+      is_auto_scored: a.isAutoScored,
+    }))
+  );
+
+  if (responseError) {
+    // Leaving a submission with no answers behind would count as "already
+    // submitted" and lock the student out of retrying.
+    await supabase.from("assessment_submissions").delete().eq("id", submission.id);
+    throw new Error(responseError.message);
+  }
 }
 
 interface ResponseRow {
   id: string;
-  student_name: string | null;
-  school: string | null;
-  class: string | null;
-  assessment_id: string | null;
-  question_id: string | null;
-  answer: string | null;
+  submission_id: string;
+  answer: string;
   score: number | null;
-  submitted_at: string | null;
-  time_spent: number | null;
+  question: { id: string; code: string; max_score: number } | null;
+  submission: {
+    submitted_at: string;
+    student: { first_name: string; middle_name: string | null; last_name: string } | null;
+    enrollment: {
+      school: { name: string } | null;
+      class: { alias: string | null; grade_level: { code: string } | null } | null;
+      stream: { name: string } | null;
+    } | null;
+  } | null;
 }
 
-function rowToResponse(row: ResponseRow): ResponseRecord {
-  return {
-    id: row.id,
-    studentName: row.student_name ?? "",
-    school: row.school ?? "",
-    className: row.class ?? "",
-    assessmentId: row.assessment_id ?? "",
-    questionId: row.question_id ?? "",
-    answer: row.answer ?? "",
-    score: row.score,
-    submittedAt: row.submitted_at ?? "",
-    timeSpent: row.time_spent ?? 0,
-  };
-}
+const RESPONSE_COLUMNS =
+  "id, submission_id, answer, score, question:questions(id, code, max_score), submission:assessment_submissions(submitted_at, student:profiles(first_name, middle_name, last_name), enrollment:enrollments(school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name)))";
 
 /**
- * Get all responses for an assessment (for marking / review).
+ * Every response to an assessment, for marking.
+ *
+ * The school and class come from the ENROLMENT the student sat under, not
+ * their current placement — so a paper marked after they are promoted still
+ * reads as the class they were in on the day.
  */
-export async function getResponses(
-  assessmentId: string
-): Promise<ResponseRecord[]> {
+export async function getResponses(assessmentId: string): Promise<ResponseRecord[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("responses")
-    .select(
-      "id, student_name, school, class, assessment_id, question_id, answer, score, submitted_at, time_spent"
-    )
-    .eq("assessment_id", assessmentId)
-    .order("submitted_at", { ascending: true });
+    .select(RESPONSE_COLUMNS)
+    .eq("submission.assessment_id", assessmentId);
 
   if (error) {
     console.error("Error fetching responses:", error);
     return [];
   }
-  return (data ?? []).map(rowToResponse);
+
+  return (data as unknown as ResponseRow[]).map((row) => {
+    const student = row.submission?.student;
+    const enrollment = row.submission?.enrollment;
+    return {
+      id: row.id,
+      submissionId: row.submission_id,
+      studentName: student
+        ? [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(" ").trim()
+        : "",
+      school: enrollment?.school?.name ?? "",
+      className: [
+        enrollment?.class?.alias ?? enrollment?.class?.grade_level?.code ?? "",
+        enrollment?.stream?.name ?? "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      questionId: row.question?.id ?? "",
+      questionCode: row.question?.code ?? "",
+      answer: row.answer,
+      score: row.score === null ? null : Number(row.score),
+      maxScore: Number(row.question?.max_score ?? 0),
+      submittedAt: row.submission?.submitted_at ?? "",
+    };
+  });
+}
+
+export interface AssessmentResult {
+  submissionId: string;
+  studentName: string;
+  studentSystemId: string | null;
+  school: string;
+  className: string;
+  submittedAt: string;
+  timeSpentSeconds: number;
+  totalScore: number | null;
+  maxScore: number | null;
+  /** null until the paper is fully marked. */
+  percentage: number | null;
+  status: string;
+}
+
+interface ResultRow {
+  id: string;
+  submitted_at: string;
+  time_spent_seconds: number;
+  total_score: number | null;
+  max_score: number | null;
+  status: string;
+  student: { system_id: string | null; first_name: string; middle_name: string | null; last_name: string } | null;
+  enrollment: {
+    school: { name: string } | null;
+    class: { alias: string | null; grade_level: { code: string } | null } | null;
+    stream: { name: string } | null;
+  } | null;
+}
+
+const RESULT_COLUMNS =
+  "id, submitted_at, time_spent_seconds, total_score, max_score, status, student:profiles(system_id, first_name, middle_name, last_name), enrollment:enrollments(school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name))";
+
+/**
+ * One row per student who sat the assessment, with their marked total.
+ *
+ * Totals come from the submission, which a database trigger keeps in step with
+ * the individual responses — so this can never report a score that disagrees
+ * with the answers behind it.
+ */
+export async function getAssessmentResults(assessmentId: string): Promise<AssessmentResult[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("assessment_submissions")
+    .select(RESULT_COLUMNS)
+    .eq("assessment_id", assessmentId)
+    .order("submitted_at", { ascending: true });
+
+  if (error) {
+    console.error("Error fetching results:", error);
+    return [];
+  }
+
+  return (data as unknown as ResultRow[]).map((row) => {
+    const student = row.student;
+    const enrollment = row.enrollment;
+    const total = row.total_score === null ? null : Number(row.total_score);
+    const max = row.max_score === null ? null : Number(row.max_score);
+    return {
+      submissionId: row.id,
+      studentName: student
+        ? [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(" ").trim()
+        : "",
+      studentSystemId: student?.system_id ?? null,
+      school: enrollment?.school?.name ?? "",
+      className: [
+        enrollment?.class?.alias ?? enrollment?.class?.grade_level?.code ?? "",
+        enrollment?.stream?.name ?? "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+      submittedAt: row.submitted_at,
+      timeSpentSeconds: row.time_spent_seconds,
+      totalScore: total,
+      maxScore: max,
+      // Only meaningful once marking is finished; a partial total would read as
+      // a low score rather than an incomplete one.
+      percentage:
+        row.status === "marked" && total !== null && max !== null && max > 0
+          ? Math.round((total / max) * 1000) / 10
+          : null,
+      status: row.status,
+    };
+  });
 }
 
 /**
- * Update the score of a single response (manual marking).
+ * Manual marking of one answer. The submission's totals are recalculated by a
+ * database trigger, so a score can never disagree with the answers it is
+ * derived from.
  */
-export async function updateResponseScore(id: string, score: number) {
+export async function updateResponseScore(
+  responseId: string,
+  score: number,
+  markedBy: string
+): Promise<void> {
   const supabase = getSupabaseAdmin();
   const { error } = await supabase
     .from("responses")
-    .update({ score })
-    .eq("id", id);
-  if (error) throw new Error(error.message);
-}
+    .update({ score, marked_by: markedBy, marked_at: new Date().toISOString() })
+    .eq("id", responseId);
 
-/**
- * Save student responses.
- */
-export async function saveResponses(responses: StudentResponse[]) {
-  if (!responses.length) return;
-
-  const supabase = getSupabaseAdmin();
-  const rows = responses.map((r) => ({
-    student_name: r.studentName,
-    school: r.school,
-    class: r.class,
-    assessment_id: r.assessmentId,
-    question_id: r.questionId,
-    answer: r.answer,
-    submitted_at: r.timestamp,
-    time_spent: r.timeSpent,
-    score: r.score ?? null,
-    student_id: r.studentId ?? null,
-    school_id: r.schoolId ?? null,
-  }));
-
-  const { error } = await supabase.from("responses").insert(rows);
+  // The trigger refuses a score above the question's maximum.
   if (error) {
-    // 23505 = unique_violation — responses_assessment_student_unique caught a
-    // repeat submission. Surface as a distinct, catchable error rather than
-    // a generic failure.
-    if (error.code === "23505") {
-      throw new Error("ALREADY_SUBMITTED");
-    }
-    console.error("Error saving responses:", error);
-    throw new Error("Failed to save assessment responses");
+    if (error.code === "P0001") throw new Error(error.message);
+    throw new Error(error.message);
   }
 }

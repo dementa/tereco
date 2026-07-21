@@ -1,158 +1,257 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
+import { Badge } from '@/components/ui/Badge';
+import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
+import { ClipboardList, Plus, X } from 'lucide-react';
+
+interface AssessmentTarget {
+  id: string;
+  schoolId: string | null;
+  level: number | null;
+  classId: string | null;
+}
 
 interface Assessment {
   id: string;
+  systemId: string;
   title: string;
   description: string;
   timeLimit: number;
-  startTime?: string;
-  targetType: string;
-  targetValue: string;
+  opensAt?: string;
+  closesAt?: string;
+  status: 'draft' | 'published' | 'closed';
+  targets: AssessmentTarget[];
 }
 
 const emptyForm = {
   title: '',
   description: '',
   timeLimit: 30,
-  startTime: '',
-  targetType: 'general',
-  targetValue: '',
+  opensAt: '',
+  closesAt: '',
 };
+
+const STATUS_VARIANT: Record<string, 'default' | 'accent' | 'success' | 'muted'> = {
+  draft: 'muted',
+  published: 'success',
+  closed: 'default',
+};
+
+function formatWindow(a: Assessment): string {
+  if (!a.opensAt && !a.closesAt) return 'Always open';
+  const fmt = (iso?: string) =>
+    iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
+  return `${fmt(a.opensAt)} → ${fmt(a.closesAt)}`;
+}
 
 export default function AdminAssessments() {
   const router = useRouter();
   const toast = useToast();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [newAssessment, setNewAssessment] = useState(emptyForm);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
-  const [formError, setFormError] = useState('');
 
-  const load = () => {
-    setLoading(true);
-    fetch('/api/admin/assessments')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.success) setAssessments(data.data);
-        else setError(data.message || 'Failed to load');
-      })
-      .catch(() => setError('Network error'))
-      .finally(() => setLoading(false));
-  };
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch('/api/admin/assessments');
+      const data = await res.json();
+      if (data.success) setAssessments(data.data);
+      else toast.error(data.message ?? 'Failed to load assessments.');
+    } catch {
+      toast.error('Network error while loading assessments.');
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
 
-  useEffect(load, []);
+  useEffect(() => {
+    const controller = new AbortController();
+    void (async () => {
+      if (!controller.signal.aborted) await load();
+    })();
+    return () => controller.abort();
+  }, [load]);
 
-  const handleCreate = async (e: React.FormEvent) => {
+  async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    setFormError('');
     setCreating(true);
     try {
       const res = await fetch('/api/admin/assessments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newAssessment),
+        body: JSON.stringify({
+          title: form.title,
+          description: form.description || undefined,
+          timeLimit: Number(form.timeLimit),
+          opensAt: form.opensAt ? new Date(form.opensAt).toISOString() : undefined,
+          closesAt: form.closesAt ? new Date(form.closesAt).toISOString() : undefined,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        setNewAssessment(emptyForm);
-        load();
-        toast.success('Assessment created.');
+        toast.success(`${form.title} created as a draft.`);
+        setForm(emptyForm);
+        setShowForm(false);
+        // Straight into the editor — a new assessment has no questions or
+        // audience yet, so the list view has nothing useful to show for it.
         router.push(`/admin/assessments/${data.data.id}`);
       } else {
-        setFormError(data.message || 'Creation failed');
-        toast.error(data.message || 'Creation failed.');
+        toast.error(data.message ?? 'Failed to create assessment.');
       }
     } catch {
-      setFormError('Network error');
-      toast.error('Network error — please try again.');
+      toast.error('Network error.');
     } finally {
       setCreating(false);
     }
-  };
+  }
 
-  const handleDelete = async (id: string) => {
-    if (!confirm(`Are you sure you want to delete assessment "${id}"?`)) return;
-    const res = await fetch(`/api/admin/assessments/${id}`, { method: 'DELETE' });
-    const data = await res.json();
-    if (data.success) {
-      setAssessments((prev) => prev.filter((a) => a.id !== id));
-      toast.success('Assessment deleted.');
-    } else {
-      toast.error(data.message || 'Delete failed.');
-    }
-  };
+  const columns: DataTableColumn<Assessment>[] = useMemo(
+    () => [
+      {
+        key: 'title',
+        header: 'Assessment',
+        value: (a) => a.title,
+        render: (a) => (
+          <span className="min-w-0">
+            <span className="font-medium block truncate">{a.title}</span>
+            <span className="text-xs text-text-muted">{a.systemId}</span>
+          </span>
+        ),
+      },
+      {
+        key: 'status',
+        header: 'Status',
+        value: (a) => a.status,
+        render: (a) => <Badge variant={STATUS_VARIANT[a.status]}>{a.status}</Badge>,
+      },
+      {
+        key: 'audience',
+        header: 'Audience',
+        sortable: false,
+        // No targets means every student — the absence IS the rule, so it has
+        // to read as a deliberate state rather than a blank cell.
+        value: (a) => (a.targets.length === 0 ? 'All students' : `${a.targets.length}`),
+        render: (a) =>
+          a.targets.length === 0 ? (
+            <span className="text-[#5A7D8A]">All students</span>
+          ) : (
+            `${a.targets.length} target${a.targets.length === 1 ? '' : 's'}`
+          ),
+      },
+      { key: 'timeLimit', header: 'Minutes', value: (a) => a.timeLimit, align: 'right' },
+      {
+        key: 'window',
+        header: 'Window',
+        value: (a) => a.opensAt ?? '',
+        render: (a) => <span className="text-xs">{formatWindow(a)}</span>,
+        hideOnMobile: true,
+      },
+    ],
+    []
+  );
 
   return (
-    <div className="max-w-4xl">
-      <h1 className="text-2xl font-bold text-primary-900 mb-1">Assessments</h1>
-      <p className="text-sm text-text-muted mb-6">Create assessments, then add questions in the editor.</p>
+    <div className="max-w-5xl space-y-4">
+      <div>
+        <h1 className="text-2xl font-bold text-primary-900 mb-1">Assessments</h1>
+        <p className="text-sm text-text-muted">
+          Create a paper, set its questions and audience, then publish it. Students may sit each
+          assessment once.
+        </p>
+      </div>
 
-      <Card className="p-6 mb-8">
-        <h2 className="text-lg font-semibold text-primary-900 mb-4">Create new assessment</h2>
-        <form onSubmit={handleCreate} className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input label="Title" value={newAssessment.title} onChange={(e) => setNewAssessment((p) => ({ ...p, title: e.target.value }))} required />
-            <Input label="Description" value={newAssessment.description} onChange={(e) => setNewAssessment((p) => ({ ...p, description: e.target.value }))} />
-            <Input label="Time limit (minutes)" type="number" value={newAssessment.timeLimit} onChange={(e) => setNewAssessment((p) => ({ ...p, timeLimit: parseInt(e.target.value) || 0 }))} required />
-            <Input label="Start time (optional)" type="datetime-local" value={newAssessment.startTime} onChange={(e) => setNewAssessment((p) => ({ ...p, startTime: e.target.value }))} />
-            <Select
-              label="Target type"
-              options={[
-                { value: 'general', label: 'General (all students)' },
-                { value: 'class', label: 'Specific class' },
-                { value: 'school+class', label: 'School + class' },
-              ]}
-              value={newAssessment.targetType}
-              onChange={(e) => setNewAssessment((p) => ({ ...p, targetType: e.target.value }))}
+      {showForm && (
+        <Card>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-semibold text-primary-900 flex items-center gap-2">
+              <ClipboardList className="w-5 h-5 text-primary-700" aria-hidden /> New assessment
+            </h2>
+            <button type="button" onClick={() => setShowForm(false)} aria-label="Close">
+              <X className="w-4 h-4 text-text-muted" aria-hidden />
+            </button>
+          </div>
+          <form onSubmit={handleCreate} className="space-y-4">
+            <Input
+              label="Title"
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
               required
             />
-            {newAssessment.targetType !== 'general' && (
+            <Input
+              label="Description"
+              value={form.description}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Input
-                label="Target value"
-                value={newAssessment.targetValue}
-                onChange={(e) => setNewAssessment((p) => ({ ...p, targetValue: e.target.value }))}
-                placeholder={newAssessment.targetType === 'class' ? 'e.g. P.4B' : 'e.g. Ebenezer Standard Junior School|P.4B'}
+                label="Time limit (minutes)"
+                type="number"
+                min={1}
+                value={form.timeLimit}
+                onChange={(e) => setForm({ ...form, timeLimit: Number(e.target.value) })}
                 required
               />
-            )}
-          </div>
-          {formError && <p className="text-sm text-error">{formError}</p>}
-          <Button type="submit" isLoading={creating}>Create assessment</Button>
-        </form>
-      </Card>
-
-      <h2 className="text-lg font-semibold text-primary-900 mb-4">Existing assessments</h2>
-      {loading ? (
-        <p className="text-text-muted">Loading…</p>
-      ) : error ? (
-        <p className="text-error">{error}</p>
-      ) : assessments.length === 0 ? (
-        <p className="text-text-muted">No assessments found.</p>
-      ) : (
-        <div className="space-y-3">
-          {assessments.map((a) => (
-            <Card key={a.id} className="p-4 flex flex-wrap justify-between items-center gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold text-primary-900 truncate">{a.title}</p>
-                <p className="text-xs text-text-muted">ID: {a.id} • {a.timeLimit} min • {a.targetType}{a.targetValue && ` (${a.targetValue})`}</p>
-              </div>
-              <div className="flex gap-2 shrink-0">
-                <Button variant="outline" onClick={() => router.push(`/admin/assessments/${a.id}`)}>Edit questions</Button>
-                <Button variant="outline" onClick={() => handleDelete(a.id)} className="text-error border-error/20 hover:bg-error-bg">Delete</Button>
-              </div>
-            </Card>
-          ))}
-        </div>
+              <Input
+                label="Opens at (optional)"
+                type="datetime-local"
+                value={form.opensAt}
+                onChange={(e) => setForm({ ...form, opensAt: e.target.value })}
+              />
+              <Input
+                label="Closes at (optional)"
+                type="datetime-local"
+                value={form.closesAt}
+                onChange={(e) => setForm({ ...form, closesAt: e.target.value })}
+              />
+            </div>
+            <p className="text-xs text-text-muted">
+              Created as a draft — students cannot see it until you publish. Questions and audience
+              are set on the next screen.
+            </p>
+            <Button type="submit" isLoading={creating}>
+              Create and add questions
+            </Button>
+          </form>
+        </Card>
       )}
+
+      <DataTable
+        rows={assessments}
+        columns={columns}
+        rowKey={(a) => a.id}
+        loading={loading}
+        initialSort={{ key: 'title', direction: 'asc' }}
+        searchPlaceholder="Search assessments by title or ID…"
+        emptyMessage="No assessments yet."
+        mobileTitle={(a) => a.title}
+        onRowClick={(a) => router.push(`/admin/assessments/${a.systemId}`)}
+        filters={[
+          {
+            key: 'status',
+            label: 'Status',
+            options: [
+              { value: 'draft', label: 'Draft' },
+              { value: 'published', label: 'Published' },
+              { value: 'closed', label: 'Closed' },
+            ],
+            matches: (a, v) => a.status === v,
+          },
+        ]}
+        actions={
+          <Button onClick={() => setShowForm((v) => !v)}>
+            <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+            New assessment
+          </Button>
+        }
+      />
     </div>
   );
 }

@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getCurrentProfile } from "@/lib/auth/session";
+import { enrollmentClassLabel, getCurrentEnrollment } from "@/lib/entities/enrollments";
 import { errorResponse, successResponse } from "@/lib/apiResponse";
 
 /** Rehydrates the current session on page load — replaces the old localStorage read. */
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
       email: profile.email,
       school: schoolName,
       schoolId: profile.schoolId,
-      className: profile.className,
+      className: enrollmentClassLabel(await getCurrentEnrollment(profile.id)),
       mustChangePassword: profile.mustChangePassword,
     },
   });

@@ -9,10 +9,14 @@ import { useAuth } from '@/components/auth/AuthContext';
 
 interface Assessment {
   id: string;
+  /** The public ASS#### identifier. Every student-facing route keys off this,
+   *  not the uuid — the API resolves assessments by system id. */
+  systemId: string;
   title: string;
   description: string;
   timeLimit: number;
-  startTime?: string;
+  opensAt?: string;
+  closesAt?: string;
 }
 
 export function AssessmentList() {
@@ -33,7 +37,9 @@ export function AssessmentList() {
       return;
     }
 
-    fetch(`/api/assessments?school=${encodeURIComponent(user.school)}&class=${encodeURIComponent(user.className ?? '')}`)
+    // No school/class query params: which assessments a student may sit is
+    // decided server-side from their enrolment, so the client cannot widen it.
+    fetch('/api/assessments')
       .then(res => res.json())
       .then(data => {
         if (data.success) {
@@ -46,12 +52,12 @@ export function AssessmentList() {
       .finally(() => setLoading(false));
   }, [router, user, isAuthenticated, authLoading, mustChangePassword]);
 
+  // Just navigate. The take screen fetches the assessment's time limit itself
+  // and records the start timestamp on mount if one is not already stored —
+  // writing them here as well duplicated that logic and started the clock even
+  // when the navigation never completed.
   const handleStart = (assessment: Assessment) => {
-    // Store time limit and start timestamp
-    sessionStorage.setItem(`assessment_${assessment.id}_timeLimit`, assessment.timeLimit.toString());
-    const startTime = Date.now();
-    sessionStorage.setItem(`assessment_${assessment.id}_start`, startTime.toString());
-    router.push(`/assessment/take/${assessment.id}`);
+    router.push(`/assessment/take/${assessment.systemId}`);
   };
 
   if (loading) {
@@ -85,19 +91,18 @@ export function AssessmentList() {
               <div className="flex items-center gap-1 mt-1 text-xs text-[#9BBAC5]">
                 <Clock className="w-3.5 h-3.5" />
                 {a.timeLimit} minutes
-                {a.startTime && new Date(a.startTime) > new Date() && (
-                  <span className="ml-2 text-[#C4952A]">(Starts at {new Date(a.startTime).toLocaleString()})</span>
+                {/* Anything listed here is already open — the server only
+                    returns assessments inside their window — so the useful
+                    thing to show is the deadline, not availability. */}
+                {a.closesAt && (
+                  <span className="ml-2 text-[#C4952A]">
+                    (Closes {new Date(a.closesAt).toLocaleString()})
+                  </span>
                 )}
               </div>
             </div>
-            <Button
-              variant="primary"
-              onClick={() => handleStart(a)}
-              disabled={Boolean(a.startTime) && new Date(a.startTime!) > new Date()}
-            >
-              {a.startTime && new Date(a.startTime) > new Date()
-                ? 'Not yet available'
-                : 'Start Assessment'}
+            <Button variant="primary" onClick={() => handleStart(a)}>
+              Start Assessment
             </Button>
           </Card>
         ))}
