@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { getAssessmentBySystemId, getAssessmentResults } from "@/lib/assessments";
 import { getCurrentProfile, requireRole } from "@/lib/auth/session";
+import { canManageAssessment } from "@/lib/auth/access";
 import { errorResponse } from "@/lib/apiResponse";
 import { ResultsDocument } from "@/lib/pdf/ResultsDocument";
 
@@ -24,6 +25,11 @@ export async function GET(
     const { id } = await params;
     const assessment = await getAssessmentBySystemId(id);
     if (!assessment) return errorResponse("Assessment not found", 404);
+
+    const actor = await getCurrentProfile(request);
+    if (!actor || !canManageAssessment(actor, assessment)) {
+      return errorResponse("You can only work with assessments you created.", 403);
+    }
 
     const [results, profile] = await Promise.all([
       getAssessmentResults(assessment.id),

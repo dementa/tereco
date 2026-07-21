@@ -1,11 +1,12 @@
 import { NextRequest } from 'next/server';
 import { getResponses, getQuestions, getAssessmentBySystemId } from '@/lib/assessments';
 import { errorResponse, successResponse } from '@/lib/apiResponse';
-import { requireRole } from '@/lib/auth/session';
+import { getCurrentProfile, requireRole } from '@/lib/auth/session';
+import { canManageAssessment } from '@/lib/auth/access';
 
 // GET /api/admin/responses?assessmentId=... – responses + questions for marking
 export async function GET(request: NextRequest) {
-  const denied = await requireRole(request, ['admin', 'super_admin']);
+  const denied = await requireRole(request, ['admin', 'super_admin', 'staff']);
   if (denied) return denied;
   const assessmentId = request.nextUrl.searchParams.get('assessmentId');
   if (!assessmentId) {
@@ -16,6 +17,11 @@ export async function GET(request: NextRequest) {
     // and question lookups key off the internal uuid.
     const assessment = await getAssessmentBySystemId(assessmentId);
     if (!assessment) return errorResponse('Assessment not found', 404);
+
+    const actor = await getCurrentProfile(request);
+    if (!actor || !canManageAssessment(actor, assessment)) {
+      return errorResponse('You can only mark assessments you created.', 403);
+    }
 
     const [responses, questions] = await Promise.all([
       getResponses(assessment.id),

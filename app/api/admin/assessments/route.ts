@@ -2,13 +2,17 @@ import { NextRequest } from 'next/server';
 import { getAssessments, createAssessment, saveQuestions } from '@/lib/assessments';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { getCurrentProfile, requireRole } from '@/lib/auth/session';
+import { authorScopeFor } from '@/lib/auth/access';
 import { z } from 'zod';
 
 export async function GET(request: NextRequest) {
-  const denied = await requireRole(request, ['admin', 'super_admin']);
+  const denied = await requireRole(request, ['admin', 'super_admin', 'staff']);
   if (denied) return denied;
   try {
-    const assessments = await getAssessments();
+    const profile = await getCurrentProfile(request);
+    if (!profile) return errorResponse('Unauthorized', 401);
+    // Teachers see only the papers they wrote; admins see everything.
+    const assessments = await getAssessments(authorScopeFor(profile));
     return successResponse({ data: assessments });
   } catch (error) {
     console.error('Error fetching assessments:', error);
@@ -55,7 +59,7 @@ const CreateSchema = z.object({
 });
 
 export async function POST(request: NextRequest) {
-  const denied = await requireRole(request, ['admin', 'super_admin']);
+  const denied = await requireRole(request, ['admin', 'super_admin', 'staff']);
   if (denied) return denied;
   try {
     const body = await request.json();

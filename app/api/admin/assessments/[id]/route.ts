@@ -7,7 +7,8 @@ import {
   softDeleteAssessment,
 } from '@/lib/assessments';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
-import { requireRole } from '@/lib/auth/session';
+import { getCurrentProfile, requireRole } from '@/lib/auth/session';
+import { canManageAssessment } from '@/lib/auth/access';
 import { z } from 'zod';
 
 // Targeting replaces the old targetType/targetValue pair. Each entry narrows
@@ -58,12 +59,17 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireRole(request, ['admin', 'super_admin']);
+  const denied = await requireRole(request, ['admin', 'super_admin', 'staff']);
   if (denied) return denied;
   try {
     const { id } = await params;
     const assessment = await getAssessmentBySystemId(id);
     if (!assessment) return errorResponse('Assessment not found', 404);
+
+    const actor = await getCurrentProfile(request);
+    if (!actor || !canManageAssessment(actor, assessment)) {
+      return errorResponse('You can only work with assessments you created.', 403);
+    }
 
     const questions = await getQuestions(assessment.id);
     return successResponse({ data: { ...assessment, questions } });
@@ -77,7 +83,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireRole(request, ['admin', 'super_admin']);
+  const denied = await requireRole(request, ['admin', 'super_admin', 'staff']);
   if (denied) return denied;
   try {
     const { id } = await params;
@@ -85,6 +91,11 @@ export async function PUT(
 
     const assessment = await getAssessmentBySystemId(id);
     if (!assessment) return errorResponse('Assessment not found', 404);
+
+    const actor = await getCurrentProfile(request);
+    if (!actor || !canManageAssessment(actor, assessment)) {
+      return errorResponse('You can only work with assessments you created.', 403);
+    }
 
     await updateAssessment(id, {
       title: validated.title,
@@ -129,12 +140,17 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireRole(request, ['admin', 'super_admin']);
+  const denied = await requireRole(request, ['admin', 'super_admin', 'staff']);
   if (denied) return denied;
   try {
     const { id } = await params;
     const assessment = await getAssessmentBySystemId(id);
     if (!assessment) return errorResponse('Assessment not found', 404);
+
+    const actor = await getCurrentProfile(request);
+    if (!actor || !canManageAssessment(actor, assessment)) {
+      return errorResponse('You can only work with assessments you created.', 403);
+    }
 
     await softDeleteAssessment(id);
     return successResponse({ message: 'Assessment deleted (soft-deleted)' });

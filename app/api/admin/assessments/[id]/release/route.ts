@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAssessmentBySystemId, isFullyMarked, releaseResults } from "@/lib/assessments";
 import { getCurrentProfile, requireRole } from "@/lib/auth/session";
+import { canManageAssessment } from "@/lib/auth/access";
 import { errorResponse, handleApiError, successResponse } from "@/lib/apiResponse";
 
 /** Whether the Release button should be enabled, and why not if it shouldn't. */
@@ -14,6 +15,11 @@ export async function GET(
     const { id } = await params;
     const assessment = await getAssessmentBySystemId(id);
     if (!assessment) return errorResponse("Assessment not found", 404);
+
+    const actor = await getCurrentProfile(request);
+    if (!actor || !canManageAssessment(actor, assessment)) {
+      return errorResponse("You can only work with assessments you created.", 403);
+    }
     return successResponse({
       data: {
         fullyMarked: await isFullyMarked(assessment.id),
@@ -38,6 +44,11 @@ export async function POST(
 
     const assessment = await getAssessmentBySystemId(id);
     if (!assessment) return errorResponse("Assessment not found", 404);
+
+    const actor = await getCurrentProfile(request);
+    if (!actor || !canManageAssessment(actor, assessment)) {
+      return errorResponse("You can only work with assessments you created.", 403);
+    }
 
     const { notified } = await releaseResults(assessment.id, profile.id);
     return successResponse({

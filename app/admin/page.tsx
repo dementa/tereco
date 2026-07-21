@@ -3,24 +3,35 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
-import { Building2, Users, GraduationCap, UserRound } from 'lucide-react';
+import { Building2, CheckSquare, ClipboardList, FileText, Users, GraduationCap, UserRound } from 'lucide-react';
 
 interface Stats {
-  schools: number;
-  staff: number;
-  students: number;
-  parents: number;
+  scope?: 'staff';
+  schools?: number;
+  staff?: number;
+  students?: number;
+  parents?: number;
+  lessons?: number;
+  assessments?: number;
+  toMark?: number;
 }
 
-const CARDS = [
+const ADMIN_CARDS = [
   { key: 'schools' as const, label: 'Schools', href: '/admin/system/schools', icon: Building2 },
   { key: 'staff' as const, label: 'Staff', href: '/admin/system/staff', icon: Users },
   { key: 'students' as const, label: 'Students', href: '/admin/system/students', icon: GraduationCap },
   { key: 'parents' as const, label: 'Parents', href: '/admin/system/parents', icon: UserRound },
 ];
 
+// A teacher's dashboard is about their own work, not the programme's totals.
+const STAFF_CARDS = [
+  { key: 'lessons' as const, label: 'My Lesson Reports', href: '/admin/lessons', icon: FileText },
+  { key: 'assessments' as const, label: 'My Assessments', href: '/admin/assessments', icon: ClipboardList },
+  { key: 'toMark' as const, label: 'Answers To Mark', href: '/admin/marking', icon: CheckSquare },
+];
+
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<Stats>({ schools: 0, staff: 0, students: 0, parents: 0 });
+  const [stats, setStats] = useState<Stats>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -40,10 +51,12 @@ export default function AdminDashboard() {
   return (
     <div className="max-w-5xl">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">Dashboard</h1>
-      <p className="text-sm text-text-muted mb-6">Overview of TERECO data.</p>
+      <p className="text-sm text-text-muted mb-6">
+        {stats.scope === 'staff' ? 'Your lesson reports, papers and marking.' : 'Overview of TERECO data.'}
+      </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {CARDS.map((c) => {
+        {(stats.scope === 'staff' ? STAFF_CARDS : ADMIN_CARDS).map((c) => {
           const Icon = c.icon;
           return (
             <Link key={c.key} href={c.href}>
@@ -52,7 +65,7 @@ export default function AdminDashboard() {
                   <Icon className="w-5 h-5 text-primary-700" />
                 </div>
                 <p className="text-3xl font-bold text-primary-900">
-                  {loading ? '—' : stats[c.key]}
+                  {loading ? '—' : (stats[c.key] ?? 0)}
                 </p>
                 <p className="text-sm text-text-muted mt-1">{c.label}</p>
               </Card>

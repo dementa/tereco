@@ -21,6 +21,15 @@ const NAV = [
   { href: '/admin/marking', label: 'Marking', icon: CheckSquare },
 ];
 
+// Teachers get the same operational pages, scoped by the API to their own
+// lesson reports and the assessments they wrote. Rather than duplicate those
+// screens under /staff, the shell admits staff and labels itself accordingly.
+const STAFF_LABELS: Record<string, string> = {
+  '/admin/lessons': 'My Lesson Reports',
+  '/admin/assessments': 'My Assessments',
+  '/admin/marking': 'Marking',
+};
+
 // Super-admin-only account provisioning — separate from the day-to-day
 // roster pages above (route-level guarded by requireSuperAdmin too, this is
 // just nav visibility).
@@ -32,7 +41,7 @@ const SYSTEM_NAV = [
   { href: '/admin/system/parents', label: 'Parents', icon: Contact },
 ];
 
-const ADMIN_ROLES = ['admin', 'super_admin'];
+const CONSOLE_ROLES = ['admin', 'super_admin', 'staff'];
 
 function AdminShell({ children }: { children: React.ReactNode }) {
   const { user, isAuthenticated, loading, logout } = useAuth();
@@ -47,17 +56,17 @@ function AdminShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!isAuthenticated || !ADMIN_ROLES.includes(user?.role ?? '')) {
+  if (!isAuthenticated || !CONSOLE_ROLES.includes(user?.role ?? '')) {
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center px-4">
         <div className="max-w-md text-center bg-bg-card rounded-2xl p-8 border border-primary-100">
           <div className="w-14 h-14 rounded-full bg-error-bg flex items-center justify-center mx-auto mb-4">
             <ShieldAlert className="w-7 h-7 text-error" />
           </div>
-          <h1 className="text-xl font-bold text-primary-900 mb-2">Admin access required</h1>
+          <h1 className="text-xl font-bold text-primary-900 mb-2">Staff access required</h1>
           <p className="text-sm text-text-muted mb-6">
             {isAuthenticated
-              ? 'Your account does not have administrator privileges.'
+              ? 'Your account does not have access to the console.'
               : 'Please sign in with an administrator account to continue.'}
           </p>
           <Button variant="primary" className="w-full" onClick={() => router.push('/')}>
@@ -76,7 +85,9 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             <span className="text-white text-sm font-bold">TC</span>
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-primary-900">TERECO Admin</p>
+            <p className="text-sm font-semibold text-primary-900">
+              {user?.role === 'staff' ? 'TERECO Staff' : 'TERECO Admin'}
+            </p>
             <p className="text-xs text-text-muted truncate">{user?.name}</p>
           </div>
         </div>
@@ -84,6 +95,8 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           {NAV.map((item) => {
             const Icon = item.icon;
             const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+            const label =
+              user?.role === 'staff' ? (STAFF_LABELS[item.href] ?? item.label) : item.label;
             return (
               <Link
                 key={item.href}
@@ -95,7 +108,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
                 }`}
               >
                 <Icon className="w-4.5 h-4.5" />
-                {item.label}
+                {label}
               </Link>
             );
           })}

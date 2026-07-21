@@ -16,6 +16,8 @@ export interface Assessment {
   opensAt?: string;
   closesAt?: string;
   status: AssessmentStatus;
+  /** Who authored it — staff may only manage their own. */
+  createdBy: string | null;
   /** Printed at the top of the question paper. */
   instructions: string;
   resultsReleasedAt?: string;
@@ -114,6 +116,7 @@ interface AssessmentRow {
   opens_at: string | null;
   closes_at: string | null;
   status: string;
+  created_by: string | null;
   instructions: string;
   results_released_at: string | null;
   targets: { id: string; school_id: string | null; level: number | null; class_id: string | null }[] | null;
@@ -122,7 +125,7 @@ interface AssessmentRow {
 // Single string literal — concatenation would widen it to `string` and silently
 // disable the client's column checking.
 const ASSESSMENT_COLUMNS =
-  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, instructions, results_released_at, targets:assessment_targets(id, school_id, level, class_id)";
+  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, targets:assessment_targets(id, school_id, level, class_id)";
 
 const QUESTION_COLUMNS =
   "id, position, code, question_text, type, options, correct_answer, model_answer, image_url, image_public_id, max_score, config";
@@ -139,6 +142,7 @@ function rowToAssessment(row: AssessmentRow): Assessment {
     opensAt: row.opens_at ?? undefined,
     closesAt: row.closes_at ?? undefined,
     status: row.status as AssessmentStatus,
+    createdBy: row.created_by,
     instructions: row.instructions ?? "",
     resultsReleasedAt: row.results_released_at ?? undefined,
     targets: (row.targets ?? []).map((t) => ({
@@ -184,14 +188,17 @@ function rowToQuestion(row: QuestionRow): Question {
 
 // ─── Assessments ──────────────────────────────────────────
 
-/** Every assessment, for the admin console. Soft-deleted ones are excluded. */
-export async function getAssessments(): Promise<Assessment[]> {
+/**
+ * Assessments for the console. Soft-deleted ones are excluded.
+ *
+ * `createdBy` narrows the list to one author — teachers see only the papers
+ * they wrote, while admins see everything.
+ */
+export async function getAssessments(createdBy?: string): Promise<Assessment[]> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("assessments")
-    .select(ASSESSMENT_COLUMNS)
-    .is("deleted_at", null)
-    .order("created_at", { ascending: false });
+  let query = supabase.from("assessments").select(ASSESSMENT_COLUMNS).is("deleted_at", null);
+  if (createdBy) query = query.eq("created_by", createdBy);
+  const { data, error } = await query.order("created_at", { ascending: false });
 
   if (error) {
     console.error("Error fetching assessments:", error);
@@ -670,6 +677,25 @@ export async function getMarkedScript(
     releasedAt: assessment.resultsReleasedAt ?? null,
     answers,
   };
+}
+
+/**
+ * The assessment a response belongs to.
+ *
+ * Needed for authorisation: a response id on its own says nothing about who
+ * owns the paper, so marking has to walk back to the assessment before it can
+ * decide whether the caller may touch it.
+ */
+export async function getAssessmentForResponse(responseId: string): Promise<Assessment | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("responses")
+    .select("submission:assessment_submissions!inner(assessment_id)")
+    .eq("id", responseId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const assessmentId = (data as { submission?: { assessment_id: string } } | null)?.submission?.assessment_id;
+  return assessmentId ? getAssessmentById(assessmentId) : null;
 }
 
 /** Internal lookup by uuid, for callers that already resolved the assessment. */

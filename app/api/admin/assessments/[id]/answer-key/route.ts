@@ -3,6 +3,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { getAssessmentBySystemId, getQuestions } from "@/lib/assessments";
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getCurrentProfile, requireRole } from "@/lib/auth/session";
+import { canManageAssessment } from "@/lib/auth/access";
 import { errorResponse } from "@/lib/apiResponse";
 import { AnswerKeyDocument } from "@/lib/pdf/AnswerKeyDocument";
 
@@ -27,6 +28,11 @@ export async function GET(
     const { id } = await params;
     const assessment = await getAssessmentBySystemId(id);
     if (!assessment) return errorResponse("Assessment not found", 404);
+
+    const actor = await getCurrentProfile(request);
+    if (!actor || !canManageAssessment(actor, assessment)) {
+      return errorResponse("You can only work with assessments you created.", 403);
+    }
 
     if (assessment.status === "published") {
       return errorResponse(

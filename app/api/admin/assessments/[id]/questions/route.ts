@@ -1,7 +1,8 @@
 import { NextRequest } from 'next/server';
 import { getAssessmentBySystemId, getQuestions, saveQuestions } from '@/lib/assessments';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
-import { requireRole } from '@/lib/auth/session';
+import { getCurrentProfile, requireRole } from '@/lib/auth/session';
+import { canManageAssessment } from '@/lib/auth/access';
 import { z } from 'zod';
 
 // position/code are NOT accepted from the client — they are assigned from array
@@ -29,12 +30,17 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireRole(request, ['admin', 'super_admin']);
+  const denied = await requireRole(request, ['admin', 'super_admin', 'staff']);
   if (denied) return denied;
   const { id } = await params;
   try {
     const assessment = await getAssessmentBySystemId(id);
     if (!assessment) return errorResponse('Assessment not found', 404);
+
+    const actor = await getCurrentProfile(request);
+    if (!actor || !canManageAssessment(actor, assessment)) {
+      return errorResponse('You can only work with assessments you created.', 403);
+    }
 
     const questions = await getQuestions(assessment.id);
     return successResponse({ data: questions });
@@ -48,7 +54,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const denied = await requireRole(request, ['admin', 'super_admin']);
+  const denied = await requireRole(request, ['admin', 'super_admin', 'staff']);
   if (denied) return denied;
   const { id } = await params;
   try {
@@ -56,6 +62,11 @@ export async function POST(
 
     const assessment = await getAssessmentBySystemId(id);
     if (!assessment) return errorResponse('Assessment not found', 404);
+
+    const actor = await getCurrentProfile(request);
+    if (!actor || !canManageAssessment(actor, assessment)) {
+      return errorResponse('You can only work with assessments you created.', 403);
+    }
 
     await saveQuestions(
       assessment.id,
