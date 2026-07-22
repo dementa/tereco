@@ -1,6 +1,6 @@
 'use strict';
 
-const { app, BrowserWindow, shell, Menu, dialog } = require('electron');
+const { app, BrowserWindow, shell, Menu } = require('electron');
 const path = require('path');
 
 /**
@@ -58,6 +58,9 @@ function createWindow() {
     minHeight: 600,
     backgroundColor: '#F5FDFF',
     show: false,
+    // Defence in depth: even if a menu is ever set again, no bar is drawn in
+    // the window frame.
+    autoHideMenuBar: true,
     icon: path.join(__dirname, 'build', 'icon.png'),
     title: 'TERECO Collect',
     webPreferences: {
@@ -92,49 +95,53 @@ function createWindow() {
     }
   });
 
+  // Reload came from the View menu, which no longer exists. Keeping F5 and
+  // Ctrl/Cmd+R alive costs nothing visible and is the only way back from a
+  // page that has hung — during a timed paper, "restart the whole app" is not
+  // an acceptable recovery. Deliberately no devtools binding.
+  mainWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const isReload = input.key === 'F5' || ((input.control || input.meta) && input.key.toLowerCase() === 'r');
+    if (isReload) {
+      event.preventDefault();
+      mainWindow.webContents.reload();
+    }
+  });
+
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
 }
 
+/**
+ * No File/Edit/View/Window/Help — the window shows the system and nothing else.
+ *
+ * Windows and Linux draw the menu bar INSIDE the window, so removing it is
+ * what makes the window plain. macOS draws it at the top of the screen where
+ * it costs the window nothing, and routes the clipboard shortcuts through it:
+ * with no Edit menu there, Cmd+C/V/X/A stop working entirely in text fields —
+ * which learners type answers into. So macOS keeps a minimal menu holding only
+ * the shortcut roles, and no File/View/Help.
+ */
 function buildMenu() {
-  const isMac = process.platform === 'darwin';
-  const template = [
-    ...(isMac ? [{ role: 'appMenu' }] : []),
-    { role: 'fileMenu' },
-    { role: 'editMenu' },
-    {
-      label: 'View',
-      submenu: [
-        { role: 'reload' },
-        { role: 'forceReload' },
-        { type: 'separator' },
-        { role: 'resetZoom' },
-        { role: 'zoomIn' },
-        { role: 'zoomOut' },
-        { type: 'separator' },
-        { role: 'togglefullscreen' },
-      ],
-    },
-    { role: 'windowMenu' },
-    {
-      role: 'help',
-      submenu: [
-        {
-          label: 'About TERECO Collect',
-          click: () => {
-            dialog.showMessageBox(mainWindow, {
-              type: 'info',
-              title: 'About TERECO Collect',
-              message: 'TERECO Collect',
-              detail: `Version ${app.getVersion()}\nConnected to: ${APP_URL}`,
-            });
-          },
-        },
-      ],
-    },
-  ];
-  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  if (process.platform !== 'darwin') {
+    Menu.setApplicationMenu(null);
+    return;
+  }
+
+  Menu.setApplicationMenu(
+    Menu.buildFromTemplate([
+      {
+        // Literal, not app.getName(): unpackaged that returns the package name
+        // ("tereco-desktop"), which would sit in the macOS menu bar verbatim.
+        label: 'TERECO Collect',
+        submenu: [{ role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' }, { type: 'separator' }, { role: 'quit' }],
+      },
+      {
+        role: 'editMenu',
+      },
+    ])
+  );
 }
 
 // Single-instance lock so only one window runs.
