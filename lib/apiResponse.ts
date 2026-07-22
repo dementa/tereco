@@ -68,8 +68,21 @@ export function handleApiError(
   validationMessage = "Validation failed."
 ) {
   if (error instanceof z.ZodError) {
-    return errorResponse(validationMessage, 400, {
-      errors: formatZodIssues(error),
+    // Name the offending fields in the message itself. Every route already
+    // returned this detail in `errors`, and no page has ever displayed it —
+    // so a rejected form said only "Validation failed", which tells the person
+    // filling it in nothing about which box to fix. Folding the detail into
+    // `message` makes every existing caller useful without touching any page.
+    //
+    // Zod issues describe the caller's own submitted fields, so there is
+    // nothing internal to leak here.
+    const issues = formatZodIssues(error);
+    const detail = issues
+      .map((i) => (i.path ? `${i.path} — ${i.message}` : i.message))
+      .join("; ");
+
+    return errorResponse(detail ? `${validationMessage} ${detail}` : validationMessage, 400, {
+      errors: issues,
     });
   }
 

@@ -22,7 +22,7 @@ const CreateSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   middleName: z.string().optional(),
   lastName: z.string().min(1, "Last name is required"),
-  email: z.string().email("Enter a valid email").optional(),
+  email: z.string().trim().email("Enter a valid email").optional(),
   dateOfBirth: z.string().optional(),
   gender: z.enum(["male", "female"]).optional(),
   schoolId: z.string().uuid("Select a school"),

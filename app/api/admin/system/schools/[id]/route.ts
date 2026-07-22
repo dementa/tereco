@@ -24,7 +24,7 @@ const UpdateSchema = z.object({
   name: z.string().min(1).optional(),
   location: z.string().optional(),
   phone: z.string().optional(),
-  email: z.string().email("Enter a valid email").or(z.literal("")).optional(),
+  email: z.string().trim().email("Enter a valid email").or(z.literal("")).optional(),
   joinedOn: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
   // The contact is a staff profile, not free text. Null clears it.

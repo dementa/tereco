@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 const CreateSchema = z.object({
   name: z.string().min(1, "Name is required"),
   location: z.string().optional(),
-  email: z.string().email("Enter a valid email").optional().or(z.literal("")),
+  email: z.string().trim().email("Enter a valid email").optional().or(z.literal("")),
   phone: z.string().optional(),
   joinedOn: z.string().optional(),
   // Which rungs of the fixed P.1-P.7 ladder this school actually runs, with an

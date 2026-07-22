@@ -17,8 +17,8 @@ export async function GET(request: NextRequest) {
 }
 
 const CreateSchema = z.object({
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("A valid email is required"),
+  name: z.string().trim().min(1, "Name is required"),
+  email: z.string().trim().email("A valid email is required"),
 });
 
 export async function POST(request: NextRequest) {

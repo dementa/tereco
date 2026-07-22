@@ -18,8 +18,8 @@ export async function GET(request: NextRequest) {
 
 const CreateSchema = z.object({
   role: z.enum(["admin", "staff"]),
-  name: z.string().min(1, "Name is required"),
-  email: z.string().email("A valid email is required"),
+  name: z.string().trim().min(1, "Name is required"),
+  email: z.string().trim().email("A valid email is required"),
   schoolId: z.string().uuid().optional(),
   gender: z.enum(["male", "female"]).optional(),
 });

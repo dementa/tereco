@@ -15,7 +15,7 @@ const UpdateSchema = z.object({
   firstName: z.string().min(1).optional(),
   middleName: z.string().nullable().optional(),
   lastName: z.string().min(1).optional(),
-  contactEmail: z.string().email("Enter a valid email").or(z.literal("")).nullable().optional(),
+  contactEmail: z.string().trim().email("Enter a valid email").or(z.literal("")).nullable().optional(),
   gender: z.enum(["male", "female"]).nullable().optional(),
   dateOfBirth: z.string().nullable().optional(),
   phonePrimary: z.string().nullable().optional(),
