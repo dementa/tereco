@@ -37,7 +37,29 @@ npm run dist:linux   # Linux    -> dist/*.AppImage and dist/*.deb
 npm run dist:mac     # macOS    -> dist/*.dmg   (must run on a Mac)
 ```
 
-Outputs land in `desktop/dist/`.
+Outputs land in `desktop/dist/`. The Windows artifact is
+`dist/TERECO Collect Setup <version>.exe` — a ~78 MB NSIS installer.
+
+### Building the Windows installer on Linux
+
+It works, but electron-builder shells out to Windows tools through Wine to stamp
+the .exe icon and version metadata, and **both** Wine architectures are needed —
+`rcedit` is a 32-bit binary, so 64-bit Wine alone fails with
+`failed to load ntdll.dll`:
+
+```bash
+sudo apt-get install -y wine64
+sudo dpkg --add-architecture i386 && sudo apt-get update
+sudo apt-get install -y wine32
+```
+
+Wine prints a wall of `err:` lines about missing displays and RPC services while
+it does this. They are noise — the build is fine. `WINEDEBUG=-all` silences them.
+
+`"publish": null` in the build config is load-bearing: without it electron-builder
+tries to write auto-update metadata, finds no publish provider, and exits
+non-zero *after* the installer has already been written — a failure that looks
+like a broken build but isn't.
 
 ### macOS notes
 

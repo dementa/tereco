@@ -2,7 +2,7 @@
   "name": "tereco-desktop",
   "version": "1.0.0",
   "private": true,
-  "description": "TERECO Collect desktop application (thin Electron wrapper around the deployed web app).",
+  "description": "TERECO Collect desktop",
   "author": "TERECO",
   "homepage": "https://github.com/dementa/tereco",
   "main": "main.js",
@@ -21,6 +21,7 @@
     "appId": "com.tereco.collect",
     "productName": "TERECO Collect",
     "copyright": "Copyright © TERECO",
+    "publish": null,
     "directories": {
       "buildResources": "build",
       "output": "dist"
