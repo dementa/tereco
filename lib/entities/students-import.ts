@@ -81,6 +81,14 @@ async function findExistingStudent(
   return match ? { systemId: match.system_id } : null;
 }
 
+/**
+ * Where learners land when their class is streamed but the file names no
+ * stream. Enrollments require a class, not a stream, so this is not a data
+ * requirement — it is so that a streamed class has no half-placed learners
+ * sitting outside every stream in it.
+ */
+export const GENERAL_STREAM = "General";
+
 /** "P.2", "p2", "P 2" all mean the same rung of the ladder. */
 function normalizeClassCode(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
@@ -203,7 +211,11 @@ export async function processImportRow(
     }
     if (!row.class?.trim()) return { row: rowNumber, name, status: "error", error: "Class is required." };
 
-    const wantsStreams = !!row.stream?.trim();
+    // `|| undefined`, not just `?.trim()`: an empty cell parses to "", and ""
+    // is not null, so `?? GENERAL_STREAM` would keep it and create a stream
+    // with a blank name. Collapse it to undefined at the boundary instead.
+    const namedStream = row.stream?.trim() || undefined;
+    const wantsStreams = !!namedStream;
     const cls = await resolveClass(
       supabase,
       schoolId,
@@ -213,16 +225,32 @@ export async function processImportRow(
       allowCreateStructure
     );
 
-    if (cls.hasStreams && !wantsStreams) {
-      return { row: rowNumber, name, status: "error", error: `Class "${row.class}" has streams — a stream is required.` };
-    }
-
     let streamId: string | undefined;
     let note: string | undefined;
-    if (wantsStreams) {
-      const stream = await resolveStream(supabase, cls.id, row.stream!, createdBy, allowCreateStructure);
+    if (cls.hasStreams) {
+      // A streamed class needs every learner placed in a stream, but a school
+      // that has simply never split a class should not have to invent names
+      // for it. An unnamed placement goes to GENERAL_STREAM.
+      //
+      // That fallback is always allowed to create, unlike a stream the file
+      // names: the checkbox exists so a typo in the spreadsheet cannot invent
+      // structure, and "General" is ours, not the spreadsheet's — there is no
+      // typo to guard against.
+      const streamName = namedStream ?? GENERAL_STREAM;
+      const stream = await resolveStream(
+        supabase,
+        cls.id,
+        streamName,
+        createdBy,
+        allowCreateStructure || !namedStream
+      );
       streamId = stream.id;
-      if (cls.promoted) note = `Class "${row.class}" was updated to support streams because this row specified stream "${row.stream}".`;
+
+      if (!namedStream) {
+        note = `No stream given — placed in "${GENERAL_STREAM}".`;
+      } else if (cls.promoted) {
+        note = `Class "${row.class}" was updated to support streams because this row specified stream "${namedStream}".`;
+      }
     }
 
     // Makes the whole import idempotent: safe to re-run the same file (e.g.
