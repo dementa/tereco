@@ -368,11 +368,68 @@ export async function getQuestions(assessmentId: string): Promise<Question[]> {
  * Refused once anyone has sat it: rewriting questions under existing answers
  * would silently invalidate every score already recorded against them.
  */
+/**
+ * Mirrors the database's questions_choices_ck / questions_answerable_ck /
+ * questions_correct_in_options_ck constraints, in the author's language.
+ *
+ * This runs BEFORE the questions are replaced, for two reasons. The obvious
+ * one is that a constraint violation reaches the author as "Q3: tick at least
+ * one correct choice" instead of a bare "Save failed". The important one is
+ * that saveQuestions deletes the whole paper before re-inserting it: a
+ * rejected insert used to leave the assessment with NO questions at all, so
+ * the failure that told the author nothing also destroyed their work.
+ */
+function validateQuestions(questions: Omit<Question, "id">[]): void {
+  questions.forEach((q, i) => {
+    const label = q.code || `Q${i + 1}`;
+    const options = (q.questionType === "true_false" ? TRUE_FALSE_OPTIONS : q.options ?? [])
+      .map((o) => o.trim())
+      .filter(Boolean);
+    const answer = q.correctAnswer?.trim() ?? "";
+
+    if (!q.questionText?.trim()) {
+      throw new UserFacingError(`${label}: the question text is empty.`);
+    }
+
+    if (["mcq", "checkbox", "true_false"].includes(q.questionType) && options.length === 0) {
+      throw new UserFacingError(`${label}: add at least one choice.`);
+    }
+
+    if (["mcq", "checkbox", "true_false", "fill"].includes(q.questionType) && !answer) {
+      throw new UserFacingError(
+        q.questionType === "checkbox"
+          ? `${label}: tick at least one correct choice.`
+          : `${label}: choose the correct answer.`
+      );
+    }
+
+    // A choice that was ticked and then renamed or deleted leaves an answer
+    // pointing at something that no longer exists. Auto-scoring would give
+    // every learner zero, so the database refuses it — say which one.
+    const chosen = q.questionType === "checkbox" ? answer.split("|").map((a) => a.trim()).filter(Boolean) : [answer];
+    if (["mcq", "checkbox", "true_false"].includes(q.questionType)) {
+      const orphan = chosen.find((a) => !options.includes(a));
+      if (orphan) {
+        throw new UserFacingError(
+          `${label}: "${orphan}" is marked correct but is not one of the choices — re-tick the correct choice(s).`
+        );
+      }
+    }
+
+    if (!(q.maxScore > 0)) {
+      throw new UserFacingError(`${label}: marks must be greater than zero.`);
+    }
+  });
+}
+
 export async function saveQuestions(
   assessmentId: string,
   questions: Omit<Question, "id">[]
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
+
+  // Before anything is deleted.
+  validateQuestions(questions);
 
   const { count, error: countError } = await supabase
     .from("assessment_submissions")
@@ -380,7 +437,7 @@ export async function saveQuestions(
     .eq("assessment_id", assessmentId);
   if (countError) throw new Error(countError.message);
   if (count && count > 0) {
-    throw new Error(
+    throw new UserFacingError(
       `Cannot change the questions — ${count} student(s) have already submitted this assessment.`
     );
   }
@@ -411,7 +468,16 @@ export async function saveQuestions(
   }));
 
   const { error } = await supabase.from("questions").insert(rows);
-  if (error) throw new Error(error.message);
+  if (error) {
+    // validateQuestions should have caught anything the constraints reject, so
+    // reaching here means they disagree. The old questions are already gone,
+    // and the author must be told that rather than left assuming a no-op.
+    console.error("Question insert failed after delete:", error.message);
+    throw new UserFacingError(
+      "The questions could not be saved and the previous version has been cleared — your entries are still on screen, so fix the flagged question and save again before leaving this page.",
+      500
+    );
+  }
 }
 
 // ─── Submissions & responses ──────────────────────────────

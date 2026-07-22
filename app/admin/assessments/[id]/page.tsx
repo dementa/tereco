@@ -673,11 +673,23 @@ export default function AssessmentDetailPage() {
                       {!locked && q.options.length > 2 && (
                         <button
                           type="button"
-                          onClick={() =>
+                          onClick={() => {
+                            // Drop the removed choice from the correct answer
+                            // too. Leaving it behind points the answer at a
+                            // choice that no longer exists, which the database
+                            // rejects — and the whole save fails on a question
+                            // that looks fine on screen.
+                            const removed = q.options[oi].trim();
+                            const correctAnswer = (q.correctAnswer ?? '')
+                              .split(CHECKBOX_SEP)
+                              .map((a) => a.trim())
+                              .filter((a) => a && a !== removed)
+                              .join(CHECKBOX_SEP);
                             updateQuestion(index, {
                               options: q.options.filter((_, i) => i !== oi),
-                            })
-                          }
+                              correctAnswer,
+                            });
+                          }}
                           aria-label={`Remove choice ${oi + 1}`}
                           className="text-[#C26565]"
                         >
