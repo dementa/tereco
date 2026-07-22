@@ -39,7 +39,9 @@ const TargetSchema = z
 
 const QuestionSchema = z.object({
   questionText: z.string().min(1),
-  questionType: z.enum(['mcq', 'checkbox', 'fill', 'matching', 'dragdrop', 'short', 'long']),
+  questionType: z.enum([
+    'mcq', 'checkbox', 'true_false', 'fill', 'matching', 'dragdrop', 'short', 'long',
+  ]),
   options: z.array(z.string()).default([]),
   correctAnswer: z.string().optional(),
   maxScore: z.number().positive().default(1),

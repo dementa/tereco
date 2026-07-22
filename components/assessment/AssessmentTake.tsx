@@ -7,7 +7,13 @@ import { Button } from '@/components/ui/Button';
 import { AlertCircle, Clock, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthContext';
 
-type QuestionType = 'mcq' | 'checkbox' | 'fill' | 'matching' | 'dragdrop' | 'short' | 'long';
+// 'true_false' MUST be here. It was added to the schema after this component
+// was written, and because this union is local rather than shared with
+// lib/assessments.ts, tsc could not see the omission: the type simply matched
+// no render branch, so the question appeared with its text and no way to
+// answer it. Learners skipped every one of them.
+type QuestionType =
+  | 'mcq' | 'checkbox' | 'true_false' | 'fill' | 'matching' | 'dragdrop' | 'short' | 'long';
 
 interface Question {
   /** The question's uuid. Answers are keyed by this — the submit route
@@ -265,7 +271,9 @@ export function AssessmentTake() {
         </div>
 
         <div className="mt-4">
-          {q.questionType === 'mcq' && (
+          {/* True/false is a two-option multiple choice and answers identically:
+              one radio per option, where the options are always True and False. */}
+          {(q.questionType === 'mcq' || q.questionType === 'true_false') && (
             <div className="space-y-2">
               {q.options.map((opt, idx) => (
                 <label key={idx} className="flex items-center gap-3 p-3 rounded-xl border border-primary-700/10 hover:bg-primary-50 cursor-pointer transition-colors">
