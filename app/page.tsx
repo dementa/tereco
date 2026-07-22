@@ -21,6 +21,8 @@ type Screen =
 
 type Portal = 'admin' | 'staff' | 'student'
 
+const SPLASH_SEEN_KEY = 'tereco_splash_seen'
+
 // Super admin's job is account/entity management, not filling forms —
 // send them straight into the console instead of the staff forms list.
 const goToRoleHome = (role: string) => {
@@ -40,10 +42,18 @@ const AppContent: React.FC = () => {
   // login/password-change never races a not-yet-rendered context update.
   const [activeUser, setActiveUser] = useState<User | null>(null)
 
+  // The splash is an introduction, not a toll. Someone coming back to change
+  // role has already seen it, and sitting through 4.5s again every time would
+  // make the way back feel worse than restarting the app.
   useEffect(() => {
+    // Always through the timer, never set synchronously here: a state change
+    // in the effect body triggers a cascading render (and the initial render
+    // must stay 'splash' on both server and client, or hydration mismatches).
+    const seen = sessionStorage.getItem(SPLASH_SEEN_KEY)
     const timer = setTimeout(() => {
+      sessionStorage.setItem(SPLASH_SEEN_KEY, '1')
       setScreen('portal')
-    }, 4500)
+    }, seen ? 0 : 4500)
 
     return () => clearTimeout(timer)
   }, [])
@@ -82,6 +92,13 @@ const AppContent: React.FC = () => {
     }
   }
 
+  // portal -> login is a state change, so there is no history entry to go back
+  // to. The way back has to be explicit.
+  const handleBackToPortal = () => {
+    setPortal(null)
+    setScreen('portal')
+  }
+
   const handleLogout = () => {
     logout()
     setPortal(null)
@@ -101,7 +118,10 @@ const AppContent: React.FC = () => {
       {screen === 'splash' && (
         <SplashScreen
           key="splash"
-          onComplete={() => setScreen('portal')}
+          onComplete={() => {
+            sessionStorage.setItem(SPLASH_SEEN_KEY, '1')
+            setScreen('portal')
+          }}
         />
       )}
 
@@ -116,6 +136,7 @@ const AppContent: React.FC = () => {
         <LoginScreen
           key="login"
           onLogin={handleLogin}
+          onBack={handleBackToPortal}
         />
       )}
 

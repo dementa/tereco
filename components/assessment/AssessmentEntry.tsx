@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { GraduationCap, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { GraduationCap, AlertCircle, Eye, EyeOff, ArrowLeft } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -58,6 +58,18 @@ export function AssessmentEntry() {
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center px-4 py-8">
       <Card className="w-full max-w-md p-6 sm:p-8">
+        {/* The role picker sends students here with a full navigation, so this
+            screen is a dead end without an explicit way back — the desktop app
+            has no back button, and closing it was the only escape. */}
+        <button
+          type="button"
+          onClick={() => router.push('/')}
+          className="flex items-center gap-1.5 text-sm text-text-muted hover:text-primary-700 transition-colors mb-4"
+        >
+          <ArrowLeft className="w-4 h-4" aria-hidden />
+          Choose a different role
+        </button>
+
         <div className="text-center mb-6">
           <div className="mx-auto w-14 h-14 rounded-2xl bg-primary-700 text-white flex items-center justify-center shadow-md mb-4">
             <GraduationCap size={26} />

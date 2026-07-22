@@ -101,10 +101,39 @@ function createWindow() {
   // an acceptable recovery. Deliberately no devtools binding.
   mainWindow.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
+    const nav = mainWindow.webContents.navigationHistory;
+
     const isReload = input.key === 'F5' || ((input.control || input.meta) && input.key.toLowerCase() === 'r');
     if (isReload) {
       event.preventDefault();
       mainWindow.webContents.reload();
+      return;
+    }
+
+    // A window with no chrome has no Back button, so Alt+Left/Right are the
+    // only history navigation there is. The app also offers its own way back
+    // between screens; this covers the rest.
+    if (input.alt && input.key === 'ArrowLeft' && nav.canGoBack()) {
+      event.preventDefault();
+      nav.goBack();
+      return;
+    }
+    if (input.alt && input.key === 'ArrowRight' && nav.canGoForward()) {
+      event.preventDefault();
+      nav.goForward();
+    }
+  });
+
+  // The mouse's dedicated back/forward buttons, which users reach for before
+  // any keyboard shortcut.
+  mainWindow.on('app-command', (event, command) => {
+    const nav = mainWindow.webContents.navigationHistory;
+    if (command === 'browser-backward' && nav.canGoBack()) {
+      event.preventDefault();
+      nav.goBack();
+    } else if (command === 'browser-forward' && nav.canGoForward()) {
+      event.preventDefault();
+      nav.goForward();
     }
   });
 

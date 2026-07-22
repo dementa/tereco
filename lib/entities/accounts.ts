@@ -239,10 +239,25 @@ export async function createAccount(input: CreateAccountInput): Promise<CreatedA
   };
 }
 
-/** Super admin resets someone's password — new temp password, forces a change on next login. */
+/**
+ * Super admin resets someone's password.
+ *
+ * Staff and admins are then made to change it on next login — they hold
+ * management access and a password an administrator has seen should not stay
+ * live. Students are NOT: a learner whose password is reset on the morning of
+ * a paper must be able to sign in and sit it, and a forced change stands
+ * between them and the paper for no security gain they benefit from. They can
+ * change it whenever they like.
+ */
 export async function resetAccountPassword(profileId: string): Promise<{ temporaryPassword: string }> {
   const supabase = getSupabaseAdmin();
   const temporaryPassword = generateTemporaryPassword();
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", profileId)
+    .single();
 
   const { error } = await supabase.auth.admin.updateUserById(profileId, {
     password: temporaryPassword,
@@ -251,7 +266,10 @@ export async function resetAccountPassword(profileId: string): Promise<{ tempora
 
   await supabase
     .from("profiles")
-    .update({ must_change_password: true, updated_at: new Date().toISOString() })
+    .update({
+      must_change_password: profile?.role !== "student",
+      updated_at: new Date().toISOString(),
+    })
     .eq("id", profileId);
 
   return { temporaryPassword };

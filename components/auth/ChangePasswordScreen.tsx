@@ -7,7 +7,16 @@ import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 
 /** Forced first-login reset — every system-generated account starts with must_change_password = true. */
-export const ChangePasswordScreen: React.FC<{ onDone: () => void }> = ({ onDone }) => {
+/**
+ * `onSkip` makes the screen optional. Passed for learners: getting into the
+ * paper comes first, and a password change is not worth standing between a
+ * child and a timed assessment. Staff and admins get no skip — they hold
+ * management access.
+ */
+export const ChangePasswordScreen: React.FC<{
+  onDone: () => void;
+  onSkip?: () => void;
+}> = ({ onDone, onSkip }) => {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState('');
@@ -91,6 +100,16 @@ export const ChangePasswordScreen: React.FC<{ onDone: () => void }> = ({ onDone 
           <Button variant="primary" className="w-full justify-center text-base py-3" type="submit" isLoading={isLoading}>
             Set password
           </Button>
+
+          {onSkip && (
+            <button
+              type="button"
+              onClick={onSkip}
+              className="w-full text-center text-sm text-text-muted hover:text-primary-700 transition-colors"
+            >
+              Not now — take me to my papers
+            </button>
+          )}
         </form>
       </motion.div>
     </div>

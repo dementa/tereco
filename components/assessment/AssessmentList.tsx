@@ -19,6 +19,9 @@ interface Assessment {
   closesAt?: string;
 }
 
+/** Set when a learner chooses "not now" on the password-change screen. */
+export const SKIP_PASSWORD_CHANGE_KEY = 'tereco_skip_password_change';
+
 export function AssessmentList() {
   const router = useRouter();
   const { user, isAuthenticated, loading: authLoading, mustChangePassword } = useAuth();
@@ -32,7 +35,9 @@ export function AssessmentList() {
       router.push('/assessment');
       return;
     }
-    if (mustChangePassword) {
+    // Offered, not imposed: a learner who chose "not now" is not sent back here
+    // on every navigation for the rest of their session.
+    if (mustChangePassword && !sessionStorage.getItem(SKIP_PASSWORD_CHANGE_KEY)) {
       router.push('/assessment/change-password');
       return;
     }

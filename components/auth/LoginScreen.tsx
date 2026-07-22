@@ -2,11 +2,20 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Lock, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, AlertCircle, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { useAuth, type User as AuthUser } from './AuthContext';
 
-export const LoginScreen: React.FC<{ onLogin: (user: AuthUser & { mustChangePassword?: boolean }) => void }> = ({ onLogin }) => {
+/**
+ * `onBack` returns to the role picker. Without it this screen is a dead end:
+ * portal -> login is a state change, not a navigation, so there is no history
+ * entry for a browser Back to return to — and in the desktop app there is no
+ * back button at all. Picking the wrong role meant restarting the app.
+ */
+export const LoginScreen: React.FC<{
+  onLogin: (user: AuthUser & { mustChangePassword?: boolean }) => void;
+  onBack?: () => void;
+}> = ({ onLogin, onBack }) => {
   const { login } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
@@ -78,6 +87,17 @@ export const LoginScreen: React.FC<{ onLogin: (user: AuthUser & { mustChangePass
         transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         className="w-full max-w-sm"
       >
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-1.5 text-sm text-text-muted hover:text-primary-700 transition-colors mb-6"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden />
+            Choose a different role
+          </button>
+        )}
+
         {/* Logo — free-standing, no container */}
         <div className="text-center mb-10">
           <h1 className="text-3xl font-bold tracking-tight text-primary-900">
