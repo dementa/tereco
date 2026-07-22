@@ -31,10 +31,14 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 
-for f in 00-local-stubs.sql 01-core.sql 02-audit.sql 03-collection.sql 04-notifications.sql 05-assessment-authoring.sql 06-offline-submissions.sql; do
-  [ -f "$SCHEMA_DIR/$f" ] || continue
+# Every numbered file, in order. Globbed rather than listed so a new one is
+# never left out by accident — that would generate types for a schema nobody
+# has. `patch-*.sql` files are deliberately excluded: they are already folded
+# into the numbered files and re-applying them here would be a no-op at best.
+for path in "$SCHEMA_DIR"/[0-9][0-9]-*.sql; do
+  f="$(basename "$path")"
   echo "Applying $f..."
-  docker cp "$SCHEMA_DIR/$f" "$CONTAINER:/tmp/$f"
+  docker cp "$path" "$CONTAINER:/tmp/$f"
   docker exec "$CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -q -f "/tmp/$f"
 done
 
