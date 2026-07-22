@@ -19,6 +19,9 @@ interface Question {
   questionText: string;
   questionType: QuestionType;
   options: string[];
+  /** Cloudinary delivery URL for a picture question. The image IS the
+   *  question for these — "name the shape below" is unanswerable without it. */
+  imageUrl?: string;
   maxScore?: number;
 }
 
@@ -250,6 +253,15 @@ export function AssessmentTake() {
             {q.maxScore ? ` • ${q.maxScore} mark${q.maxScore === 1 ? '' : 's'}` : ''}
           </p>
           <p className="text-lg font-medium text-primary-900 mt-1">{q.questionText}</p>
+
+          {q.imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={q.imageUrl}
+              alt=""
+              className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
+            />
+          )}
         </div>
 
         <div className="mt-4">
