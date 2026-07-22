@@ -36,6 +36,62 @@ export type Database = {
         }
         Relationships: []
       }
+      assessment_sittings: {
+        Row: {
+          assessment_id: string
+          enrollment_id: string
+          id: string
+          last_seen_at: string
+          started_at: string
+          student_id: string
+        }
+        Insert: {
+          assessment_id: string
+          enrollment_id: string
+          id?: string
+          last_seen_at?: string
+          started_at?: string
+          student_id: string
+        }
+        Update: {
+          assessment_id?: string
+          enrollment_id?: string
+          id?: string
+          last_seen_at?: string
+          started_at?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_sittings_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_sittings_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "current_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_sittings_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_sittings_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       assessment_submissions: {
         Row: {
           assessment_id: string

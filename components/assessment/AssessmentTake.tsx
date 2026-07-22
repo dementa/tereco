@@ -33,6 +33,36 @@ interface Question {
 
 const CHECKBOX_SEP = ' | ';
 
+/**
+ * Progress is kept in localStorage, not sessionStorage.
+ *
+ * sessionStorage is erased when the browser session ends, and a power cut ends
+ * it — so a whole room of learners lost their answers and had to start again.
+ * localStorage survives the reboot.
+ *
+ * The key includes the student id because localStorage does NOT, unlike
+ * sessionStorage, die with the tab: on a shared school computer the next
+ * learner to sign in would otherwise have the previous one's answers restored
+ * into their paper.
+ */
+function progressKey(studentId: string, assessmentId: string, part: string): string {
+  return `tereco_take_${studentId}_${assessmentId}_${part}`;
+}
+
+/**
+ * Reads the new key, then the old sessionStorage one.
+ *
+ * Anyone sitting a paper at the moment this ships has their answers under the
+ * old scheme; without this fallback their next reload would find nothing and
+ * silently discard the lot.
+ */
+function readProgress(studentId: string, assessmentId: string, part: string): string | null {
+  return (
+    localStorage.getItem(progressKey(studentId, assessmentId, part)) ??
+    sessionStorage.getItem(`assessment_${assessmentId}_${part}`)
+  );
+}
+
 export function AssessmentTake() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
@@ -52,6 +82,10 @@ export function AssessmentTake() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number | null>(null);
   const submittedRef = useRef(false);
+  /** Seconds left according to the SERVER when the sitting was last anchored. */
+  const serverRemainingRef = useRef<number | null>(null);
+
+  const studentId = user?.id ?? '';
 
   // ─── Auth guard ────────────────────────────────────────
   useEffect(() => {
@@ -62,7 +96,10 @@ export function AssessmentTake() {
   }, [authLoading, isAuthenticated, user, router]);
 
   // ─── Load assessment metadata + questions ────────────────
+  // Waits for the signed-in learner: the progress keys are scoped to their id,
+  // so loading before it is known would read and write the wrong ones.
   useEffect(() => {
+    if (authLoading || !studentId) return;
     let cancelled = false;
     async function fetchAssessmentData() {
       try {
@@ -84,12 +121,28 @@ export function AssessmentTake() {
         setQuestions(Array.isArray(qData.data) ? qData.data : []);
 
         // Restore any in-progress answers/index
-        const savedAnswers = sessionStorage.getItem(`assessment_${assessmentId}_answers`);
+        const savedAnswers = readProgress(studentId, assessmentId, 'answers');
         if (savedAnswers) {
           try { setAnswers(JSON.parse(savedAnswers)); } catch { /* ignore */ }
         }
-        const savedIndex = sessionStorage.getItem(`assessment_${assessmentId}_index`);
+        const savedIndex = readProgress(studentId, assessmentId, 'index');
         if (savedIndex) setCurrentIndex(parseInt(savedIndex, 10) || 0);
+
+        // Ask the server when this sitting started. Doing it here, not in the
+        // timer effect, means the clock is anchored before the first tick.
+        //
+        // If it fails — most likely no connection — the sitting falls back to
+        // a locally held start time so the learner is never blocked from
+        // working. It re-anchors the moment the network returns.
+        try {
+          const sRes = await fetch(`/api/assessments/${assessmentId}/sitting`, { method: 'POST' });
+          const sData = await sRes.json();
+          if (!cancelled && sData.success && typeof sData.data?.remainingSeconds === 'number') {
+            serverRemainingRef.current = sData.data.remainingSeconds;
+          }
+        } catch {
+          /* offline — the local clock carries the sitting until we reconnect */
+        }
       } catch (err) {
         if (!cancelled) {
           console.error('Error loading assessment:', err);
@@ -101,7 +154,7 @@ export function AssessmentTake() {
     }
     fetchAssessmentData();
     return () => { cancelled = true; };
-  }, [assessmentId]);
+  }, [assessmentId, authLoading, studentId]);
 
   const submitAnswers = useCallback(async () => {
     if (submittedRef.current) return;
@@ -117,9 +170,12 @@ export function AssessmentTake() {
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || 'Submission failed.');
 
-      sessionStorage.removeItem(`assessment_${assessmentId}_answers`);
-      sessionStorage.removeItem(`assessment_${assessmentId}_index`);
-      sessionStorage.removeItem(`assessment_${assessmentId}_start`);
+      // Clear both schemes: the old sessionStorage keys may still hold this
+      // learner's answers if they started before this shipped.
+      for (const part of ['answers', 'index', 'start']) {
+        localStorage.removeItem(progressKey(studentId, assessmentId, part));
+        sessionStorage.removeItem(`assessment_${assessmentId}_${part}`);
+      }
       router.push(`/assessment/confirmation?ref=${encodeURIComponent(assessmentId)}`);
     } catch (err) {
       submittedRef.current = false;
@@ -127,17 +183,27 @@ export function AssessmentTake() {
     } finally {
       setSubmitting(false);
     }
-  }, [answers, assessmentId, router]);
+  }, [answers, assessmentId, router, studentId]);
 
   // ─── Timer ───────────────────────────────────────────────
   useEffect(() => {
     if (loading || timeLimit === 0) return;
 
-    const storedStart = sessionStorage.getItem(`assessment_${assessmentId}_start`);
-    let start = storedStart ? parseInt(storedStart, 10) : null;
-    if (!start) {
-      start = Date.now();
-      sessionStorage.setItem(`assessment_${assessmentId}_start`, start.toString());
+    // The server's answer wins. It is the only clock a learner cannot reset by
+    // clearing storage or rebooting the machine, which is exactly what a power
+    // cut used to do — the old code found no stored start and handed out a
+    // fresh full countdown.
+    const serverRemaining = serverRemainingRef.current;
+    let start: number;
+    if (serverRemaining !== null) {
+      start = Date.now() - (timeLimit - serverRemaining) * 1000;
+      localStorage.setItem(progressKey(studentId, assessmentId, 'start'), start.toString());
+    } else {
+      // No server answer (offline). Fall back to a locally remembered start so
+      // the learner can keep working; it re-anchors when the network returns.
+      const storedStart = readProgress(studentId, assessmentId, 'start');
+      start = storedStart ? parseInt(storedStart, 10) : Date.now();
+      localStorage.setItem(progressKey(studentId, assessmentId, 'start'), start.toString());
     }
     startTimeRef.current = start;
 
@@ -156,15 +222,18 @@ export function AssessmentTake() {
     updateTimer();
 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [loading, timeLimit, assessmentId, submitAnswers]);
+  }, [loading, timeLimit, assessmentId, submitAnswers, studentId]);
 
   // ─── Persist progress ────────────────────────────────────
+  // localStorage, so it survives the machine losing power. Written on every
+  // keystroke-level change, because the interruption is never announced.
   useEffect(() => {
+    if (!studentId) return;
     if (Object.keys(answers).length > 0) {
-      sessionStorage.setItem(`assessment_${assessmentId}_answers`, JSON.stringify(answers));
+      localStorage.setItem(progressKey(studentId, assessmentId, 'answers'), JSON.stringify(answers));
     }
-    sessionStorage.setItem(`assessment_${assessmentId}_index`, currentIndex.toString());
-  }, [answers, currentIndex, assessmentId]);
+    localStorage.setItem(progressKey(studentId, assessmentId, 'index'), currentIndex.toString());
+  }, [answers, currentIndex, assessmentId, studentId]);
 
   const handleAnswer = (questionId: string, value: string) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
