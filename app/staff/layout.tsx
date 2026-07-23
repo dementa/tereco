@@ -6,36 +6,19 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthContext';
 import { PortalGate } from '@/components/auth/PortalGate';
 import { NotificationBell } from '@/components/ui/NotificationBell';
-import {
-  LayoutDashboard, FileText, GraduationCap, ClipboardList,
-  CheckSquare, LogOut, School, UserCog, Contact, CalendarDays,
-} from 'lucide-react';
+import { LayoutDashboard, FileText, ClipboardList, CheckSquare, LogOut } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
-// The old /admin/students and /admin/users roster pages are gone: they were the
-// pre-Supabase-Auth surface, built on the dropped `students`/`users` tables and
-// a hardcoded school list. Their replacements are under System below.
+const STAFF_ROLES: Role[] = ['staff'];
+
 const NAV = [
-  { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/admin/lessons', label: 'Lesson Submissions', icon: FileText },
-  { href: '/admin/assessments', label: 'Assessments', icon: ClipboardList },
-  { href: '/admin/marking', label: 'Marking', icon: CheckSquare },
+  { href: '/staff', label: 'Dashboard', icon: LayoutDashboard, exact: true },
+  { href: '/staff/lessons', label: 'My Lesson Reports', icon: FileText },
+  { href: '/staff/assessments', label: 'My Assessments', icon: ClipboardList },
+  { href: '/staff/marking', label: 'Marking', icon: CheckSquare },
 ];
 
-// Super-admin-only account provisioning — separate from the day-to-day
-// roster pages above (route-level guarded by requireSuperAdmin too, this is
-// just nav visibility).
-const SYSTEM_NAV = [
-  { href: '/admin/system/academic-years', label: 'Academic Years', icon: CalendarDays },
-  { href: '/admin/system/schools', label: 'Schools', icon: School },
-  { href: '/admin/system/staff', label: 'Staff & Admins', icon: UserCog },
-  { href: '/admin/system/students', label: 'Student Accounts', icon: GraduationCap },
-  { href: '/admin/system/parents', label: 'Parents', icon: Contact },
-];
-
-const ADMIN_ROLES: Role[] = ['admin', 'super_admin'];
-
-function AdminShell({ children }: { children: React.ReactNode }) {
+function StaffShell({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -48,7 +31,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
             <span className="text-white text-sm font-bold">TC</span>
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-primary-900">TERECO Admin</p>
+            <p className="text-sm font-semibold text-primary-900">TERECO Staff</p>
             <p className="text-xs text-text-muted truncate">{user?.name}</p>
           </div>
         </div>
@@ -71,30 +54,6 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
-
-          {user?.role === 'super_admin' && (
-            <>
-              <p className="px-3 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest text-text-faint">System</p>
-              {SYSTEM_NAV.map((item) => {
-                const Icon = item.icon;
-                const active = pathname.startsWith(item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${
-                      active
-                        ? 'bg-primary-700 text-white'
-                        : 'text-text-secondary hover:bg-primary-50'
-                    }`}
-                  >
-                    <Icon className="w-4.5 h-4.5" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </>
-          )}
         </nav>
         <div className="p-3 border-t border-primary-100 space-y-1">
           <button
@@ -107,13 +66,10 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex-1 min-w-0 flex flex-col">
-        {/* Desktop header strip: the sidebar has no room for the bell, and it
-            must stay reachable from every page. */}
         <div className="hidden md:flex items-center justify-end gap-2 px-8 py-2 border-b border-primary-100 bg-bg-card">
           <NotificationBell />
         </div>
 
-        {/* Mobile top nav */}
         <div className="md:hidden bg-bg-card border-b border-primary-100 p-3 flex items-center gap-2 overflow-x-auto">
           <div className="shrink-0"><NotificationBell /></div>
           {NAV.map((item) => {
@@ -137,10 +93,10 @@ function AdminShell({ children }: { children: React.ReactNode }) {
   );
 }
 
-export default function AdminLayout({ children }: { children: React.ReactNode }) {
+export default function StaffLayout({ children }: { children: React.ReactNode }) {
   return (
-    <PortalGate roles={ADMIN_ROLES}>
-      <AdminShell>{children}</AdminShell>
+    <PortalGate roles={STAFF_ROLES}>
+      <StaffShell>{children}</StaffShell>
     </PortalGate>
   );
 }

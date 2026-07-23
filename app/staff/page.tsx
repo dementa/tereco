@@ -3,31 +3,27 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
-import { Building2, Users, GraduationCap, UserRound } from 'lucide-react';
+import { CheckSquare, ClipboardList, FileText } from 'lucide-react';
 
 interface Stats {
-  schools?: number;
-  staff?: number;
-  students?: number;
-  parents?: number;
+  lessons?: number;
+  assessments?: number;
+  toMark?: number;
 }
 
-const ADMIN_CARDS = [
-  { key: 'schools' as const, label: 'Schools', href: '/admin/system/schools', icon: Building2 },
-  { key: 'staff' as const, label: 'Staff', href: '/admin/system/staff', icon: Users },
-  { key: 'students' as const, label: 'Students', href: '/admin/system/students', icon: GraduationCap },
-  { key: 'parents' as const, label: 'Parents', href: '/admin/system/parents', icon: UserRound },
+const CARDS = [
+  { key: 'lessons' as const, label: 'My Lesson Reports', href: '/staff/lessons', icon: FileText },
+  { key: 'assessments' as const, label: 'My Assessments', href: '/staff/assessments', icon: ClipboardList },
+  { key: 'toMark' as const, label: 'Answers To Mark', href: '/staff/marking', icon: CheckSquare },
 ];
 
-export default function AdminDashboard() {
+export default function StaffDashboard() {
   const [stats, setStats] = useState<Stats>({});
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        // One counted query per entity, server-side — not four full list
-        // fetches whose lengths happen to be the numbers we want.
         const res = await fetch('/api/admin/system/stats').then((r) => r.json());
         if (res.data) setStats(res.data);
       } finally {
@@ -40,10 +36,10 @@ export default function AdminDashboard() {
   return (
     <div className="max-w-5xl">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">Dashboard</h1>
-      <p className="text-sm text-text-muted mb-6">Overview of TERECO data.</p>
+      <p className="text-sm text-text-muted mb-6">Your lesson reports, papers and marking.</p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {ADMIN_CARDS.map((c) => {
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {CARDS.map((c) => {
           const Icon = c.icon;
           return (
             <Link key={c.key} href={c.href}>

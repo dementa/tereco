@@ -24,17 +24,16 @@ export const SKIP_PASSWORD_CHANGE_KEY = 'tereco_skip_password_change';
 
 export function AssessmentList() {
   const router = useRouter();
-  const { user, isAuthenticated, loading: authLoading, mustChangePassword } = useAuth();
+  const { loading: authLoading, mustChangePassword } = useAuth();
   const [assessments, setAssessments] = useState<Assessment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    // Authorization (must be an authenticated student) is guaranteed by the
+    // PortalGate wrapping this route group — only the password-hygiene
+    // redirect is this component's own concern.
     if (authLoading) return;
-    if (!isAuthenticated || user?.role !== 'student') {
-      router.push('/assessment');
-      return;
-    }
     // Offered, not imposed: a learner who chose "not now" is not sent back here
     // on every navigation for the rest of their session.
     if (mustChangePassword && !sessionStorage.getItem(SKIP_PASSWORD_CHANGE_KEY)) {
@@ -55,7 +54,7 @@ export function AssessmentList() {
       })
       .catch(() => setError('Network error.'))
       .finally(() => setLoading(false));
-  }, [router, user, isAuthenticated, authLoading, mustChangePassword]);
+  }, [router, authLoading, mustChangePassword]);
 
   // Just navigate. The take screen fetches the assessment's time limit itself
   // and records the start timestamp on mount if one is not already stored —

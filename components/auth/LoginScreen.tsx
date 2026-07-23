@@ -103,7 +103,7 @@ export const LoginScreen: React.FC<{
           <h1 className="text-3xl font-bold tracking-tight text-primary-900">
             TERECO
           </h1>
-          <p className="text-sm text-text-muted mt-2">Sign in to submit lesson records</p>
+          <p className="text-sm text-text-muted mt-2">Sign in to your TERECO account</p>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-6">

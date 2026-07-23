@@ -1,5 +1,5 @@
-import { AssessmentEntry } from '@/components/assessment/AssessmentEntry';
+import { redirect } from 'next/navigation';
 
 export default function AssessmentPage() {
-  return <AssessmentEntry />;
+  redirect('/auth');
 }
