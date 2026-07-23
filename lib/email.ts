@@ -1,6 +1,7 @@
 import { Resend } from "resend";
 
 const ROLE_LABELS: Record<string, string> = {
+  super_admin: "Super Admin",
   admin: "Administrator",
   staff: "Staff",
   student: "Student",
@@ -16,7 +17,7 @@ function getResend(): Resend | null {
 export interface CredentialsEmailInput {
   to: string;
   name: string;
-  systemId: string;
+  systemId: string | null; // null for super_admin — they sign in by email
   temporaryPassword: string;
   role: string;
 }
@@ -50,10 +51,10 @@ export async function sendCredentialsEmail(
           <p>Hi ${input.name},</p>
           <p>An account has been created for you as a <strong>${roleLabel}</strong>.</p>
           <table style="border-collapse: collapse; margin: 16px 0;">
-            <tr><td style="padding: 4px 12px 4px 0; color: #5A7A85;">System ID</td><td style="font-family: monospace; font-weight: bold;">${input.systemId}</td></tr>
+            ${input.systemId ? `<tr><td style="padding: 4px 12px 4px 0; color: #5A7A85;">System ID</td><td style="font-family: monospace; font-weight: bold;">${input.systemId}</td></tr>` : ""}
             <tr><td style="padding: 4px 12px 4px 0; color: #5A7A85;">Temporary password</td><td style="font-family: monospace; font-weight: bold;">${input.temporaryPassword}</td></tr>
           </table>
-          <p>Sign in with your System ID and this password. You'll be asked to set your own password on first login.</p>
+          <p>Sign in with your ${input.systemId ? "System ID" : "email"} and this password. You'll be asked to set your own password on first login.</p>
           <p style="color: #9BBAC5; font-size: 12px;">If you didn't expect this account, contact your school administrator.</p>
         </div>
       `,

@@ -5,7 +5,7 @@ import { Copy, Check, Mail, MailWarning, MailX } from 'lucide-react';
 
 interface CredentialsCardProps {
   name: string;
-  systemId: string;
+  systemId: string | null; // null for super_admin — they sign in by email
   temporaryPassword: string;
   emailSent: boolean;
   emailError?: string;
@@ -25,7 +25,8 @@ export function CredentialsCard({
   const [copied, setCopied] = useState(false);
 
   const copyAll = () => {
-    navigator.clipboard.writeText(`System ID: ${systemId}\nPassword: ${temporaryPassword}`);
+    const idLine = systemId ? `System ID: ${systemId}\n` : '';
+    navigator.clipboard.writeText(`${idLine}Password: ${temporaryPassword}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -41,10 +42,17 @@ export function CredentialsCard({
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
-        <div className="bg-white rounded-xl p-3 border border-primary-100">
-          <p className="text-[10px] font-bold uppercase tracking-widest text-text-faint mb-1">System ID</p>
-          <p className="font-mono font-semibold text-primary-900">{systemId}</p>
-        </div>
+        {systemId ? (
+          <div className="bg-white rounded-xl p-3 border border-primary-100">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-text-faint mb-1">System ID</p>
+            <p className="font-mono font-semibold text-primary-900">{systemId}</p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl p-3 border border-primary-100">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-text-faint mb-1">Sign in with</p>
+            <p className="font-mono font-semibold text-primary-900">Email</p>
+          </div>
+        )}
         <div className="bg-white rounded-xl p-3 border border-primary-100">
           <p className="text-[10px] font-bold uppercase tracking-widest text-text-faint mb-1">Temporary password</p>
           <p className="font-mono font-semibold text-primary-900">{temporaryPassword}</p>

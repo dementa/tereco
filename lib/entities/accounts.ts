@@ -5,7 +5,7 @@ import { sendCredentialsEmail } from "@/lib/email";
 import { UserFacingError } from "@/lib/apiResponse";
 import type { TablesUpdate } from "@/lib/database.types";
 
-export type AccountRole = "admin" | "staff" | "student" | "parent";
+export type AccountRole = "super_admin" | "admin" | "staff" | "student" | "parent";
 
 /** Matches the profiles.gender check constraint. */
 export type Gender = "male" | "female";
@@ -69,7 +69,7 @@ export interface CreateAccountInput {
 
 export interface CreatedAccount {
   profileId: string;
-  systemId: string;
+  systemId: string | null; // null for super_admin — see profiles.system_id comment
   temporaryPassword: string;
   emailSent: boolean;
   emailError?: string;
@@ -132,10 +132,18 @@ export async function createAccount(input: CreateAccountInput): Promise<CreatedA
   // Enforced by profiles_school_scope_ck; checked here so the caller gets a
   // sentence rather than a constraint violation.
   const schoolId =
-    input.role === "admin" || input.role === "student" ? null : input.schoolId ?? null;
+    input.role === "admin" || input.role === "student" || input.role === "super_admin"
+      ? null
+      : input.schoolId ?? null;
 
   if (input.role === "student" && input.classId && !input.schoolId) {
     throw new UserFacingError("A student's enrollment needs a school.");
+  }
+
+  // A super admin has no System ID — login is by email only (see
+  // app/api/auth/login/route.ts), so a real one is mandatory, not optional.
+  if (input.role === "super_admin" && !input.email?.trim()) {
+    throw new UserFacingError("A super admin account needs a real email address.");
   }
 
   // Resolve this before creating anything, so a missing academic year fails
@@ -143,10 +151,12 @@ export async function createAccount(input: CreateAccountInput): Promise<CreatedA
   const academicYearId =
     input.role === "student" && input.classId ? await currentAcademicYearId() : null;
 
-  const systemId = await generateSystemId(input.role as SystemIdEntity);
+  const systemId =
+    input.role === "super_admin" ? null : await generateSystemId(input.role as SystemIdEntity);
   const temporaryPassword = generateTemporaryPassword();
   const realEmail = input.email?.trim() || null;
-  const authEmail = realEmail || `${systemId.toLowerCase()}@${STUDENT_PLACEHOLDER_DOMAIN}`;
+  const authEmail =
+    realEmail || `${(systemId as string).toLowerCase()}@${STUDENT_PLACEHOLDER_DOMAIN}`;
   const { firstName, middleName, lastName } = resolveNameParts(input);
 
   const { data: authUser, error: authError } = await supabase.auth.admin.createUser({
@@ -278,8 +288,36 @@ export async function resetAccountPassword(profileId: string): Promise<{ tempora
   return { temporaryPassword };
 }
 
+/**
+ * Refuses to leave zero active super admins — there is no DB-level floor on
+ * the count (see scripts/schema/11-multi-super-admin.sql), so this is the
+ * only thing stopping the last one from locking everyone out of /admin/system.
+ */
+async function assertNotLastSuperAdmin(profileId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { data: target, error: targetError } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", profileId)
+    .single();
+  if (targetError) throw new Error(targetError.message);
+  if (target.role !== "super_admin") return;
+
+  const { count, error } = await supabase
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("role", "super_admin")
+    .eq("is_active", true)
+    .neq("id", profileId);
+  if (error) throw new Error(error.message);
+  if (!count) {
+    throw new UserFacingError("Can't remove the last super admin — promote another account first.");
+  }
+}
+
 export async function setAccountActive(profileId: string, isActive: boolean): Promise<void> {
   const supabase = getSupabaseAdmin();
+  if (!isActive) await assertNotLastSuperAdmin(profileId);
   const { error } = await supabase
     .from("profiles")
     .update({ is_active: isActive, updated_at: new Date().toISOString() })
@@ -355,6 +393,7 @@ export async function updateAccount(
  */
 export async function deleteAccount(profileId: string): Promise<void> {
   const supabase = getSupabaseAdmin();
+  await assertNotLastSuperAdmin(profileId);
 
   const [submissions, lessons, enrollments, children] = await Promise.all([
     supabase.from("assessment_submissions").select("id", { count: "exact", head: true }).eq("student_id", profileId),

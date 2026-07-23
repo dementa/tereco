@@ -285,7 +285,7 @@ export async function processImportRow(
       row: rowNumber,
       name,
       status: "created",
-      systemId: account.systemId,
+      systemId: account.systemId ?? undefined,
       temporaryPassword: account.temporaryPassword,
       note,
     };

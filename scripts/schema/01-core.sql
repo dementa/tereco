@@ -226,23 +226,11 @@ alter table public.schools
   add column contact_profile_id uuid references public.profiles(id),
   add column created_by         uuid references public.profiles(id);
 
--- Exactly one super_admin row can ever exist...
-create unique index one_super_admin_idx on public.profiles ((role)) where role = 'super_admin';
-
--- ...and it can only ever belong to this one fixed email, even if that row is
--- deleted and recreated. Two independent DB-level guarantees, not app checks.
-create or replace function public.enforce_super_admin_identity() returns trigger
-language plpgsql as $$
-begin
-  if new.role = 'super_admin' and new.email is distinct from 'victordementa@gmail.com' then
-    raise exception 'super_admin role is reserved for the fixed super admin account';
-  end if;
-  return new;
-end;
-$$;
-create trigger trg_enforce_super_admin_identity
-  before insert or update on public.profiles
-  for each row execute function public.enforce_super_admin_identity();
+-- super_admin is not capped at one row and not locked to a fixed email: any
+-- number of super admins can exist, and who may create one is enforced at the
+-- app layer (only an existing super admin can call the account-creation API
+-- with role=super_admin — see requireSuperAdmin in lib/auth/session.ts and
+-- app/api/admin/system/super-admins/route.ts), not by a DB constraint.
 
 -- ─── Terms ──────────────────────────────────────────────────────────────────
 -- Per-school, because a school on the programme may run two terms where

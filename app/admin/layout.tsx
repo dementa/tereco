@@ -9,7 +9,7 @@ import { NotificationBell } from '@/components/ui/NotificationBell';
 import { MobileTabBar } from '@/components/ui/MobileTabBar';
 import {
   LayoutDashboard, FileText, GraduationCap, ClipboardList,
-  CheckSquare, LogOut, School, UserCog, Contact, CalendarDays,
+  CheckSquare, LogOut, School, UserCog, Contact, CalendarDays, ShieldCheck,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -32,6 +32,7 @@ const SYSTEM_NAV = [
   { href: '/admin/system/staff', label: 'Staff & Admins', icon: UserCog },
   { href: '/admin/system/students', label: 'Student Accounts', icon: GraduationCap },
   { href: '/admin/system/parents', label: 'Parents', icon: Contact },
+  { href: '/admin/system/super-admins', label: 'Super Admins', icon: ShieldCheck },
 ];
 
 const ADMIN_ROLES: Role[] = ['admin', 'super_admin'];
