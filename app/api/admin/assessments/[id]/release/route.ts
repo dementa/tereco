@@ -3,7 +3,7 @@ import { getAssessmentBySystemId, isFullyMarked, releaseResults } from "@/lib/as
 import { getCurrentProfile, requireRole } from "@/lib/auth/session";
 import { emailResultsForAssessment } from "@/lib/entities/result-delivery";
 import { z } from "zod";
-import { canManageAssessment } from "@/lib/auth/access";
+import { isAssessmentOwner } from "@/lib/auth/access";
 import { errorResponse, handleApiError, successResponse } from "@/lib/apiResponse";
 
 /** Whether the Release button should be enabled, and why not if it shouldn't. */
@@ -19,8 +19,8 @@ export async function GET(
     if (!assessment) return errorResponse("Assessment not found", 404);
 
     const actor = await getCurrentProfile(request);
-    if (!actor || !canManageAssessment(actor, assessment)) {
-      return errorResponse("You can only work with assessments you created.", 403);
+    if (!actor || !isAssessmentOwner(actor, assessment)) {
+      return errorResponse("Only the creator of this assessment or an admin can release results.", 403);
     }
     return successResponse({
       data: {
@@ -48,8 +48,8 @@ export async function POST(
     if (!assessment) return errorResponse("Assessment not found", 404);
 
     const actor = await getCurrentProfile(request);
-    if (!actor || !canManageAssessment(actor, assessment)) {
-      return errorResponse("You can only work with assessments you created.", 403);
+    if (!actor || !isAssessmentOwner(actor, assessment)) {
+      return errorResponse("Only the creator of this assessment or an admin can release results.", 403);
     }
 
     const body = await request.json().catch(() => ({}));

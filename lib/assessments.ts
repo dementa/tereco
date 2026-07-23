@@ -16,12 +16,14 @@ export interface Assessment {
   opensAt?: string;
   closesAt?: string;
   status: AssessmentStatus;
-  /** Who authored it — staff may only manage their own. */
+  /** Who authored it — the owner, per lib/auth/access.ts. */
   createdBy: string | null;
   /** Printed at the top of the question paper. */
   instructions: string;
   resultsReleasedAt?: string;
   targets: AssessmentTarget[];
+  /** Staff granted edit+mark access by the owner. See lib/auth/access.ts. */
+  collaboratorIds: string[];
 }
 
 /**
@@ -120,12 +122,13 @@ interface AssessmentRow {
   instructions: string;
   results_released_at: string | null;
   targets: { id: string; school_id: string | null; level: number | null; class_id: string | null }[] | null;
+  collaborators: { staff_id: string }[] | null;
 }
 
 // Single string literal — concatenation would widen it to `string` and silently
 // disable the client's column checking.
 const ASSESSMENT_COLUMNS =
-  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, targets:assessment_targets(id, school_id, level, class_id)";
+  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, targets:assessment_targets(id, school_id, level, class_id), collaborators:assessment_collaborators(staff_id)";
 
 const QUESTION_COLUMNS =
   "id, position, code, question_text, type, options, correct_answer, model_answer, image_url, image_public_id, max_score, config";
@@ -151,6 +154,7 @@ function rowToAssessment(row: AssessmentRow): Assessment {
       level: t.level,
       classId: t.class_id,
     })),
+    collaboratorIds: (row.collaborators ?? []).map((c) => c.staff_id),
   };
 }
 
@@ -208,6 +212,40 @@ export async function getAssessments(createdBy?: string): Promise<Assessment[]> 
 }
 
 /**
+ * The assessments a teacher may edit: their own, plus any they've been
+ * added to as a collaborator. Mirrors canManageAssessment in
+ * lib/auth/access.ts; kept as a list-level filter here only for the "my
+ * assessments" screen, not as a substitute for the per-request check every
+ * assessment route still does.
+ */
+export async function getEditableAssessments(staffId: string): Promise<Assessment[]> {
+  const all = await getAssessments();
+  return all.filter((a) => a.createdBy === staffId || a.collaboratorIds.includes(staffId));
+}
+
+/**
+ * The assessments a teacher may mark: everything getEditableAssessments
+ * returns, plus any admin-authored paper that targets their school or
+ * targets no one in particular (open to every school) — their students may
+ * have sat either. Mirrors canMarkAssessment in lib/auth/access.ts; kept as
+ * a list-level filter here only for the marking dropdown, not as a
+ * substitute for the per-request check every marking route still does.
+ */
+export async function getMarkableAssessments(
+  staffId: string,
+  schoolId: string | null
+): Promise<Assessment[]> {
+  const all = await getAssessments();
+  return all.filter(
+    (a) =>
+      a.createdBy === staffId ||
+      a.collaboratorIds.includes(staffId) ||
+      (schoolId != null &&
+        (a.targets.length === 0 || a.targets.some((t) => t.schoolId === schoolId)))
+  );
+}
+
+/**
  * The assessments a student may currently sit.
  *
  * Targeting, publication status and the open/close window are all evaluated by
@@ -227,7 +265,7 @@ export async function getAssessmentsForStudent(studentId: string): Promise<Asses
   }
 
   return (data ?? []).map((row) =>
-    rowToAssessment({ ...(row as unknown as AssessmentRow), targets: [] })
+    rowToAssessment({ ...(row as unknown as AssessmentRow), targets: [], collaborators: [] })
   );
 }
 
@@ -342,6 +380,68 @@ export async function softDeleteAssessment(systemId: string): Promise<void> {
     .from("assessments")
     .update({ deleted_at: new Date().toISOString() })
     .eq("system_id", systemId);
+  if (error) throw new Error(error.message);
+}
+
+// ─── Collaborators ──────────────────────────────────────────
+
+export interface AssessmentCollaborator {
+  id: string; // profile id
+  name: string;
+  systemId: string | null;
+}
+
+/** Current collaborators on an assessment, with names for display. */
+export async function getAssessmentCollaborators(
+  assessmentId: string
+): Promise<AssessmentCollaborator[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("assessment_collaborators")
+    .select("staff:profiles!assessment_collaborators_staff_id_fkey(id, first_name, last_name, system_id)")
+    .eq("assessment_id", assessmentId);
+  if (error) throw new Error(error.message);
+
+  return (data ?? [])
+    .map((row) => row.staff)
+    .filter((s): s is NonNullable<typeof s> => s !== null)
+    .map((s) => ({
+      id: s.id,
+      name: [s.first_name, s.last_name].filter(Boolean).join(" "),
+      systemId: s.system_id,
+    }));
+}
+
+/**
+ * Grants a teacher edit+mark access to one assessment. Silently a no-op if
+ * they already have it — adding someone twice is not an error a caller
+ * needs to see.
+ */
+export async function addAssessmentCollaborator(
+  assessmentId: string,
+  staffId: string,
+  addedBy: string
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("assessment_collaborators")
+    .upsert(
+      { assessment_id: assessmentId, staff_id: staffId, added_by: addedBy },
+      { onConflict: "assessment_id,staff_id", ignoreDuplicates: true }
+    );
+  if (error) throw new Error(error.message);
+}
+
+export async function removeAssessmentCollaborator(
+  assessmentId: string,
+  staffId: string
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("assessment_collaborators")
+    .delete()
+    .eq("assessment_id", assessmentId)
+    .eq("staff_id", staffId);
   if (error) throw new Error(error.message);
 }
 

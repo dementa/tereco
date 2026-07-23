@@ -2,7 +2,7 @@ import { NextRequest } from "next/server";
 import { renderToBuffer } from "@react-pdf/renderer";
 import { getAllMarkedScripts, getAssessmentBySystemId } from "@/lib/assessments";
 import { getCurrentProfile, requireRole } from "@/lib/auth/session";
-import { canManageAssessment } from "@/lib/auth/access";
+import { canMarkAssessment } from "@/lib/auth/access";
 import { errorResponse } from "@/lib/apiResponse";
 import { MarkedScriptsDocument } from "@/lib/pdf/MarkedScriptDocument";
 
@@ -25,8 +25,8 @@ export async function GET(
     if (!assessment) return errorResponse("Assessment not found", 404);
 
     const actor = await getCurrentProfile(request);
-    if (!actor || !canManageAssessment(actor, assessment)) {
-      return errorResponse("You can only work with assessments you created.", 403);
+    if (!actor || !canMarkAssessment(actor, assessment)) {
+      return errorResponse("You can only work with assessments for your own school.", 403);
     }
 
     const scripts = await getAllMarkedScripts(assessment.id);

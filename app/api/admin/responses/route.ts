@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { getResponses, getQuestions, getAssessmentBySystemId } from '@/lib/assessments';
 import { errorResponse, successResponse } from '@/lib/apiResponse';
 import { getCurrentProfile, requireRole } from '@/lib/auth/session';
-import { canManageAssessment } from '@/lib/auth/access';
+import { canMarkAssessment } from '@/lib/auth/access';
 
 // GET /api/admin/responses?assessmentId=... – responses + questions for marking
 export async function GET(request: NextRequest) {
@@ -19,8 +19,8 @@ export async function GET(request: NextRequest) {
     if (!assessment) return errorResponse('Assessment not found', 404);
 
     const actor = await getCurrentProfile(request);
-    if (!actor || !canManageAssessment(actor, assessment)) {
-      return errorResponse('You can only mark assessments you created.', 403);
+    if (!actor || !canMarkAssessment(actor, assessment)) {
+      return errorResponse('You can only mark assessments for your own school.', 403);
     }
 
     const [responses, questions] = await Promise.all([

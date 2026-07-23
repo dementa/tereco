@@ -2,7 +2,7 @@ import { NextRequest } from 'next/server';
 import { getAssessmentForResponse, updateResponseScore } from '@/lib/assessments';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { getCurrentProfile, requireRole } from '@/lib/auth/session';
-import { canManageAssessment } from '@/lib/auth/access';
+import { canMarkAssessment } from '@/lib/auth/access';
 import { z } from 'zod';
 
 const ScoreSchema = z.object({
@@ -27,8 +27,8 @@ export async function PATCH(
     // to, so resolve the assessment before allowing a score to be written.
     const assessment = await getAssessmentForResponse(id);
     if (!assessment) return errorResponse('Response not found', 404);
-    if (!canManageAssessment(marker, assessment)) {
-      return errorResponse('You can only mark assessments you created.', 403);
+    if (!canMarkAssessment(marker, assessment)) {
+      return errorResponse('You can only mark assessments for your own school.', 403);
     }
     // Who marked it is recorded, not inferred later.
     await updateResponseScore(id, score, marker.id);

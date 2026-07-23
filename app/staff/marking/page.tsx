@@ -107,7 +107,9 @@ export default function MarkingPage() {
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/assessments');
+      // markable=1: everything this teacher may mark, not just what they
+      // authored — including admin-created papers targeted at their school.
+      const res = await fetch('/api/admin/assessments?markable=1');
       const data = await res.json();
       if (data.success) setAssessments(data.data);
       else toast.error(data.message ?? 'Failed to load assessments.');

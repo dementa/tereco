@@ -9,7 +9,8 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
-import { ArrowLeft, Download, KeyRound, Plus, Printer, Save, Send, Trash2 } from 'lucide-react';
+import { useAuth } from '@/components/auth/AuthContext';
+import { ArrowLeft, Download, KeyRound, Plus, Printer, Save, Send, Trash2, UserPlus } from 'lucide-react';
 import { QuestionImage } from '@/components/admin/QuestionImage';
 
 type QuestionType =
@@ -65,8 +66,15 @@ interface Assessment {
   closesAt?: string;
   status: 'draft' | 'published' | 'closed';
   instructions: string;
+  createdBy: string | null;
   targets: AssessmentTarget[];
   questions: Question[];
+}
+
+interface Collaborator {
+  id: string;
+  name: string;
+  systemId: string | null;
 }
 
 interface School {
@@ -109,12 +117,16 @@ export default function AssessmentDetailPage() {
   const systemId = params.id;
   const router = useRouter();
   const toast = useToast();
+  const { user } = useAuth();
 
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [schools, setSchools] = useState<School[]>([]);
   const [levels, setLevels] = useState<GradeLevel[]>([]);
   const [results, setResults] = useState<Result[]>([]);
+  const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
+  const [collaboratorIdentifier, setCollaboratorIdentifier] = useState('');
+  const [addingCollaborator, setAddingCollaborator] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [release, setRelease] = useState<{ fullyMarked: boolean; releasedAt: string | null }>({
@@ -125,14 +137,20 @@ export default function AssessmentDetailPage() {
   const [emailOnRelease, setEmailOnRelease] = useState(true);
   const [instructions, setInstructions] = useState('');
 
+  // Deleting and releasing results stay with the creator or an admin, even
+  // though a collaborator can otherwise edit and mark this same paper.
+  const isOwner =
+    user?.role === 'admin' || user?.role === 'super_admin' || assessment?.createdBy === user?.id;
+
   const load = useCallback(async () => {
     try {
-      const [detail, schoolsRes, levelsRes, resultsRes, releaseRes] = await Promise.all([
+      const [detail, schoolsRes, levelsRes, resultsRes, releaseRes, collaboratorsRes] = await Promise.all([
         fetch(`/api/admin/assessments/${systemId}`).then((r) => r.json()),
         fetch('/api/admin/system/schools').then((r) => r.json()),
         fetch('/api/admin/system/grade-levels').then((r) => r.json()),
         fetch(`/api/admin/assessments/${systemId}/results`).then((r) => r.json()),
         fetch(`/api/admin/assessments/${systemId}/release`).then((r) => r.json()),
+        fetch(`/api/admin/assessments/${systemId}/collaborators`).then((r) => r.json()),
       ]);
 
       if (detail.success) {
@@ -146,6 +164,7 @@ export default function AssessmentDetailPage() {
       if (levelsRes.success) setLevels(levelsRes.data);
       if (resultsRes.success) setResults(resultsRes.data.results);
       if (releaseRes.success) setRelease(releaseRes.data);
+      if (collaboratorsRes.success) setCollaborators(collaboratorsRes.data);
     } catch {
       toast.error('Network error while loading the assessment.');
     } finally {
@@ -275,6 +294,44 @@ export default function AssessmentDetailPage() {
     }
   }
 
+  async function addCollaborator(e: React.FormEvent) {
+    e.preventDefault();
+    if (!collaboratorIdentifier.trim()) return;
+    setAddingCollaborator(true);
+    try {
+      const res = await fetch(`/api/admin/assessments/${systemId}/collaborators`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: collaboratorIdentifier.trim() }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setCollaborators(data.data);
+        setCollaboratorIdentifier('');
+        toast.success('Collaborator added.');
+      } else {
+        toast.error(data.message ?? 'Could not add that collaborator.');
+      }
+    } catch {
+      toast.error('Network error.');
+    } finally {
+      setAddingCollaborator(false);
+    }
+  }
+
+  async function removeCollaborator(staffId: string) {
+    const res = await fetch(`/api/admin/assessments/${systemId}/collaborators/${staffId}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    if (data.success) {
+      setCollaborators(data.data);
+      toast.success('Collaborator removed.');
+    } else {
+      toast.error(data.message ?? 'Could not remove that collaborator.');
+    }
+  }
+
   async function releaseResults() {
     setReleasing(true);
     try {
@@ -382,16 +439,70 @@ export default function AssessmentDetailPage() {
               Close
             </Button>
           )}
-          <Button
-            variant="outline"
-            className="text-error border-error/20"
-            onClick={() => void removeAssessment()}
-          >
-            <Trash2 className="w-4 h-4 mr-1.5" aria-hidden />
-            Delete
-          </Button>
+          {isOwner && (
+            <Button
+              variant="outline"
+              className="text-error border-error/20"
+              onClick={() => void removeAssessment()}
+            >
+              <Trash2 className="w-4 h-4 mr-1.5" aria-hidden />
+              Delete
+            </Button>
+          )}
         </div>
       </div>
+
+      {/* ── Collaborators ────────────────────────────────────── */}
+      <Card>
+        <h2 className="font-semibold text-primary-900 mb-1">Collaborators</h2>
+        <p className="text-xs text-text-muted mb-3">
+          {isOwner
+            ? 'Give a teacher access to add/edit questions and mark this assessment, without making them its owner.'
+            : 'Teachers with access to add/edit questions and mark this assessment, alongside its creator.'}
+        </p>
+
+        <div className="flex flex-wrap gap-2 mb-3">
+          {collaborators.length === 0 ? (
+            <span className="text-sm text-text-muted">No collaborators yet.</span>
+          ) : (
+            collaborators.map((c) => (
+              <span
+                key={c.id}
+                className="inline-flex items-center gap-1 rounded-lg bg-[#F1F6F8] px-2 py-1 text-xs text-[#12333F]"
+              >
+                {c.name}{c.systemId ? ` · ${c.systemId}` : ''}
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => void removeCollaborator(c.id)}
+                    aria-label={`Remove ${c.name}`}
+                    className="text-[#5A7D8A] hover:text-[#C26565]"
+                  >
+                    <Trash2 className="w-3 h-3" aria-hidden />
+                  </button>
+                )}
+              </span>
+            ))
+          )}
+        </div>
+
+        {isOwner && (
+          <form onSubmit={addCollaborator} className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 min-w-[220px]">
+              <Input
+                label="Add teacher (System ID or email)"
+                value={collaboratorIdentifier}
+                onChange={(e) => setCollaboratorIdentifier(e.target.value)}
+                placeholder="e.g. TSF-2026-0004"
+              />
+            </div>
+            <Button type="submit" variant="outline" isLoading={addingCollaborator}>
+              <UserPlus className="w-4 h-4 mr-1.5" aria-hidden />
+              Add
+            </Button>
+          </form>
+        )}
+      </Card>
 
       {/* ── Audience ─────────────────────────────────────────── */}
       <Card>
@@ -768,7 +879,7 @@ export default function AssessmentDetailPage() {
             )}
           </h2>
           <div className="flex items-center gap-2">
-            {results.length > 0 && !release.releasedAt && (
+            {isOwner && results.length > 0 && !release.releasedAt && (
               <label className="flex items-center gap-1.5 text-xs text-[#5A7D8A] mr-1">
                 <input
                   type="checkbox"
@@ -779,7 +890,7 @@ export default function AssessmentDetailPage() {
                 Email scripts to learners and parents
               </label>
             )}
-            {results.length > 0 && !release.releasedAt && (
+            {isOwner && results.length > 0 && !release.releasedAt && (
               <Button
                 onClick={() => void releaseResults()}
                 isLoading={releasing}

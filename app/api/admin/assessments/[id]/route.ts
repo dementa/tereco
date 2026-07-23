@@ -8,7 +8,7 @@ import {
 } from '@/lib/assessments';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { getCurrentProfile, requireRole } from '@/lib/auth/session';
-import { canManageAssessment } from '@/lib/auth/access';
+import { canManageAssessment, isAssessmentOwner } from '@/lib/auth/access';
 import { z } from 'zod';
 
 // Targeting replaces the old targetType/targetValue pair. Each entry narrows
@@ -148,8 +148,8 @@ export async function DELETE(
     if (!assessment) return errorResponse('Assessment not found', 404);
 
     const actor = await getCurrentProfile(request);
-    if (!actor || !canManageAssessment(actor, assessment)) {
-      return errorResponse('You can only work with assessments you created.', 403);
+    if (!actor || !isAssessmentOwner(actor, assessment)) {
+      return errorResponse('Only the creator of this assessment or an admin can delete it.', 403);
     }
 
     await softDeleteAssessment(id);

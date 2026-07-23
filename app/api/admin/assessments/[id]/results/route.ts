@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { getAssessmentBySystemId, getAssessmentResults } from "@/lib/assessments";
 import { getCurrentProfile, requireRole } from "@/lib/auth/session";
-import { canManageAssessment } from "@/lib/auth/access";
+import { canMarkAssessment } from "@/lib/auth/access";
 import { errorResponse, successResponse } from "@/lib/apiResponse";
 
 // [id] is the public ASS#### system id.
@@ -17,8 +17,8 @@ export async function GET(
     if (!assessment) return errorResponse("Assessment not found", 404);
 
     const actor = await getCurrentProfile(request);
-    if (!actor || !canManageAssessment(actor, assessment)) {
-      return errorResponse("You can only work with assessments you created.", 403);
+    if (!actor || !canMarkAssessment(actor, assessment)) {
+      return errorResponse("You can only work with assessments for your own school.", 403);
     }
 
     const results = await getAssessmentResults(assessment.id);

@@ -36,6 +36,52 @@ export type Database = {
         }
         Relationships: []
       }
+      assessment_collaborators: {
+        Row: {
+          added_by: string | null
+          assessment_id: string
+          created_at: string
+          id: string
+          staff_id: string
+        }
+        Insert: {
+          added_by?: string | null
+          assessment_id: string
+          created_at?: string
+          id?: string
+          staff_id: string
+        }
+        Update: {
+          added_by?: string | null
+          assessment_id?: string
+          created_at?: string
+          id?: string
+          staff_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assessment_collaborators_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_collaborators_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_collaborators_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       assessment_sittings: {
         Row: {
           assessment_id: string

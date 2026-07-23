@@ -1,8 +1,13 @@
 import { NextRequest } from 'next/server';
-import { getAssessments, createAssessment, saveQuestions } from '@/lib/assessments';
+import {
+  getAssessments,
+  getEditableAssessments,
+  getMarkableAssessments,
+  createAssessment,
+  saveQuestions,
+} from '@/lib/assessments';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { getCurrentProfile, requireRole } from '@/lib/auth/session';
-import { authorScopeFor } from '@/lib/auth/access';
 import { z } from 'zod';
 
 export async function GET(request: NextRequest) {
@@ -11,8 +16,18 @@ export async function GET(request: NextRequest) {
   try {
     const profile = await getCurrentProfile(request);
     if (!profile) return errorResponse('Unauthorized', 401);
-    // Teachers see only the papers they wrote; admins see everything.
-    const assessments = await getAssessments(authorScopeFor(profile));
+
+    // ?markable=1 is what the marking screen asks for: everything editable
+    // (below) plus anything targeting their school even if they can't edit
+    // it, since an admin may have written it. Admins are never scoped either
+    // way — they see everything regardless of this flag.
+    const markable = request.nextUrl.searchParams.get('markable') === '1';
+    const assessments =
+      profile.role !== 'staff'
+        ? await getAssessments()
+        : markable
+          ? await getMarkableAssessments(profile.id, profile.schoolId)
+          : await getEditableAssessments(profile.id);
     return successResponse({ data: assessments });
   } catch (error) {
     console.error('Error fetching assessments:', error);
