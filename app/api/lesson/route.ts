@@ -43,8 +43,18 @@ const LessonSchema = z
     specificSkill: z.string().min(1, "Specific skill is required"),
     approach: z.string().min(1, "Lesson approach is required"),
 
-    present: z.coerce.number().int().min(0, "Present learners cannot be negative"),
-    absent: z.coerce.number().int().min(0, "Absent learners cannot be negative"),
+    // Replaces typed-in present/absent counts: one row per learner actually on
+    // the class roster, so present/absent below is DERIVED from this, never
+    // trusted as a separate client-sent total.
+    attendance: z
+      .array(
+        z.object({
+          studentId: z.string().uuid(),
+          enrollmentId: z.string().uuid(),
+          present: z.boolean(),
+        })
+      )
+      .default([]),
 
     computerAccess: z.string().min(1, "Computer access is required"),
     overallProgress: z.string().min(1, "Overall progress is required"),
@@ -102,37 +112,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { error } = await supabase.from("lesson_reports").insert({
-      // Attribution comes from the verified session, never the request body.
-      staff_id: profile.id,
-      school_id: validated.schoolId,
-      class_id: validated.classId,
-      stream_id: validated.streamId ?? null,
-      academic_year_id: year.id,
+    const present = validated.attendance.filter((a) => a.present).length;
+    const absent = validated.attendance.length - present;
 
-      lesson_date: validated.date,
-      period: validated.period,
-      status: validated.status,
-      missed_reason: validated.missedReason,
-      missed_explanation: validated.missedExplanation,
+    const { data: report, error } = await supabase
+      .from("lesson_reports")
+      .insert({
+        // Attribution comes from the verified session, never the request body.
+        staff_id: profile.id,
+        school_id: validated.schoolId,
+        class_id: validated.classId,
+        stream_id: validated.streamId ?? null,
+        academic_year_id: year.id,
 
-      learning_area: validated.learningArea,
-      specific_skill: validated.specificSkill,
-      approach: validated.approach,
+        lesson_date: validated.date,
+        period: validated.period,
+        status: validated.status,
+        missed_reason: validated.missedReason,
+        missed_explanation: validated.missedExplanation,
 
-      present: validated.present,
-      absent: validated.absent,
+        learning_area: validated.learningArea,
+        specific_skill: validated.specificSkill,
+        approach: validated.approach,
 
-      computer_access: validated.computerAccess,
-      overall_progress: validated.overallProgress,
-      achievement: validated.achievement,
+        present,
+        absent,
 
-      had_challenges: validated.challenges,
-      challenge_details: validated.challengeDetails,
-      support_required: validated.supportRequired,
+        computer_access: validated.computerAccess,
+        overall_progress: validated.overallProgress,
+        achievement: validated.achievement,
 
-      reference: validated.reference ?? "",
-    });
+        had_challenges: validated.challenges,
+        challenge_details: validated.challengeDetails,
+        support_required: validated.supportRequired,
+
+        reference: validated.reference ?? "",
+      })
+      .select("id")
+      .single();
 
     if (error) {
       // The one-report-per-slot unique index. A refresh or double-tap lands
@@ -151,6 +168,26 @@ export async function POST(request: NextRequest) {
       }
       console.error("Lesson insert error:", error);
       return errorResponse("Failed to save lesson record.", 500);
+    }
+
+    if (validated.attendance.length > 0) {
+      const { error: attendanceError } = await supabase.from("lesson_attendance").insert(
+        validated.attendance.map((a) => ({
+          lesson_report_id: report.id,
+          student_id: a.studentId,
+          enrollment_id: a.enrollmentId,
+          is_present: a.present,
+        }))
+      );
+
+      if (attendanceError) {
+        // Same reasoning as saveSubmission() in lib/assessments.ts: a report
+        // whose attendance failed to save is worse than no report at all, so
+        // roll the parent row back rather than leave a half-filed one behind.
+        await supabase.from("lesson_reports").delete().eq("id", report.id);
+        console.error("Lesson attendance insert error:", attendanceError);
+        return errorResponse("Failed to save attendance for this lesson.", 500);
+      }
     }
 
     // Tell the admins a lesson was filed. Best-effort by design — notify()

@@ -68,6 +68,52 @@ export function enrollmentClassLabel(enrollment: CurrentEnrollment | null): stri
   return [enrollment.classDisplayName, enrollment.streamName].filter(Boolean).join(" ");
 }
 
+export interface RosterEntry {
+  enrollmentId: string;
+  studentId: string;
+  systemId: string | null;
+  name: string;
+}
+
+/**
+ * Who is currently enrolled in one class (and stream, if given) — the roster
+ * a teacher takes attendance against. Reads through current_enrollments, same
+ * as everywhere else placement is needed, so a promoted or transferred
+ * learner simply stops appearing rather than needing separate cleanup.
+ */
+export async function listClassRoster(
+  classId: string,
+  streamId?: string | null
+): Promise<RosterEntry[]> {
+  const supabase = getSupabaseAdmin();
+  let query = supabase
+    .from("current_enrollments")
+    .select("id, student_id, student:profiles(system_id, first_name, middle_name, last_name)")
+    .eq("class_id", classId);
+  query = streamId ? query.eq("stream_id", streamId) : query.is("stream_id", null);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+
+  interface Row {
+    id: string | null;
+    student_id: string | null;
+    student: { system_id: string | null; first_name: string; middle_name: string | null; last_name: string } | null;
+  }
+
+  return (data as unknown as Row[])
+    .filter((row): row is Row & { id: string; student_id: string } => !!row.id && !!row.student_id)
+    .map((row) => ({
+      enrollmentId: row.id,
+      studentId: row.student_id,
+      systemId: row.student?.system_id ?? null,
+      name: [row.student?.first_name, row.student?.middle_name, row.student?.last_name]
+        .filter(Boolean)
+        .join(" "),
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export type EnrollmentMove = "transfer" | "promote" | "repeat" | "withdraw";
 
 export interface EnrollmentHistoryEntry {

@@ -23,7 +23,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, ArrowRight, Save, Check, CheckCircle2,
   ChevronDown, Eye, EyeOff, AlertCircle, Clock, Users,
-  Monitor, TrendingUp, FileText, Pencil,
+  Monitor, TrendingUp, FileText, Pencil, UserPlus, X,
 } from 'lucide-react'
 import { useAuth } from '@/components/auth/AuthContext'
 
@@ -45,8 +45,6 @@ interface FormData {
   specificSkill: string
   approach: string
   // Step 3
-  present: string
-  absent: string
   computerAccess: string
   // Step 4
   overallProgress: string
@@ -57,6 +55,13 @@ interface FormData {
 }
 
 interface FieldError { [key: string]: string }
+
+interface RosterEntry {
+  enrollmentId: string
+  studentId: string
+  systemId: string | null
+  name: string
+}
 
 interface DirectoryStream { id: string; name: string }
 /**
@@ -114,7 +119,7 @@ const INITIAL: FormData = {
   school: '', className: '', stream: '', date: new Date().toISOString().split('T')[0],
   period: '', status: '', missedReason: '', missedExplanation: '',
   learningArea: '', specificSkill: '', approach: '',
-  present: '', absent: '', computerAccess: '',
+  computerAccess: '',
   overallProgress: '', achievement: '', challenges: '',
   challengeDetails: '', supportRequired: '',
 }
@@ -141,8 +146,6 @@ function validateStep(step: number, data: FormData, selectedClassHasStreams: boo
     if (!data.approach)       err.approach = 'Select an approach'
   }
   if (step === 2) {
-    if (!data.present) err.present = 'Enter number present'
-    if (!data.absent)  err.absent  = 'Enter number absent'
     if (!data.computerAccess) err.computerAccess = 'Select computer access'
   }
   if (step === 3) {
@@ -370,28 +373,30 @@ function RadioCard({
 }
 
 /* ─────────────────────────────────────────────────
-   Primitive: NumberCard — for attendance figures
+   Primitive: AttendanceRow — one learner, tap to mark absent
 ───────────────────────────────────────────────── */
-function NumberCard({
-  label, description, value, onChange, error,
-}: { label: string; description: string; value: string; onChange: (v: string) => void; error?: string }) {
+function AttendanceRow({
+  name, systemId, present, onToggle,
+}: { name: string; systemId: string | null; present: boolean; onToggle: () => void }) {
   return (
-    <div className={cn(
-      'p-5 rounded-xl border-2 bg-white transition-all duration-150',
-      error ? 'border-[#C0392B]' : 'border-[#02465B]/10 focus-within:border-[#02465B]/40'
-    )}>
-      <p className="text-[11px] font-bold uppercase tracking-wider text-[#02465B] mb-1">{label}</p>
-      <p className="text-xs text-[#9BBAC5] mb-4 leading-relaxed">{description}</p>
-      <input
-        type="number"
-        min="0"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        aria-label={label}
-        className="w-full text-4xl font-bold text-[#011E28] bg-transparent outline-none tabular-nums placeholder:text-[#D6F0F7]"
-        placeholder="0"
-      />
-      {error && <p className="mt-2 text-xs text-[#C0392B]">{error}</p>}
+    <div className="flex items-center justify-between gap-3 py-2.5 px-1 border-b border-[#02465B]/06 last:border-0">
+      <div className="min-w-0">
+        <p className="text-sm font-medium text-[#011E28] truncate">{name}</p>
+        {systemId && <p className="text-xs text-[#9BBAC5]">{systemId}</p>}
+      </div>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-pressed={!present}
+        className={cn(
+          'shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-150 cursor-pointer',
+          present
+            ? 'bg-[#EBF8FC] text-[#0489AE] hover:bg-[#D6F0F7]'
+            : 'bg-[#C0392B]/10 text-[#C0392B] hover:bg-[#C0392B]/15'
+        )}
+      >
+        {present ? 'Present' : 'Absent'}
+      </button>
     </div>
   )
 }
@@ -541,6 +546,19 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   const topRef  = useRef<HTMLDivElement>(null)
   const [directory, setDirectory] = useState<DirectorySchool[]>([])
 
+  // Attendance: the roster for the picked class/stream, and who's been
+  // flipped to absent (absence is keyed by studentId; a learner not in this
+  // set is present — that's the common case, so it costs nothing to store).
+  const [roster,        setRoster]        = useState<RosterEntry[]>([])
+  const [rosterLoading, setRosterLoading] = useState(false)
+  const [rosterError,   setRosterError]   = useState('')
+  const [absentIds,     setAbsentIds]     = useState<Set<string>>(new Set())
+  const [showAddLearner, setShowAddLearner] = useState(false)
+  const [newLearner, setNewLearner] = useState({ firstName: '', lastName: '', gender: '' as '' | 'male' | 'female', dateOfBirth: '' })
+  const [addingLearner, setAddingLearner] = useState(false)
+  const [addLearnerError, setAddLearnerError] = useState('')
+  const [pendingLearners, setPendingLearners] = useState<string[]>([])
+
   useEffect(() => {
     fetch('/api/directory/schools')
       .then(r => r.json())
@@ -557,7 +575,95 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   const availableClasses = selectedSchool?.classes ?? []
   const selectedClass    = availableClasses.find(c => c.displayName === data.className)
   const availableStreams = selectedClass?.streams ?? []
+  const selectedStream   = availableStreams.find(s => s.name === data.stream)
   const skillsForArea    = SKILLS[data.learningArea] || []
+
+  // Whether there's a settled class (and stream, if it has one) to take
+  // attendance against at all — a missed lesson, or a class/stream still
+  // being picked, has nobody to fetch a roster for.
+  const rosterSettled = !isMissed && !!selectedClass && (!selectedClass.hasStreams || !!selectedStream)
+
+  // The roster is fetched once rosterSettled becomes true. When it isn't, the
+  // effect simply does nothing — emptiness here is derived at render time via
+  // `activeRoster` below, not written back into state, so switching away from
+  // a class never needs this effect to reset anything itself.
+  useEffect(() => {
+    if (!rosterSettled || !selectedClass) return
+    let cancelled = false
+    const query = selectedStream ? `?streamId=${selectedStream.id}` : ''
+
+    // The loading/error resets happen inside the first callback rather than
+    // synchronously in the effect body, same reasoning as everywhere else in
+    // this file that fetches on a dependency change.
+    Promise.resolve()
+      .then(() => {
+        if (cancelled) return undefined
+        setRosterLoading(true)
+        setRosterError('')
+        return fetch(`/api/directory/classes/${selectedClass.id}/roster${query}`).then(r => r.json())
+      })
+      .then(d => {
+        if (cancelled || !d) return
+        if (d.success) { setRoster(d.data); setAbsentIds(new Set()) }
+        else setRosterError(d.message || 'Could not load the class roster.')
+      })
+      .catch(() => { if (!cancelled) setRosterError('Network error loading the class roster.') })
+      .finally(() => { if (!cancelled) setRosterLoading(false) })
+
+    return () => { cancelled = true }
+  }, [rosterSettled, selectedClass, selectedStream])
+
+  function toggleAbsent(studentId: string) {
+    setAbsentIds(prev => {
+      const next = new Set(prev)
+      if (next.has(studentId)) next.delete(studentId); else next.add(studentId)
+      return next
+    })
+  }
+
+  // Stale roster/absence from a previously picked class never leaks through:
+  // once the class changes, this recomputes to empty until the new fetch
+  // lands, rather than trusting whatever the last successful fetch left in
+  // state.
+  const activeRoster = rosterSettled ? roster : []
+  const activeRosterIds = new Set(activeRoster.map(r => r.studentId))
+  const effectiveAbsentIds = new Set([...absentIds].filter(id => activeRosterIds.has(id)))
+  const presentCount = activeRoster.length - effectiveAbsentIds.size
+  const absentCount  = effectiveAbsentIds.size
+
+  async function submitNewLearner() {
+    if (!selectedClass || !selectedSchool) return
+    if (!newLearner.firstName.trim() || !newLearner.lastName.trim()) {
+      setAddLearnerError('First and last name are required.')
+      return
+    }
+    setAddingLearner(true)
+    setAddLearnerError('')
+    try {
+      const res = await fetch('/api/student-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          schoolId: selectedSchool.id,
+          classId: selectedClass.id,
+          streamId: selectedStream?.id,
+          firstName: newLearner.firstName.trim(),
+          lastName: newLearner.lastName.trim(),
+          gender: newLearner.gender || undefined,
+          dateOfBirth: newLearner.dateOfBirth || undefined,
+        }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json.success) throw new Error(json.message || 'Could not submit that learner.')
+      setPendingLearners(p => [...p, `${newLearner.firstName} ${newLearner.lastName}`])
+      setNewLearner({ firstName: '', lastName: '', gender: '', dateOfBirth: '' })
+      setShowAddLearner(false)
+    } catch (e) {
+      setAddLearnerError(e instanceof Error ? e.message : 'Something went wrong.')
+    } finally {
+      setAddingLearner(false)
+    }
+  }
 
   /* Clear errors when field changes */
   const clearErr = (key: string) => {
@@ -594,13 +700,17 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   async function handleSubmit() {
     setSubmitting(true)
     try {
-      const stream = availableStreams.find(s => s.name === data.stream)
+      const attendance = activeRoster.map(r => ({
+        studentId: r.studentId,
+        enrollmentId: r.enrollmentId,
+        present: !effectiveAbsentIds.has(r.studentId),
+      }))
       const res = await fetch('/api/lesson', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...data, reference: ref, teacher: user?.name,
-          schoolId: selectedSchool?.id, classId: selectedClass?.id, streamId: stream?.id,
+          ...data, reference: ref, teacher: user?.name, attendance,
+          schoolId: selectedSchool?.id, classId: selectedClass?.id, streamId: selectedStream?.id,
         }),
       })
       const json = await res.json()
@@ -789,42 +899,150 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
 
     2: (
       <div className="space-y-4">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <NumberCard
-            label="Learners present"
-            description="Number of learners who attended this lesson"
-            value={data.present}
-            onChange={v => { set('present', v); clearErr('present') }}
-            error={errors.present}
-          />
-          <NumberCard
-            label="Learners absent"
-            description="Number of learners who did not attend"
-            value={data.absent}
-            onChange={v => { set('absent', v); clearErr('absent') }}
-            error={errors.absent}
-          />
-        </div>
-
-        {/* Live stats */}
-        {(data.present || data.absent) && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl bg-[#EBF8FC] border border-[#02465B]/08 px-4 py-3.5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Total enrolled</p>
-              <p className="text-2xl font-bold text-[#011E28] tabular-nums">
-                {(parseInt(data.present) || 0) + (parseInt(data.absent) || 0)}
-              </p>
-            </div>
-            <div className="rounded-xl bg-[#EBF8FC] border border-[#02465B]/08 px-4 py-3.5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Attendance rate</p>
-              <p className="text-2xl font-bold text-[#011E28] tabular-nums">
-                {(() => {
-                  const total = (parseInt(data.present) || 0) + (parseInt(data.absent) || 0)
-                  return total > 0 ? `${Math.round(((parseInt(data.present) || 0) / total) * 100)}%` : '—'
-                })()}
-              </p>
-            </div>
+        {isMissed ? (
+          <div className="rounded-xl border border-[#02465B]/10 bg-[#F5FDFF] px-4 py-3.5">
+            <p className="text-sm text-[#5A7A85]">
+              This lesson did not take place, so there is no attendance to record.
+            </p>
           </div>
+        ) : (
+          <>
+            {/* Live stats */}
+            {activeRoster.length > 0 && (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="rounded-xl bg-[#EBF8FC] border border-[#02465B]/08 px-4 py-3.5">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Present</p>
+                  <p className="text-2xl font-bold text-[#011E28] tabular-nums">{presentCount}</p>
+                </div>
+                <div className="rounded-xl bg-[#EBF8FC] border border-[#02465B]/08 px-4 py-3.5">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Absent</p>
+                  <p className="text-2xl font-bold text-[#011E28] tabular-nums">{absentCount}</p>
+                </div>
+                <div className="rounded-xl bg-[#EBF8FC] border border-[#02465B]/08 px-4 py-3.5">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Rate</p>
+                  <p className="text-2xl font-bold text-[#011E28] tabular-nums">
+                    {activeRoster.length > 0 ? `${Math.round((presentCount / activeRoster.length) * 100)}%` : '—'}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <div className="flex items-center justify-between mb-2.5">
+                <p className="text-xs font-semibold uppercase tracking-wider text-[#02465B]">
+                  Attendance — tap to mark absent
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowAddLearner(v => !v)}
+                  className="inline-flex items-center gap-1 text-xs font-medium text-[#02465B] hover:text-[#035D77] cursor-pointer"
+                >
+                  <UserPlus className="w-3.5 h-3.5" /> Add a learner not on this list
+                </button>
+              </div>
+
+              {rosterLoading && <p className="text-sm text-[#9BBAC5] py-4">Loading the class roster…</p>}
+              {!rosterLoading && rosterError && (
+                <p role="alert" className="flex items-center gap-1.5 text-xs text-[#C0392B] py-2">
+                  <AlertCircle className="w-3.5 h-3.5" aria-hidden /> {rosterError}
+                </p>
+              )}
+              {!rosterLoading && !rosterError && activeRoster.length === 0 && (
+                <p className="text-sm text-[#9BBAC5] py-4">
+                  Nobody is currently enrolled in this class{data.stream ? ' / stream' : ''}.
+                </p>
+              )}
+              {!rosterLoading && activeRoster.length > 0 && (
+                <div className="rounded-xl border border-[#02465B]/08 bg-white px-3">
+                  {activeRoster.map(r => (
+                    <AttendanceRow
+                      key={r.studentId}
+                      name={r.name}
+                      systemId={r.systemId}
+                      present={!effectiveAbsentIds.has(r.studentId)}
+                      onToggle={() => toggleAbsent(r.studentId)}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {pendingLearners.length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {pendingLearners.map(name => (
+                    <div key={name} className="flex items-center gap-2 text-xs text-[#8A6A16] bg-[#FCF3DE] rounded-lg px-3 py-2">
+                      <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                      {name} — pending approval, not yet on the roster
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <AnimatePresence>
+                {showAddLearner && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: 'auto' }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.25 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-3 p-4 rounded-xl border-2 border-[#02465B]/10 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-semibold uppercase tracking-wider text-[#02465B]">New learner</p>
+                        <button type="button" onClick={() => setShowAddLearner(false)} aria-label="Cancel">
+                          <X className="w-4 h-4 text-[#9BBAC5]" />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <FloatingInput
+                          label="First name"
+                          value={newLearner.firstName}
+                          onChange={v => setNewLearner(p => ({ ...p, firstName: v }))}
+                          required
+                        />
+                        <FloatingInput
+                          label="Last name"
+                          value={newLearner.lastName}
+                          onChange={v => setNewLearner(p => ({ ...p, lastName: v }))}
+                          required
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <FloatingSelect
+                          label="Gender (optional)"
+                          options={['male', 'female']}
+                          value={newLearner.gender}
+                          onChange={v => setNewLearner(p => ({ ...p, gender: v as 'male' | 'female' }))}
+                        />
+                        <FloatingInput
+                          label="Date of birth (optional)"
+                          type="date"
+                          value={newLearner.dateOfBirth}
+                          onChange={v => setNewLearner(p => ({ ...p, dateOfBirth: v }))}
+                        />
+                      </div>
+                      {addLearnerError && (
+                        <p role="alert" className="flex items-center gap-1.5 text-xs text-[#C0392B]">
+                          <AlertCircle className="w-3.5 h-3.5" aria-hidden /> {addLearnerError}
+                        </p>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void submitNewLearner()}
+                        disabled={addingLearner}
+                        className="w-full h-10 rounded-xl bg-[#02465B] text-white text-sm font-semibold hover:bg-[#035D77] disabled:opacity-60 cursor-pointer"
+                      >
+                        {addingLearner ? 'Submitting…' : 'Submit for approval'}
+                      </button>
+                      <p className="text-xs text-[#9BBAC5]">
+                        Sent to a super admin to approve — they will not appear on the roster until then.
+                      </p>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
+          </>
         )}
 
         <div>
@@ -996,8 +1214,8 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
               </button>
             </div>
             <div className="px-5 py-1 divide-y divide-[#02465B]/04">
-              <ReviewRow label="Present"         value={data.present}        />
-              <ReviewRow label="Absent"          value={data.absent}         />
+              <ReviewRow label="Present"         value={String(presentCount)} />
+              <ReviewRow label="Absent"          value={String(absentCount)}  />
               <ReviewRow label="Computer access" value={data.computerAccess.split(' — ')[0]} />
             </div>
           </div>

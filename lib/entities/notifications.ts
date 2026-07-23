@@ -5,7 +5,9 @@ export type NotificationType =
   | "assessment_submitted"
   | "results_released"
   | "account_created"
-  | "announcement";
+  | "announcement"
+  | "new_student_request"
+  | "lesson_digest";
 
 export interface Notification {
   id: number;

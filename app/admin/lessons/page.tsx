@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
-import { ChevronDown, ChevronUp, FileText } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
+import { ChevronDown, ChevronUp, FileText, CheckCircle2 } from 'lucide-react';
 
 interface Lesson {
   id: string;
@@ -26,6 +27,15 @@ interface Lesson {
   reference: string;
   teacher: string;
   createdAt: string;
+  reviewed: boolean;
+  reviewedByName: string;
+}
+
+interface AttendanceEntry {
+  studentId: string;
+  systemId: string | null;
+  name: string;
+  present: boolean;
 }
 
 function Detail({ label, value }: { label: string; value: string | number }) {
@@ -43,6 +53,8 @@ export default function AdminLessonsPage() {
   const [error, setError] = useState('');
   const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [attendance, setAttendance] = useState<Record<string, AttendanceEntry[]>>({});
+  const [marking, setMarking] = useState<string | null>(null);
 
   useEffect(() => {
     fetch('/api/admin/lessons')
@@ -54,6 +66,32 @@ export default function AdminLessonsPage() {
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
   }, []);
+
+  function toggleExpand(id: string) {
+    const next = expanded === id ? null : id;
+    setExpanded(next);
+    if (next && !attendance[next]) {
+      fetch(`/api/admin/lessons/${next}/attendance`)
+        .then((r) => r.json())
+        .then((d) => {
+          if (d.success) setAttendance((prev) => ({ ...prev, [next]: d.data }));
+        })
+        .catch(() => {});
+    }
+  }
+
+  async function markReviewed(id: string) {
+    setMarking(id);
+    try {
+      const res = await fetch(`/api/admin/lessons/${id}/review`, { method: 'PATCH' });
+      const json = await res.json();
+      if (json.success) {
+        setLessons((prev) => prev.map((l) => (l.id === id ? { ...l, reviewed: true } : l)));
+      }
+    } finally {
+      setMarking(null);
+    }
+  }
 
   const filtered = lessons.filter((l) => {
     if (!query.trim()) return true;
@@ -91,12 +129,17 @@ export default function AdminLessonsPage() {
             return (
               <Card key={l.id} className="p-0 overflow-hidden">
                 <button
-                  onClick={() => setExpanded(open ? null : l.id)}
+                  onClick={() => toggleExpand(l.id)}
                   className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-primary-50/50 transition-colors"
                 >
                   <div className="min-w-0">
-                    <p className="font-semibold text-primary-900 truncate">
+                    <p className="font-semibold text-primary-900 truncate flex items-center gap-2">
                       {l.reference || 'No reference'} • {l.className}
+                      {l.reviewed && (
+                        <span className="inline-flex items-center gap-1 text-xs font-normal text-[#1F7A54]">
+                          <CheckCircle2 className="w-3.5 h-3.5" /> Reviewed
+                        </span>
+                      )}
                     </p>
                     <p className="text-xs text-text-muted truncate">
                       {l.school} • {l.learningArea} • {l.teacher} • {l.lessonDate}
@@ -134,6 +177,35 @@ export default function AdminLessonsPage() {
                         <Detail label="Support required" value={l.supportRequired} />
                       </div>
                     )}
+
+                    {attendance[l.id] && attendance[l.id].length > 0 && (
+                      <div className="col-span-2 sm:col-span-3">
+                        <p className="text-xs text-text-muted mb-1.5">Attendance</p>
+                        <div className="flex flex-wrap gap-1.5">
+                          {attendance[l.id].map((a) => (
+                            <span
+                              key={a.studentId}
+                              className={`text-xs px-2 py-1 rounded-lg ${
+                                a.present ? 'bg-[#EBF8FC] text-[#0489AE]' : 'bg-[#C0392B]/10 text-[#C0392B]'
+                              }`}
+                            >
+                              {a.name}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="col-span-2 sm:col-span-3 flex justify-end">
+                      <Button
+                        variant="outline"
+                        disabled={l.reviewed || marking === l.id}
+                        onClick={() => void markReviewed(l.id)}
+                      >
+                        <CheckCircle2 className="w-4 h-4 mr-1.5" aria-hidden />
+                        {l.reviewed ? `Reviewed${l.reviewedByName ? ` by ${l.reviewedByName}` : ''}` : marking === l.id ? 'Marking…' : 'Mark reviewed'}
+                      </Button>
+                    </div>
                   </div>
                 )}
               </Card>

@@ -11,7 +11,7 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { ImageUpload } from '@/components/ui/ImageUpload';
 import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
-import { ArrowRightLeft, Eye, KeyRound, Pencil, Power, PowerOff, Trash2, Upload, UserPlus, X } from 'lucide-react';
+import { ArrowRightLeft, Check, Eye, KeyRound, Pencil, Power, PowerOff, Trash2, Upload, UserPlus, X } from 'lucide-react';
 
 interface School {
   id: string;
@@ -66,6 +66,20 @@ interface StudentAccount {
   createdAt: string;
 }
 
+interface StudentRequest {
+  id: string;
+  requestedByName: string;
+  schoolName: string;
+  classDisplayName: string;
+  streamName: string | null;
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
+  gender: 'male' | 'female' | null;
+  note: string;
+  createdAt: string;
+}
+
 interface NewCredentials {
   name: string;
   systemId: string;
@@ -112,6 +126,8 @@ export default function SystemStudentsPage() {
   const [schools, setSchools] = useState<School[]>([]);
   const [classesForSchool, setClassesForSchool] = useState<SchoolClass[]>([]);
   const [loading, setLoading] = useState(true);
+  const [requests, setRequests] = useState<StudentRequest[]>([]);
+  const [requestBusyId, setRequestBusyId] = useState<string | null>(null);
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
@@ -137,19 +153,64 @@ export default function SystemStudentsPage() {
 
   const load = useCallback(async () => {
     try {
-      const [studentsRes, schoolsRes] = await Promise.all([
+      const [studentsRes, schoolsRes, requestsRes] = await Promise.all([
         fetch('/api/admin/system/students').then((r) => r.json()),
         fetch('/api/admin/system/schools').then((r) => r.json()),
+        fetch('/api/student-requests').then((r) => r.json()),
       ]);
       if (studentsRes.success) setAccounts(studentsRes.data);
       else toast.error(studentsRes.message ?? 'Failed to load students.');
       if (schoolsRes.success) setSchools(schoolsRes.data);
+      if (requestsRes.success) setRequests(requestsRes.data);
     } catch {
       toast.error('Network error while loading students.');
     } finally {
       setLoading(false);
     }
   }, [toast]);
+
+  async function approveRequest(r: StudentRequest) {
+    setRequestBusyId(r.id);
+    try {
+      const res = await fetch(`/api/student-requests/${r.id}/approve`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setRequests((current) => current.filter((x) => x.id !== r.id));
+        toast.success(`${r.firstName} ${r.lastName} added.`);
+        await load();
+      } else {
+        toast.error(data.message ?? 'Failed to approve request.');
+      }
+    } catch {
+      toast.error('Network error.');
+    } finally {
+      setRequestBusyId(null);
+    }
+  }
+
+  async function rejectRequest(r: StudentRequest) {
+    const reason = window.prompt(`Reason for declining ${r.firstName} ${r.lastName}?`);
+    if (!reason) return;
+    setRequestBusyId(r.id);
+    try {
+      const res = await fetch(`/api/student-requests/${r.id}/reject`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setRequests((current) => current.filter((x) => x.id !== r.id));
+        toast.success('Request declined.');
+      } else {
+        toast.error(data.message ?? 'Failed to decline request.');
+      }
+    } catch {
+      toast.error('Network error.');
+    } finally {
+      setRequestBusyId(null);
+    }
+  }
 
   useEffect(() => {
     const controller = new AbortController();
@@ -521,6 +582,52 @@ export default function SystemStudentsPage() {
 
       {newCredentials && (
         <CredentialsCard {...newCredentials} onDismiss={() => setNewCredentials(null)} />
+      )}
+
+      {requests.length > 0 && (
+        <Card>
+          <h2 className="font-semibold text-primary-900 mb-1">Pending student requests</h2>
+          <p className="text-sm text-text-muted mb-4">
+            Flagged by teachers from the lesson wizard when a learner isn&apos;t on the roster yet.
+          </p>
+          <div className="space-y-2">
+            {requests.map((r) => (
+              <div
+                key={r.id}
+                className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-primary-100 p-3"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-primary-900">
+                    {[r.firstName, r.middleName, r.lastName].filter(Boolean).join(' ')}
+                  </p>
+                  <p className="text-xs text-text-muted">
+                    {[r.classDisplayName, r.streamName].filter(Boolean).join(' ')} · {r.schoolName} · requested by{' '}
+                    {r.requestedByName}
+                  </p>
+                  {r.note && <p className="text-xs text-text-muted mt-0.5">&ldquo;{r.note}&rdquo;</p>}
+                </div>
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    disabled={requestBusyId === r.id}
+                    onClick={() => void approveRequest(r)}
+                  >
+                    <Check className="w-4 h-4 mr-1.5" aria-hidden />
+                    Approve
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={requestBusyId === r.id}
+                    onClick={() => void rejectRequest(r)}
+                  >
+                    <X className="w-4 h-4 mr-1.5" aria-hidden />
+                    Decline
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
 
       {showForm && (

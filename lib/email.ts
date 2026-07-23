@@ -68,6 +68,46 @@ export async function sendCredentialsEmail(
   }
 }
 
+export interface DigestEmailInput {
+  to: string;
+  subject: string;
+  heading: string;
+  body: string;
+}
+
+/**
+ * A short best-effort notification email — same shape as the in-app
+ * notification it accompanies, for someone who won't see the bell badge
+ * until they next open the app. Never throws: a digest email failing must
+ * never be treated as the digest itself failing.
+ */
+export async function sendDigestEmail(
+  input: DigestEmailInput
+): Promise<{ sent: boolean; error?: string }> {
+  const resend = getResend();
+  if (!resend) return { sent: false, error: "RESEND_API_KEY is not configured" };
+
+  const from = process.env.RESEND_FROM_EMAIL ?? "TERECO Collect <onboarding@resend.dev>";
+
+  try {
+    const { error } = await resend.emails.send({
+      from,
+      to: input.to,
+      subject: input.subject,
+      html: `
+        <div style="font-family: sans-serif; max-width: 480px; margin: 0 auto;">
+          <h2 style="color: #02465B;">${input.heading}</h2>
+          <p>${input.body}</p>
+        </div>
+      `,
+    });
+    if (error) return { sent: false, error: error.message };
+    return { sent: true };
+  } catch (err) {
+    return { sent: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
 export interface PdfEmailInput {
   to: string;
   subject: string;

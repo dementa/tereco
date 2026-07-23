@@ -608,6 +608,62 @@ export type Database = {
         }
         Relationships: []
       }
+      lesson_attendance: {
+        Row: {
+          created_at: string
+          enrollment_id: string
+          id: string
+          is_present: boolean
+          lesson_report_id: string
+          student_id: string
+        }
+        Insert: {
+          created_at?: string
+          enrollment_id: string
+          id?: string
+          is_present?: boolean
+          lesson_report_id: string
+          student_id: string
+        }
+        Update: {
+          created_at?: string
+          enrollment_id?: string
+          id?: string
+          is_present?: boolean
+          lesson_report_id?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lesson_attendance_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "current_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_attendance_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_attendance_lesson_report_id_fkey"
+            columns: ["lesson_report_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_attendance_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       lesson_reports: {
         Row: {
           absent: number
@@ -628,6 +684,8 @@ export type Database = {
           period: number
           present: number
           reference: string
+          reviewed_at: string | null
+          reviewed_by: string | null
           school_id: string
           specific_skill: string
           staff_id: string
@@ -656,6 +714,8 @@ export type Database = {
           period: number
           present?: number
           reference?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           school_id: string
           specific_skill: string
           staff_id: string
@@ -684,6 +744,8 @@ export type Database = {
           period?: number
           present?: number
           reference?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           school_id?: string
           specific_skill?: string
           staff_id?: string
@@ -706,6 +768,13 @@ export type Database = {
             columns: ["class_id"]
             isOneToOne: false
             referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lesson_reports_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
           {
@@ -1264,6 +1333,109 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      student_requests: {
+        Row: {
+          class_id: string
+          created_at: string
+          created_student_id: string | null
+          date_of_birth: string | null
+          first_name: string
+          gender: string | null
+          id: string
+          last_name: string
+          middle_name: string | null
+          note: string
+          rejection_reason: string | null
+          requested_by: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          school_id: string
+          status: string
+          stream_id: string | null
+        }
+        Insert: {
+          class_id: string
+          created_at?: string
+          created_student_id?: string | null
+          date_of_birth?: string | null
+          first_name: string
+          gender?: string | null
+          id?: string
+          last_name: string
+          middle_name?: string | null
+          note?: string
+          rejection_reason?: string | null
+          requested_by: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          school_id: string
+          status?: string
+          stream_id?: string | null
+        }
+        Update: {
+          class_id?: string
+          created_at?: string
+          created_student_id?: string | null
+          date_of_birth?: string | null
+          first_name?: string
+          gender?: string | null
+          id?: string
+          last_name?: string
+          middle_name?: string | null
+          note?: string
+          rejection_reason?: string | null
+          requested_by?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          school_id?: string
+          status?: string
+          stream_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_requests_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_requests_created_student_id_fkey"
+            columns: ["created_student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_requests_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_requests_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_requests_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_requests_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "streams"
             referencedColumns: ["id"]
           },
         ]

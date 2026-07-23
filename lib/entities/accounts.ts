@@ -10,7 +10,10 @@ export type AccountRole = "admin" | "staff" | "student" | "parent";
 /** Matches the profiles.gender check constraint. */
 export type Gender = "male" | "female";
 
-const STUDENT_PLACEHOLDER_DOMAIN = "students.tereco.internal";
+// Exported so callers deciding whether an address is real enough to email
+// (e.g. the lesson-digest cron) can recognize this placeholder without
+// duplicating the string.
+export const STUDENT_PLACEHOLDER_DOMAIN = "students.tereco.internal";
 
 /**
  * `profiles` stores names split, never as one display string. Callers that only
