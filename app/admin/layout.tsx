@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthContext';
 import { PortalGate } from '@/components/auth/PortalGate';
 import { NotificationBell } from '@/components/ui/NotificationBell';
+import { MobileTabBar } from '@/components/ui/MobileTabBar';
 import {
   LayoutDashboard, FileText, GraduationCap, ClipboardList,
   CheckSquare, LogOut, School, UserCog, Contact, CalendarDays,
@@ -17,7 +18,7 @@ import type { Role } from '@/lib/auth/session';
 // a hardcoded school list. Their replacements are under System below.
 const NAV = [
   { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/admin/lessons', label: 'Lesson Submissions', icon: FileText },
+  { href: '/admin/lessons', label: 'Lesson Submissions', short: 'Lessons', icon: FileText },
   { href: '/admin/assessments', label: 'Assessments', icon: ClipboardList },
   { href: '/admin/marking', label: 'Marking', icon: CheckSquare },
 ];
@@ -113,26 +114,24 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           <NotificationBell />
         </div>
 
-        {/* Mobile top nav */}
-        <div className="md:hidden bg-bg-card border-b border-primary-100 p-3 flex items-center gap-2 overflow-x-auto">
-          <div className="shrink-0"><NotificationBell /></div>
-          {NAV.map((item) => {
-            const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${
-                  active ? 'bg-primary-700 text-white' : 'text-text-secondary bg-primary-50'
-                }`}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
+        {/* Mobile top bar: just branding + the bell, nav lives in the bottom tab bar. */}
+        <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-primary-100 bg-bg-card">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-primary-700 flex items-center justify-center shrink-0">
+              <span className="text-white text-xs font-bold">TC</span>
+            </div>
+            <p className="text-sm font-semibold text-primary-900 truncate">TERECO Admin</p>
+          </div>
+          <NotificationBell />
         </div>
-        <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-x-hidden">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 md:p-8 pb-24 md:pb-8 overflow-x-hidden">{children}</main>
       </div>
+
+      <MobileTabBar
+        tabs={NAV}
+        moreItems={user?.role === 'super_admin' ? SYSTEM_NAV : []}
+        onSignOut={() => { logout(); router.push('/auth'); }}
+      />
     </div>
   );
 }

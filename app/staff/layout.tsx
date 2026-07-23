@@ -6,6 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthContext';
 import { PortalGate } from '@/components/auth/PortalGate';
 import { NotificationBell } from '@/components/ui/NotificationBell';
+import { MobileTabBar } from '@/components/ui/MobileTabBar';
 import { LayoutDashboard, FileText, ClipboardList, CheckSquare, LogOut } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -13,8 +14,8 @@ const STAFF_ROLES: Role[] = ['staff'];
 
 const NAV = [
   { href: '/staff', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/staff/lessons', label: 'My Lesson Reports', icon: FileText },
-  { href: '/staff/assessments', label: 'My Assessments', icon: ClipboardList },
+  { href: '/staff/lessons', label: 'My Lesson Reports', short: 'Lessons', icon: FileText },
+  { href: '/staff/assessments', label: 'My Assessments', short: 'Assess', icon: ClipboardList },
   { href: '/staff/marking', label: 'Marking', icon: CheckSquare },
 ];
 
@@ -70,25 +71,19 @@ function StaffShell({ children }: { children: React.ReactNode }) {
           <NotificationBell />
         </div>
 
-        <div className="md:hidden bg-bg-card border-b border-primary-100 p-3 flex items-center gap-2 overflow-x-auto">
-          <div className="shrink-0"><NotificationBell /></div>
-          {NAV.map((item) => {
-            const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`px-3 py-1.5 rounded-lg text-xs whitespace-nowrap ${
-                  active ? 'bg-primary-700 text-white' : 'text-text-secondary bg-primary-50'
-                }`}
-              >
-                {item.label}
-              </Link>
-            );
-          })}
+        <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-primary-100 bg-bg-card">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-primary-700 flex items-center justify-center shrink-0">
+              <span className="text-white text-xs font-bold">TC</span>
+            </div>
+            <p className="text-sm font-semibold text-primary-900 truncate">TERECO Staff</p>
+          </div>
+          <NotificationBell />
         </div>
-        <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-x-hidden">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 md:p-8 pb-24 md:pb-8 overflow-x-hidden">{children}</main>
       </div>
+
+      <MobileTabBar tabs={NAV} onSignOut={() => { logout(); router.push('/auth'); }} />
     </div>
   );
 }
