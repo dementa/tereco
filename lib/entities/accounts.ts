@@ -293,15 +293,25 @@ export async function resetAccountPassword(profileId: string): Promise<{ tempora
  * the count (see scripts/schema/11-multi-super-admin.sql), so this is the
  * only thing stopping the last one from locking everyone out of /admin/system.
  */
-async function assertNotLastSuperAdmin(profileId: string): Promise<void> {
+// The original fixed super admin. Every other super admin is created and
+// removable through the normal flow, but this one account stays un-removable
+// by anyone (including itself) — the guaranteed way back in if every other
+// super admin account is ever locked out, deactivated, or deleted.
+const ROOT_SUPER_ADMIN_EMAIL = "victordementa@gmail.com";
+
+async function assertRemovable(profileId: string): Promise<void> {
   const supabase = getSupabaseAdmin();
   const { data: target, error: targetError } = await supabase
     .from("profiles")
-    .select("role")
+    .select("role, email")
     .eq("id", profileId)
     .single();
   if (targetError) throw new Error(targetError.message);
   if (target.role !== "super_admin") return;
+
+  if (target.email === ROOT_SUPER_ADMIN_EMAIL) {
+    throw new UserFacingError("This is the root super admin account and can't be deactivated or deleted.");
+  }
 
   const { count, error } = await supabase
     .from("profiles")
@@ -317,7 +327,7 @@ async function assertNotLastSuperAdmin(profileId: string): Promise<void> {
 
 export async function setAccountActive(profileId: string, isActive: boolean): Promise<void> {
   const supabase = getSupabaseAdmin();
-  if (!isActive) await assertNotLastSuperAdmin(profileId);
+  if (!isActive) await assertRemovable(profileId);
   const { error } = await supabase
     .from("profiles")
     .update({ is_active: isActive, updated_at: new Date().toISOString() })
@@ -393,7 +403,7 @@ export async function updateAccount(
  */
 export async function deleteAccount(profileId: string): Promise<void> {
   const supabase = getSupabaseAdmin();
-  await assertNotLastSuperAdmin(profileId);
+  await assertRemovable(profileId);
 
   const [submissions, lessons, enrollments, children] = await Promise.all([
     supabase.from("assessment_submissions").select("id", { count: "exact", head: true }).eq("student_id", profileId),

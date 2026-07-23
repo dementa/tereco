@@ -10,7 +10,12 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useAuth } from '@/components/auth/AuthContext';
-import { KeyRound, Power, PowerOff, ShieldPlus, Trash2, X } from 'lucide-react';
+import { KeyRound, Lock, Power, PowerOff, ShieldPlus, Trash2, X } from 'lucide-react';
+
+// Kept in sync with ROOT_SUPER_ADMIN_EMAIL in lib/entities/accounts.ts — this
+// one account can't be deactivated or deleted by anyone, so its row-level
+// controls are disabled here too rather than only failing server-side.
+const ROOT_SUPER_ADMIN_EMAIL = 'victordementa@gmail.com';
 
 interface SuperAdminAccount {
   id: string;
@@ -166,6 +171,7 @@ export default function SuperAdminsPage() {
               {a.name}
               {a.id === user?.id && <span className="text-text-muted font-normal"> (you)</span>}
             </span>
+            {a.contactEmail === ROOT_SUPER_ADMIN_EMAIL && <Badge variant="default">Root — protected</Badge>}
             {!a.isActive && <Badge variant="muted">Deactivated</Badge>}
             {a.mustChangePassword && a.isActive && <Badge variant="accent">Pending first login</Badge>}
           </span>
@@ -178,35 +184,49 @@ export default function SuperAdminsPage() {
         header: '',
         sortable: false,
         align: 'right',
-        render: (a) => (
-          <div className="flex justify-end gap-1">
-            <button
-              type="button"
-              onClick={() => void handleResetPassword(a)}
-              disabled={busyId === a.id}
-              title={`Reset password for ${a.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8] disabled:opacity-40"
-            >
-              <KeyRound className="w-4 h-4" aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={() => void toggleActive(a)}
-              title={a.isActive ? `Deactivate ${a.name}` : `Reactivate ${a.name}`}
-              className="p-1.5 rounded-lg text-[#5A7D8A] hover:bg-[#F1F6F8]"
-            >
-              {a.isActive ? <PowerOff className="w-4 h-4" aria-hidden /> : <Power className="w-4 h-4" aria-hidden />}
-            </button>
-            <button
-              type="button"
-              onClick={() => void removeAccount(a)}
-              title={`Delete ${a.name}`}
-              className="p-1.5 rounded-lg text-[#C26565] hover:bg-[#FBF0F0]"
-            >
-              <Trash2 className="w-4 h-4" aria-hidden />
-            </button>
-          </div>
-        ),
+        render: (a) => {
+          const protectedRoot = a.contactEmail === ROOT_SUPER_ADMIN_EMAIL;
+          return (
+            <div className="flex justify-end gap-1">
+              <button
+                type="button"
+                onClick={() => void handleResetPassword(a)}
+                disabled={busyId === a.id}
+                title={`Reset password for ${a.name}`}
+                className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8] disabled:opacity-40"
+              >
+                <KeyRound className="w-4 h-4" aria-hidden />
+              </button>
+              {protectedRoot ? (
+                <span
+                  title="The root super admin account can't be deactivated or deleted"
+                  className="p-1.5 rounded-lg text-[#9BB0B8]"
+                >
+                  <Lock className="w-4 h-4" aria-hidden />
+                </span>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void toggleActive(a)}
+                    title={a.isActive ? `Deactivate ${a.name}` : `Reactivate ${a.name}`}
+                    className="p-1.5 rounded-lg text-[#5A7D8A] hover:bg-[#F1F6F8]"
+                  >
+                    {a.isActive ? <PowerOff className="w-4 h-4" aria-hidden /> : <Power className="w-4 h-4" aria-hidden />}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void removeAccount(a)}
+                    title={`Delete ${a.name}`}
+                    className="p-1.5 rounded-lg text-[#C26565] hover:bg-[#FBF0F0]"
+                  >
+                    <Trash2 className="w-4 h-4" aria-hidden />
+                  </button>
+                </>
+              )}
+            </div>
+          );
+        },
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
