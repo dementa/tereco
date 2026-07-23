@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { Suspense, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth, type User } from '@/components/auth/AuthContext';
 import { LoginScreen } from '@/components/auth/LoginScreen';
 import { Button } from '@/components/ui/Button';
@@ -12,9 +12,11 @@ function destinationFor(user: User): string | null {
   return PORTAL_FOR_ROLE[user.role as Role] ?? null;
 }
 
-export default function AuthPage() {
+function AuthPageContent() {
   const { user, isAuthenticated, loading, mustChangePassword, logout } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const linkInvalid = searchParams.get('error') === 'reset-link-invalid';
 
   // Someone already signed in never sees the form — they're bounced straight
   // to their portal (or to the forced password change first). Students get
@@ -68,5 +70,28 @@ export default function AuthPage() {
     router.replace(destinationFor(loggedInUser) ?? '/auth');
   };
 
-  return <LoginScreen onLogin={handleLogin} />;
+  return (
+    <>
+      {linkInvalid && (
+        <div className="pt-6 px-4 max-w-sm mx-auto text-center text-sm text-error">
+          That reset link is invalid or has expired. Request a new one below.
+        </div>
+      )}
+      <LoginScreen onLogin={handleLogin} />
+    </>
+  );
+}
+
+export default function AuthPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen bg-bg flex items-center justify-center text-text-muted">
+          Loading…
+        </div>
+      }
+    >
+      <AuthPageContent />
+    </Suspense>
+  );
 }

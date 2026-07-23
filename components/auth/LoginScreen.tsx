@@ -25,6 +25,10 @@ export const LoginScreen: React.FC<{
   const [attempts, setAttempts] = useState(0);
   const [isLocked, setIsLocked] = useState(false);
   const [lockoutTimer, setLockoutTimer] = useState(0);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotIdentifier, setForgotIdentifier] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotMessage, setForgotMessage] = useState('');
 
   useEffect(() => {
     let interval: NodeJS.Timeout;
@@ -78,6 +82,89 @@ export const LoginScreen: React.FC<{
       setIsLoading(false);
     }
   };
+
+  const handleForgotSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setForgotLoading(true);
+    setForgotMessage('');
+    try {
+      const response = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identifier: forgotIdentifier.trim() }),
+      });
+      const data = await response.json();
+      // Deliberately the same message either way — the endpoint never reveals
+      // whether the identifier matched an account.
+      setForgotMessage(data.message || "If an account exists, we've sent a reset link.");
+    } catch {
+      setForgotMessage('Network error. Please try again.');
+    } finally {
+      setForgotLoading(false);
+    }
+  };
+
+  if (showForgot) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-bg px-4 py-8">
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+          className="w-full max-w-sm"
+        >
+          <button
+            type="button"
+            onClick={() => { setShowForgot(false); setForgotMessage(''); }}
+            className="flex items-center gap-1.5 text-sm text-text-muted hover:text-primary-700 transition-colors mb-6"
+          >
+            <ArrowLeft className="w-4 h-4" aria-hidden />
+            Back to sign in
+          </button>
+
+          <div className="text-center mb-10">
+            <h1 className="text-2xl font-bold tracking-tight text-primary-900">Reset password</h1>
+            <p className="text-sm text-text-muted mt-2">
+              Enter your System ID or email and we&apos;ll send a reset link to the address on file.
+            </p>
+          </div>
+
+          {forgotMessage ? (
+            <p className="text-sm text-text-secondary text-center">{forgotMessage}</p>
+          ) : (
+            <form onSubmit={handleForgotSubmit} className="space-y-6">
+              <div>
+                <label htmlFor="forgot-identifier" className="text-xs font-medium text-text-secondary tracking-wide">
+                  System ID or email
+                </label>
+                <div className="relative mt-2">
+                  <User className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" />
+                  <input
+                    id="forgot-identifier"
+                    type="text"
+                    value={forgotIdentifier}
+                    onChange={(e) => setForgotIdentifier(e.target.value)}
+                    className="w-full border-0 border-b border-primary-200 bg-transparent pl-6 pr-2 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
+                    placeholder="e.g. TSF-2026-0001"
+                    required
+                    autoComplete="username"
+                  />
+                </div>
+              </div>
+              <Button
+                variant="primary"
+                className="w-full justify-center text-base py-3"
+                type="submit"
+                isLoading={forgotLoading}
+              >
+                Send reset link
+              </Button>
+            </form>
+          )}
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-bg px-4 py-8">
@@ -169,7 +256,11 @@ export const LoginScreen: React.FC<{
               <input type="checkbox" className="rounded border-primary-200 text-primary-700 focus:ring-primary-700/20 w-4 h-4" />
               Remember me
             </label>
-            <button type="button" className="text-text-muted hover:text-primary-700 transition-colors font-medium">
+            <button
+              type="button"
+              onClick={() => setShowForgot(true)}
+              className="text-text-muted hover:text-primary-700 transition-colors font-medium"
+            >
               Forgot passcode?
             </button>
           </div>
