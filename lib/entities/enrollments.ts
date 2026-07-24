@@ -88,7 +88,11 @@ export async function listClassRoster(
   const supabase = getSupabaseAdmin();
   let query = supabase
     .from("current_enrollments")
-    .select("id, student_id, student:profiles(system_id, first_name, middle_name, last_name)")
+    // Named explicitly: current_enrollments carries both enrollments_student_id_fkey
+    // and enrollments_created_by_fkey into profiles, so an unqualified
+    // `profiles(...)` embed is ambiguous to PostgREST (PGRST201) — the
+    // student, never whoever recorded the enrollment, is what a roster means.
+    .select("id, student_id, student:profiles!enrollments_student_id_fkey(system_id, first_name, middle_name, last_name)")
     .eq("class_id", classId);
   query = streamId ? query.eq("stream_id", streamId) : query.is("stream_id", null);
 
