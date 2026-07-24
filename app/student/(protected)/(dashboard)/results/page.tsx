@@ -66,13 +66,15 @@ export default function MyResultsPage() {
 
               {a.released ? (
                 <div className="flex items-center gap-3 shrink-0">
+                  {/* The mark out of 100 leads, same Ugandan report-card
+                      convention as the individual result page — the raw
+                      fraction is still there, just as the secondary line. */}
                   <div className="text-right">
                     <p className="text-lg font-bold text-primary-900">
-                      {a.totalScore ?? '—'}
-                      <span className="text-sm font-normal text-text-muted">/{a.maxScore ?? '—'}</span>
+                      {a.percentage === null ? 'pending' : `${a.percentage}%`}
                     </p>
                     <p className="text-xs text-text-muted">
-                      {a.percentage === null ? 'pending' : `${a.percentage}%`}
+                      {a.totalScore ?? '—'}/{a.maxScore ?? '—'}
                     </p>
                   </div>
                   <Link href={`/student/results/${a.assessmentSystemId}`}>

@@ -167,18 +167,17 @@ export default function StudentResultPage() {
           {new Date(script.submittedAt).toLocaleDateString('en-GB')}
         </p>
 
-        <div className="grid grid-cols-3 gap-3 mt-4">
+        <div className="grid grid-cols-2 gap-3 mt-4">
+          {/* The mark out of 100 leads — a paper out of 65 or 40 marks still
+              reads the way Ugandan report cards do, with the raw score as a
+              reference line underneath rather than the headline number. */}
           <div className="rounded-xl bg-[#F1F6F8] p-3">
-            <p className="text-[10px] text-[#5A7D8A] tracking-wide">SCORE</p>
-            <p className="text-2xl font-bold text-primary-900">
-              {script.totalScore ?? '—'}
-              <span className="text-sm font-normal text-[#5A7D8A]">/{script.maxScore}</span>
-            </p>
-          </div>
-          <div className="rounded-xl bg-[#F1F6F8] p-3">
-            <p className="text-[10px] text-[#5A7D8A] tracking-wide">PERCENTAGE</p>
+            <p className="text-[10px] text-[#5A7D8A] tracking-wide">MARK</p>
             <p className="text-2xl font-bold text-primary-900">
               {script.percentage === null ? '—' : `${script.percentage}%`}
+            </p>
+            <p className="text-xs text-[#5A7D8A] mt-0.5">
+              {script.totalScore ?? '—'}/{script.maxScore} marks
             </p>
           </div>
           <div className="rounded-xl bg-[#F1F6F8] p-3">

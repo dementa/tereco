@@ -11,7 +11,13 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useAuth } from '@/components/auth/AuthContext';
 import { ArrowLeft, Download, KeyRound, Plus, Printer, Save, Send, Trash2, UserPlus } from 'lucide-react';
-import { QuestionImage } from '@/components/admin/QuestionImage';
+import { GroupImageField } from '@/components/admin/GroupImageField';
+import {
+  computeCodes,
+  groupQuestions,
+  formatQuestionLabel,
+  type QuestionConfig,
+} from '@/lib/questionGrouping';
 
 type QuestionType =
   | 'mcq' | 'checkbox' | 'true_false' | 'fill' | 'matching' | 'dragdrop' | 'short' | 'long';
@@ -47,6 +53,7 @@ interface Question {
   imageUrl?: string;
   imagePublicId?: string;
   maxScore: number;
+  config?: QuestionConfig;
 }
 
 interface AssessmentTarget {
@@ -100,15 +107,18 @@ interface Result {
   status: string;
 }
 
-function blankQuestion(position: number): Question {
+function blankQuestion(position: number, config?: QuestionConfig): Question {
   return {
     position,
-    code: `Q${position}`,
+    // Display code is now always computed live (see computeCodes) — this is
+    // just a harmless placeholder until the next render recomputes it.
+    code: '',
     questionText: '',
     questionType: 'mcq',
     options: ['', ''],
     correctAnswer: '',
     maxScore: 1,
+    config,
   };
 }
 
@@ -184,24 +194,94 @@ export default function AssessmentDetailPage() {
   // under existing answers would invalidate every score already recorded.
   const locked = results.length > 0;
 
+  // Numbering is always live-computed, never hand-typed or trusted from what
+  // the server last saved — the same algorithm the server runs authoritatively
+  // in saveQuestions() (lib/questionGrouping.ts), so what the author sees here
+  // is exactly what will print. globalIndex carries each question's real
+  // position in the flat `questions` array through the grouped rendering, so
+  // updateQuestion/removeQuestion/addRelatedQuestion/addSubQuestion always
+  // operate on the right row.
+  const codes = useMemo(() => computeCodes(questions), [questions]);
+  const displayQuestions = useMemo(
+    () => questions.map((q, i) => ({ ...q, code: codes[i], globalIndex: i })),
+    [questions, codes]
+  );
+  const groups = useMemo(() => groupQuestions(displayQuestions), [displayQuestions]);
+
   // A paper can run to dozens of questions, all appended to the end — without
   // this, "Add question" (which stays put at the top of the card) lands the
   // new blank question far below the fold, and reaching it means scrolling
-  // all the way down manually. addedTick only ticks on an explicit add (never
-  // on the initial load from the server), so this never auto-scrolls a
-  // freshly opened paper out from under the person viewing it.
-  const [addedTick, setAddedTick] = useState(0);
-  const lastQuestionRef = useRef<HTMLDivElement | null>(null);
+  // all the way down manually. Generalized beyond plain append: "Add related
+  // question" and "Add sub-question" insert mid-array, so this tracks the
+  // exact inserted index rather than assuming it's always the last one.
+  // Only ever set by an explicit add (never on the initial load from the
+  // server), so this never auto-scrolls a freshly opened paper.
+  const [newlyAddedIndex, setNewlyAddedIndex] = useState<number | null>(null);
+  const newlyAddedRef = useRef<HTMLDivElement | null>(null);
 
   function addQuestion() {
-    setQuestions((q) => [...q, blankQuestion(q.length + 1)]);
-    setAddedTick((t) => t + 1);
+    // Inherit the previous question's section, so the author only touches it
+    // when actually starting a new section.
+    const inheritedSection = questions[questions.length - 1]?.config?.section;
+    const insertAt = questions.length;
+    setQuestions((q) => [
+      ...q,
+      blankQuestion(insertAt + 1, inheritedSection ? { section: inheritedSection } : undefined),
+    ]);
+    setNewlyAddedIndex(insertAt);
+  }
+
+  /**
+   * "13, 14 share a diagram" — each keeps its own full number. Creates (or
+   * reuses) a group on the target question and inserts a new sibling right
+   * after it.
+   */
+  function addRelatedQuestion(index: number) {
+    const target = questions[index];
+    const groupId = target.config?.groupId ?? crypto.randomUUID();
+    const section = target.config?.section;
+    const updated = questions.map((q, i) =>
+      i === index ? { ...q, config: { ...q.config, groupId, groupKind: 'relative' as const, section } } : q
+    );
+    const insertAt = index + 1;
+    const newQuestion = blankQuestion(0, { groupId, groupKind: 'relative', section });
+    setQuestions([...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]);
+    setNewlyAddedIndex(insertAt);
+  }
+
+  /**
+   * "22 becomes 22a, 22b, 22c" — the whole run consumes one paper number.
+   * A later click on any member of an existing run appends the new sibling
+   * at the run's END, so a third click always adds the next letter
+   * regardless of which member's button was pressed.
+   */
+  function addSubQuestion(index: number) {
+    const target = questions[index];
+    const groupId = target.config?.groupId ?? crypto.randomUUID();
+    const section = target.config?.section;
+    const updated = questions.map((q, i) =>
+      i === index ? { ...q, config: { ...q.config, groupId, groupKind: 'sub' as const, section } } : q
+    );
+    let insertAt = index + 1;
+    while (insertAt < updated.length && updated[insertAt].config?.groupId === groupId) insertAt++;
+    const newQuestion = blankQuestion(0, { groupId, groupKind: 'sub', section });
+    setQuestions([...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]);
+    setNewlyAddedIndex(insertAt);
+  }
+
+  /** Writes a section label onto every member of a group at once. */
+  function setSectionForGroup(globalIndices: number[], section: string) {
+    setQuestions((current) =>
+      current.map((q, i) =>
+        globalIndices.includes(i) ? { ...q, config: { ...q.config, section: section || undefined } } : q
+      )
+    );
   }
 
   useEffect(() => {
-    if (addedTick === 0) return;
-    lastQuestionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  }, [addedTick]);
+    if (newlyAddedIndex === null) return;
+    newlyAddedRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [newlyAddedIndex]);
 
   function updateQuestion(index: number, patch: Partial<Question>) {
     setQuestions((current) =>
@@ -210,11 +290,48 @@ export default function AssessmentDetailPage() {
   }
 
   function removeQuestion(index: number) {
-    setQuestions((current) =>
-      current
-        .filter((_, i) => i !== index)
-        .map((q, i) => ({ ...q, position: i + 1, code: `Q${i + 1}` }))
-    );
+    setQuestions((current) => {
+      const removed = current[index];
+      let next = current.filter((_, i) => i !== index);
+
+      // If the removed question was a group's anchor holding the shared
+      // image/title, migrate it to the new first remaining member — or the
+      // shared stimulus silently disappears.
+      const groupId = removed.config?.groupId;
+      if (groupId && (removed.imageUrl || removed.config?.groupImageTitle)) {
+        const firstRemainingIdx = next.findIndex((q) => q.config?.groupId === groupId);
+        if (firstRemainingIdx !== -1) {
+          next = next.map((q, i) =>
+            i === firstRemainingIdx
+              ? {
+                  ...q,
+                  imageUrl: removed.imageUrl,
+                  imagePublicId: removed.imagePublicId,
+                  config: { ...q.config, groupImageTitle: removed.config?.groupImageTitle },
+                }
+              : q
+          );
+        }
+      }
+
+      // A group that's shrunk to one member demotes back to a plain
+      // standalone question, keeping only its section (if any) — otherwise
+      // it'd render as a stray "22a" with no siblings.
+      const counts = new Map<string, number>();
+      next.forEach((q) => {
+        const gid = q.config?.groupId;
+        if (gid) counts.set(gid, (counts.get(gid) ?? 0) + 1);
+      });
+      next = next.map((q) => {
+        const gid = q.config?.groupId;
+        if (gid && counts.get(gid) === 1) {
+          return { ...q, config: q.config?.section ? { section: q.config.section } : undefined };
+        }
+        return q;
+      });
+
+      return next.map((q, i) => ({ ...q, position: i + 1 }));
+    });
   }
 
   async function saveQuestions() {
@@ -239,6 +356,7 @@ export default function AssessmentDetailPage() {
             imageUrl: q.imageUrl || undefined,
             imagePublicId: q.imagePublicId || undefined,
             maxScore: Number(q.maxScore),
+            config: q.config ?? undefined,
           })),
         }),
       });
@@ -380,24 +498,21 @@ export default function AssessmentDetailPage() {
       { key: 'school', header: 'School', value: (r) => r.school || '—', hideOnMobile: true },
       { key: 'className', header: 'Class', value: (r) => r.className || '—' },
       {
-        key: 'score',
-        header: 'Score',
-        align: 'right',
-        value: (r) => r.totalScore ?? -1,
-        render: (r) =>
-          r.totalScore === null ? '—' : `${r.totalScore} / ${r.maxScore ?? '—'}`,
-      },
-      {
+        // The mark out of 100 leads (Ugandan report-card convention), with
+        // the raw score as a secondary reference line — replaces what used
+        // to be two separate "Score" and "%" columns.
         key: 'percentage',
-        header: '%',
+        header: 'Mark',
         align: 'right',
         value: (r) => r.percentage ?? -1,
-        // An unmarked paper says so rather than showing a misleading number.
         render: (r) =>
           r.percentage === null ? (
             <span className="text-[#9BB3BD]">pending</span>
           ) : (
-            `${r.percentage}%`
+            <div>
+              <div className="font-semibold text-[#12333F]">{r.percentage}%</div>
+              <div className="text-xs text-[#5A7D8A]">{r.totalScore} / {r.maxScore ?? '—'}</div>
+            </div>
           ),
       },
     ],
@@ -662,222 +777,288 @@ export default function AssessmentDetailPage() {
           </p>
         )}
 
-        <div className="space-y-3">
+        <div className="space-y-4">
           {questions.length === 0 && (
             <p className="text-sm text-text-muted">No questions yet.</p>
           )}
 
-          {questions.map((q, index) => (
-            <div
-              key={q.id ?? index}
-              ref={index === questions.length - 1 ? lastQuestionRef : undefined}
-              className="rounded-xl border border-[#E8EFF3] p-3 space-y-2"
-            >
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-medium text-[#5A7D8A] w-8">{q.code}</span>
-                <input
-                  type="text"
-                  value={q.questionText}
-                  disabled={locked}
-                  onChange={(e) => updateQuestion(index, { questionText: e.target.value })}
-                  placeholder="Question text"
-                  aria-label={`${q.code} text`}
-                  className="flex-1 rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
-                />
-                {!locked && (
-                  <button
-                    type="button"
-                    onClick={() => removeQuestion(index)}
-                    aria-label={`Remove ${q.code}`}
-                    className="text-[#C26565] hover:text-[#A34C4C]"
-                  >
-                    <Trash2 className="w-4 h-4" aria-hidden />
-                  </button>
+          {groups.map((group) => {
+            const anchor = group.members[0];
+            return (
+              <div key={anchor.id ?? anchor.globalIndex} className="space-y-2">
+                {group.sectionChanged && group.section && (
+                  <p className="text-xs font-bold uppercase tracking-wider text-[#02465B] pt-2">
+                    Section {group.section}
+                  </p>
                 )}
-              </div>
+                <div className="rounded-xl border-2 border-[#E8EFF3] p-3 space-y-3">
+                  {!locked && (
+                    <Select
+                      label="Section (optional)"
+                      options={[
+                        { value: '', label: 'No section' },
+                        { value: 'A', label: 'A' },
+                        { value: 'B', label: 'B' },
+                        { value: 'C', label: 'C' },
+                      ]}
+                      value={group.section ?? ''}
+                      onChange={(e) =>
+                        setSectionForGroup(group.members.map((m) => m.globalIndex), e.target.value)
+                      }
+                    />
+                  )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <Select
-                  label="Type"
-                  options={QUESTION_TYPES}
-                  value={q.questionType}
-                  disabled={locked}
-                  onChange={(e) =>
-                    updateQuestion(index, {
-                      questionType: e.target.value as QuestionType,
-                      options: NEEDS_OPTIONS.includes(e.target.value as QuestionType)
-                        ? q.options.length
-                          ? q.options
-                          : ['', '']
-                        : [],
-                    })
-                  }
-                />
-                <Input
-                  label="Marks"
-                  type="number"
-                  min={1}
-                  step="0.5"
-                  value={q.maxScore}
-                  disabled={locked}
-                  onChange={(e) => updateQuestion(index, { maxScore: Number(e.target.value) })}
-                />
-                {/* Chosen from the options, never typed: a typo here scores
-                    every learner zero on this question and nothing surfaces it
-                    until someone reads the marks. The database rejects it too. */}
-                {(q.questionType === 'mcq' || q.questionType === 'true_false') && (
-                  <Select
-                    label="Correct answer"
-                    options={[
-                      { value: '', label: 'Choose the correct option' },
-                      ...(q.questionType === 'true_false' ? TRUE_FALSE_OPTIONS : q.options)
-                        .filter((o) => o.trim())
-                        .map((o) => ({ value: o, label: o })),
-                    ]}
-                    value={q.correctAnswer ?? ''}
+                  <GroupImageField
+                    assessmentId={assessment.id}
+                    anchorPosition={anchor.position}
+                    imageUrl={group.groupImageUrl}
+                    imagePublicId={anchor.imagePublicId}
+                    title={anchor.config?.groupImageTitle}
+                    memberCodes={group.members.map((m) => m.code)}
                     disabled={locked}
-                    onChange={(e) => updateQuestion(index, { correctAnswer: e.target.value })}
+                    onImageChange={(url, publicId) =>
+                      updateQuestion(anchor.globalIndex, {
+                        imageUrl: url ?? undefined,
+                        imagePublicId: publicId ?? undefined,
+                      })
+                    }
+                    onTitleChange={(title) =>
+                      updateQuestion(anchor.globalIndex, {
+                        config: { ...anchor.config, groupImageTitle: title },
+                      })
+                    }
                   />
-                )}
-                {q.questionType === 'fill' && (
-                  <Input
-                    label="Correct answer"
-                    value={q.correctAnswer ?? ''}
-                    disabled={locked}
-                    onChange={(e) => updateQuestion(index, { correctAnswer: e.target.value })}
-                  />
-                )}
-              </div>
 
-              {NEEDS_OPTIONS.includes(q.questionType) && (
-                <div className="space-y-1.5">
-                  <span className="text-xs font-medium text-[#5A7D8A]">
-                    Choices
-                    {q.questionType === 'checkbox' && ' — tick every correct one'}
-                  </span>
-                  {q.options.map((option, oi) => (
-                    <div key={oi} className="flex gap-2 items-center">
-                      {q.questionType === 'checkbox' && (
+                  {group.members.map((q) => (
+                    <div
+                      key={q.id ?? q.globalIndex}
+                      ref={q.globalIndex === newlyAddedIndex ? newlyAddedRef : undefined}
+                      className="space-y-2 pt-2 border-t border-[#E8EFF3] first:border-t-0 first:pt-0"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-medium text-[#5A7D8A] w-10 shrink-0">
+                          {formatQuestionLabel(q.code)}
+                        </span>
                         <input
-                          type="checkbox"
-                          disabled={locked || !option.trim()}
-                          aria-label={`Mark choice ${oi + 1} correct`}
-                          checked={(q.correctAnswer ?? '')
-                            .split(CHECKBOX_SEP)
-                            .map((a) => a.trim())
-                            .includes(option.trim())}
-                          onChange={(e) => {
-                            const chosen = (q.correctAnswer ?? '')
-                              .split(CHECKBOX_SEP)
-                              .map((a) => a.trim())
-                              .filter(Boolean);
-                            const next = e.target.checked
-                              ? [...chosen, option.trim()]
-                              : chosen.filter((a) => a !== option.trim());
-                            updateQuestion(index, { correctAnswer: next.join(CHECKBOX_SEP) });
-                          }}
-                          className="rounded border-[#D1E0E8] shrink-0"
+                          type="text"
+                          value={q.questionText}
+                          disabled={locked}
+                          onChange={(e) => updateQuestion(q.globalIndex, { questionText: e.target.value })}
+                          placeholder="Question text"
+                          aria-label={`${q.code} text`}
+                          className="flex-1 rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
                         />
-                      )}
-                      <input
-                        type="text"
-                        value={option}
-                        disabled={locked}
-                        onChange={(e) => {
-                          const previous = q.options[oi];
-                          const options = q.options.map((o, i) => (i === oi ? e.target.value : o));
-                          // Carry the correct answer across the rename, or it
-                          // silently stops matching any option.
-                          let correctAnswer = q.correctAnswer;
-                          if (q.questionType === 'checkbox') {
-                            correctAnswer = (q.correctAnswer ?? '')
-                              .split(CHECKBOX_SEP)
-                              .map((a) => (a.trim() === previous.trim() ? e.target.value : a.trim()))
-                              .filter(Boolean)
-                              .join(CHECKBOX_SEP);
-                          } else if (q.correctAnswer && q.correctAnswer === previous) {
-                            correctAnswer = e.target.value;
+                        {!locked && (
+                          <button
+                            type="button"
+                            onClick={() => removeQuestion(q.globalIndex)}
+                            aria-label={`Remove ${q.code}`}
+                            className="text-[#C26565] hover:text-[#A34C4C]"
+                          >
+                            <Trash2 className="w-4 h-4" aria-hidden />
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                        <Select
+                          label="Type"
+                          options={QUESTION_TYPES}
+                          value={q.questionType}
+                          disabled={locked}
+                          onChange={(e) =>
+                            updateQuestion(q.globalIndex, {
+                              questionType: e.target.value as QuestionType,
+                              options: NEEDS_OPTIONS.includes(e.target.value as QuestionType)
+                                ? q.options.length
+                                  ? q.options
+                                  : ['', '']
+                                : [],
+                            })
                           }
-                          updateQuestion(index, { options, correctAnswer });
-                        }}
-                        placeholder={`Choice ${oi + 1}`}
-                        aria-label={`${q.code} choice ${oi + 1}`}
-                        className="flex-1 rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
-                      />
-                      {!locked && q.options.length > 2 && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            // Drop the removed choice from the correct answer
-                            // too. Leaving it behind points the answer at a
-                            // choice that no longer exists, which the database
-                            // rejects — and the whole save fails on a question
-                            // that looks fine on screen.
-                            const removed = q.options[oi].trim();
-                            const correctAnswer = (q.correctAnswer ?? '')
-                              .split(CHECKBOX_SEP)
-                              .map((a) => a.trim())
-                              .filter((a) => a && a !== removed)
-                              .join(CHECKBOX_SEP);
-                            updateQuestion(index, {
-                              options: q.options.filter((_, i) => i !== oi),
-                              correctAnswer,
-                            });
-                          }}
-                          aria-label={`Remove choice ${oi + 1}`}
-                          className="text-[#C26565]"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" aria-hidden />
-                        </button>
+                        />
+                        <Input
+                          label="Marks"
+                          type="number"
+                          min={1}
+                          step="0.5"
+                          value={q.maxScore}
+                          disabled={locked}
+                          onChange={(e) => updateQuestion(q.globalIndex, { maxScore: Number(e.target.value) })}
+                        />
+                        {/* Chosen from the options, never typed: a typo here scores
+                            every learner zero on this question and nothing surfaces it
+                            until someone reads the marks. The database rejects it too. */}
+                        {(q.questionType === 'mcq' || q.questionType === 'true_false') && (
+                          <Select
+                            label="Correct answer"
+                            options={[
+                              { value: '', label: 'Choose the correct option' },
+                              ...(q.questionType === 'true_false' ? TRUE_FALSE_OPTIONS : q.options)
+                                .filter((o) => o.trim())
+                                .map((o) => ({ value: o, label: o })),
+                            ]}
+                            value={q.correctAnswer ?? ''}
+                            disabled={locked}
+                            onChange={(e) => updateQuestion(q.globalIndex, { correctAnswer: e.target.value })}
+                          />
+                        )}
+                        {q.questionType === 'fill' && (
+                          <Input
+                            label="Correct answer"
+                            value={q.correctAnswer ?? ''}
+                            disabled={locked}
+                            onChange={(e) => updateQuestion(q.globalIndex, { correctAnswer: e.target.value })}
+                          />
+                        )}
+                      </div>
+
+                      {NEEDS_OPTIONS.includes(q.questionType) && (
+                        <div className="space-y-1.5">
+                          <span className="text-xs font-medium text-[#5A7D8A]">
+                            Choices
+                            {q.questionType === 'checkbox' && ' — tick every correct one'}
+                          </span>
+                          {q.options.map((option, oi) => (
+                            <div key={oi} className="flex gap-2 items-center">
+                              {q.questionType === 'checkbox' && (
+                                <input
+                                  type="checkbox"
+                                  disabled={locked || !option.trim()}
+                                  aria-label={`Mark choice ${oi + 1} correct`}
+                                  checked={(q.correctAnswer ?? '')
+                                    .split(CHECKBOX_SEP)
+                                    .map((a) => a.trim())
+                                    .includes(option.trim())}
+                                  onChange={(e) => {
+                                    const chosen = (q.correctAnswer ?? '')
+                                      .split(CHECKBOX_SEP)
+                                      .map((a) => a.trim())
+                                      .filter(Boolean);
+                                    const next = e.target.checked
+                                      ? [...chosen, option.trim()]
+                                      : chosen.filter((a) => a !== option.trim());
+                                    updateQuestion(q.globalIndex, { correctAnswer: next.join(CHECKBOX_SEP) });
+                                  }}
+                                  className="rounded border-[#D1E0E8] shrink-0"
+                                />
+                              )}
+                              <input
+                                type="text"
+                                value={option}
+                                disabled={locked}
+                                onChange={(e) => {
+                                  const previous = q.options[oi];
+                                  const options = q.options.map((o, i) => (i === oi ? e.target.value : o));
+                                  // Carry the correct answer across the rename, or it
+                                  // silently stops matching any option.
+                                  let correctAnswer = q.correctAnswer;
+                                  if (q.questionType === 'checkbox') {
+                                    correctAnswer = (q.correctAnswer ?? '')
+                                      .split(CHECKBOX_SEP)
+                                      .map((a) => (a.trim() === previous.trim() ? e.target.value : a.trim()))
+                                      .filter(Boolean)
+                                      .join(CHECKBOX_SEP);
+                                  } else if (q.correctAnswer && q.correctAnswer === previous) {
+                                    correctAnswer = e.target.value;
+                                  }
+                                  updateQuestion(q.globalIndex, { options, correctAnswer });
+                                }}
+                                placeholder={`Choice ${oi + 1}`}
+                                aria-label={`${q.code} choice ${oi + 1}`}
+                                className="flex-1 rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
+                              />
+                              {!locked && q.options.length > 2 && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    // Drop the removed choice from the correct answer
+                                    // too. Leaving it behind points the answer at a
+                                    // choice that no longer exists, which the database
+                                    // rejects — and the whole save fails on a question
+                                    // that looks fine on screen.
+                                    const removed = q.options[oi].trim();
+                                    const correctAnswer = (q.correctAnswer ?? '')
+                                      .split(CHECKBOX_SEP)
+                                      .map((a) => a.trim())
+                                      .filter((a) => a && a !== removed)
+                                      .join(CHECKBOX_SEP);
+                                    updateQuestion(q.globalIndex, {
+                                      options: q.options.filter((_, i) => i !== oi),
+                                      correctAnswer,
+                                    });
+                                  }}
+                                  aria-label={`Remove choice ${oi + 1}`}
+                                  className="text-[#C26565]"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" aria-hidden />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                          {!locked && (
+                            <button
+                              type="button"
+                              onClick={() => updateQuestion(q.globalIndex, { options: [...q.options, ''] })}
+                              className="text-xs text-[#02465B] hover:underline"
+                            >
+                              + Add choice
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Without this the answer key is blank for exactly the questions
+                          a human marker needs help with. Optional, so a paper can still
+                          be written quickly. */}
+                      {HAND_MARKED.includes(q.questionType) && (
+                        <div className="space-y-1.5">
+                          <label
+                            htmlFor={`model-${q.globalIndex}`}
+                            className="text-xs font-medium text-[#5A7D8A]"
+                          >
+                            Model answer / mark split (optional — printed on the answer key)
+                          </label>
+                          <textarea
+                            id={`model-${q.globalIndex}`}
+                            rows={2}
+                            value={q.modelAnswer ?? ''}
+                            disabled={locked}
+                            onChange={(e) => updateQuestion(q.globalIndex, { modelAnswer: e.target.value })}
+                            placeholder="e.g. Mouse (1 mark). Used to move the pointer or select items (1 mark)."
+                            className="w-full rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
+                          />
+                        </div>
+                      )}
+
+                      {!locked && (
+                        <div className="flex gap-3 pl-10">
+                          {q.config?.groupKind !== 'sub' && (
+                            <button
+                              type="button"
+                              onClick={() => addRelatedQuestion(q.globalIndex)}
+                              className="text-xs text-[#02465B] hover:underline"
+                            >
+                              + Related question
+                            </button>
+                          )}
+                          {q.config?.groupKind !== 'relative' && (
+                            <button
+                              type="button"
+                              onClick={() => addSubQuestion(q.globalIndex)}
+                              className="text-xs text-[#02465B] hover:underline"
+                            >
+                              + Sub-part
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   ))}
-                  {!locked && (
-                    <button
-                      type="button"
-                      onClick={() => updateQuestion(index, { options: [...q.options, ''] })}
-                      className="text-xs text-[#02465B] hover:underline"
-                    >
-                      + Add choice
-                    </button>
-                  )}
                 </div>
-              )}
-
-              {/* Without this the answer key is blank for exactly the questions
-                  a human marker needs help with. Optional, so a paper can still
-                  be written quickly. */}
-              {HAND_MARKED.includes(q.questionType) && (
-                <div className="space-y-1.5">
-                  <label
-                    htmlFor={`model-${index}`}
-                    className="text-xs font-medium text-[#5A7D8A]"
-                  >
-                    Model answer / mark split (optional — printed on the answer key)
-                  </label>
-                  <textarea
-                    id={`model-${index}`}
-                    rows={2}
-                    value={q.modelAnswer ?? ''}
-                    disabled={locked}
-                    onChange={(e) => updateQuestion(index, { modelAnswer: e.target.value })}
-                    placeholder="e.g. Mouse (1 mark). Used to move the pointer or select items (1 mark)."
-                    className="w-full rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
-                  />
-                </div>
-              )}
-
-              <QuestionImage
-                assessmentId={assessment.id}
-                position={q.position}
-                value={q.imageUrl}
-                disabled={locked}
-                onChange={(url, publicId) =>
-                  updateQuestion(index, { imageUrl: url ?? undefined, imagePublicId: publicId ?? undefined })
-                }
-              />
-            </div>
-          ))}
+              </div>
+            );
+          })}
         </div>
 
         {!locked && questions.length > 0 && (

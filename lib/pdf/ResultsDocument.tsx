@@ -122,8 +122,8 @@ export function ResultsDocument({
           <Text style={styles.cellName}>Name</Text>
           <Text style={styles.cellSchool}>School</Text>
           <Text style={styles.cellClass}>Class</Text>
+          <Text style={styles.cellPct}>Mark</Text>
           <Text style={styles.cellScore}>Score</Text>
-          <Text style={styles.cellPct}>%</Text>
         </View>
 
         {results.length === 0 ? (
@@ -142,12 +142,15 @@ export function ResultsDocument({
               <Text style={styles.cellName}>{r.studentName || '—'}</Text>
               <Text style={styles.cellSchool}>{r.school || '—'}</Text>
               <Text style={styles.cellClass}>{r.className || '—'}</Text>
-              <Text style={styles.cellScore}>
-                {r.totalScore === null ? '—' : `${r.totalScore} / ${r.maxScore ?? '—'}`}
-              </Text>
-              {/* An unmarked paper says so rather than showing a misleading number. */}
+              {/* The mark out of 100 leads, same Ugandan report-card
+                  convention used everywhere else marks are shown — an
+                  unmarked paper says so rather than showing a misleading
+                  number. */}
               <Text style={r.percentage === null ? [styles.cellPct, styles.pending] : styles.cellPct}>
                 {r.percentage === null ? 'pending' : `${r.percentage}%`}
+              </Text>
+              <Text style={styles.cellScore}>
+                {r.totalScore === null ? '—' : `${r.totalScore} / ${r.maxScore ?? '—'}`}
               </Text>
             </View>
           ))

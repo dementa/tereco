@@ -1,6 +1,7 @@
 import React from 'react';
-import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
+import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import type { MarkedScript } from '@/lib/assessments';
+import { groupQuestions, formatQuestionLabel } from '@/lib/questionGrouping';
 
 /**
  * One learner's marked paper: what they answered, what was correct, and the
@@ -22,6 +23,10 @@ const styles = StyleSheet.create({
   scoreBox: { flexGrow: 1, padding: 9, backgroundColor: '#F1F6F8', borderRadius: 4 },
   scoreLabel: { fontSize: 7, color: '#5A7D8A', letterSpacing: 0.6 },
   scoreValue: { fontSize: 15, fontFamily: 'Helvetica-Bold', marginTop: 2 },
+
+  sectionHeader: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: '#02465B', marginTop: 8, marginBottom: 6, textTransform: 'uppercase' },
+  groupHeading: { fontSize: 8.5, fontStyle: 'italic', color: '#5A7D8A', marginBottom: 4 },
+  groupImage: { maxWidth: 200, maxHeight: 130, objectFit: 'contain', marginBottom: 5 },
 
   q: { marginBottom: 10, paddingBottom: 8, borderBottomWidth: 0.5, borderBottomColor: '#E8EFF3' },
   qHead: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
@@ -86,16 +91,19 @@ function ScriptPages({ script }: { script: MarkedScript }) {
         </View>
 
         <View style={styles.scoreRow}>
+          {/* The mark out of 100 leads, the Ugandan report-card convention —
+              a paper out of 65 or 40 marks still reads the same way, with the
+              raw score kept as the reference detail. */}
+          <View style={styles.scoreBox}>
+            <Text style={styles.scoreLabel}>MARK</Text>
+            <Text style={styles.scoreValue}>
+              {script.percentage === null ? '—' : `${script.percentage}%`}
+            </Text>
+          </View>
           <View style={styles.scoreBox}>
             <Text style={styles.scoreLabel}>SCORE</Text>
             <Text style={styles.scoreValue}>
               {script.totalScore ?? '—'} / {script.maxScore}
-            </Text>
-          </View>
-          <View style={styles.scoreBox}>
-            <Text style={styles.scoreLabel}>PERCENTAGE</Text>
-            <Text style={styles.scoreValue}>
-              {script.percentage === null ? '—' : `${script.percentage}%`}
             </Text>
           </View>
           <View style={styles.scoreBox}>
@@ -107,53 +115,68 @@ function ScriptPages({ script }: { script: MarkedScript }) {
           </View>
         </View>
 
-        {script.answers.map((a) => {
-          const given = formatAnswer(a.givenAnswer, a.questionType);
-          const objective = a.correctAnswer !== undefined && a.correctAnswer !== '';
-          return (
-            <View key={a.questionId} style={styles.q} wrap={false}>
-              <View style={styles.qHead}>
-                <Text style={styles.qText}>
-                  {a.position}. {a.questionText}
-                </Text>
-                <Text style={styles.awarded}>
-                  {a.score ?? '—'} / {a.maxScore}
-                </Text>
+        {groupQuestions(script.answers).map((group, gi) => (
+          <View key={gi}>
+            {group.sectionChanged && group.section && (
+              <Text style={styles.sectionHeader}>SECTION {group.section}</Text>
+            )}
+
+            {group.groupHeading && (
+              <View wrap={false}>
+                {group.groupImageUrl && <Image style={styles.groupImage} src={group.groupImageUrl} />}
+                <Text style={styles.groupHeading}>{group.groupHeading}</Text>
               </View>
+            )}
 
-              <Text style={styles.label}>YOUR ANSWER</Text>
-              {given ? (
-                <Text style={styles.given}>{given}</Text>
-              ) : (
-                // An unanswered question is a fact worth stating plainly.
-                <Text style={styles.blank}>No answer given</Text>
-              )}
+            {group.members.map((a) => {
+              const given = formatAnswer(a.givenAnswer, a.questionType);
+              const objective = a.correctAnswer !== undefined && a.correctAnswer !== '';
+              return (
+                <View key={a.questionId} style={styles.q} wrap={false}>
+                  <View style={styles.qHead}>
+                    <Text style={styles.qText}>
+                      {formatQuestionLabel(a.code)} {a.questionText}
+                    </Text>
+                    <Text style={styles.awarded}>
+                      {a.score ?? '—'} / {a.maxScore}
+                    </Text>
+                  </View>
 
-              {/* The expected answer is only meaningful once marks are settled;
-                  showing it against an unmarked question invites arguing with a
-                  score that has not been given yet. */}
-              {a.verdict !== 'unmarked' && objective && a.verdict !== 'correct' && (
-                <>
-                  <Text style={styles.label}>CORRECT ANSWER</Text>
-                  <Text style={styles.correct}>
-                    {formatAnswer(a.correctAnswer!, a.questionType)}
+                  <Text style={styles.label}>YOUR ANSWER</Text>
+                  {given ? (
+                    <Text style={styles.given}>{given}</Text>
+                  ) : (
+                    // An unanswered question is a fact worth stating plainly.
+                    <Text style={styles.blank}>No answer given</Text>
+                  )}
+
+                  {/* The expected answer is only meaningful once marks are settled;
+                      showing it against an unmarked question invites arguing with a
+                      score that has not been given yet. */}
+                  {a.verdict !== 'unmarked' && objective && a.verdict !== 'correct' && (
+                    <>
+                      <Text style={styles.label}>CORRECT ANSWER</Text>
+                      <Text style={styles.correct}>
+                        {formatAnswer(a.correctAnswer!, a.questionType)}
+                      </Text>
+                    </>
+                  )}
+
+                  {a.verdict !== 'unmarked' && !objective && a.modelAnswer && (
+                    <>
+                      <Text style={styles.label}>WHAT WAS EXPECTED</Text>
+                      <Text style={styles.guidance}>{a.modelAnswer}</Text>
+                    </>
+                  )}
+
+                  <Text style={[styles.verdict, VERDICT_STYLE[a.verdict]]}>
+                    {VERDICT_LABEL[a.verdict]}
                   </Text>
-                </>
-              )}
-
-              {a.verdict !== 'unmarked' && !objective && a.modelAnswer && (
-                <>
-                  <Text style={styles.label}>WHAT WAS EXPECTED</Text>
-                  <Text style={styles.guidance}>{a.modelAnswer}</Text>
-                </>
-              )}
-
-              <Text style={[styles.verdict, VERDICT_STYLE[a.verdict]]}>
-                {VERDICT_LABEL[a.verdict]}
-              </Text>
-            </View>
-          );
-        })}
+                </View>
+              );
+            })}
+          </View>
+        ))}
 
       <View style={styles.footer} fixed>
         <Text>

@@ -5,8 +5,21 @@ import { getCurrentProfile, requireRole } from '@/lib/auth/session';
 import { canManageAssessment } from '@/lib/auth/access';
 import { z } from 'zod';
 
-// position/code are NOT accepted from the client — they are assigned from array
-// order (Q1, Q2, ...) so they can never be mistyped, duplicated or raced.
+// section/groupId/groupKind/groupImageTitle — see lib/questionGrouping.ts.
+// Purely authoring-structure metadata: never marking data.
+const QuestionConfigSchema = z
+  .object({
+    section: z.string().trim().max(4).optional(),
+    groupId: z.string().optional(),
+    groupKind: z.enum(['relative', 'sub']).optional(),
+    groupImageTitle: z.string().trim().max(200).optional(),
+  })
+  .strict()
+  .optional();
+
+// position/code are NOT accepted from the client — saveQuestions() computes
+// them itself (see lib/questionGrouping.ts's computeCodes), so they can never
+// be mistyped, duplicated, raced, or left out of step with a question's group.
 const QuestionSchema = z.object({
   questionText: z.string().min(1),
   questionType: z.enum([
@@ -19,7 +32,7 @@ const QuestionSchema = z.object({
   imageUrl: z.string().url().optional(),
   imagePublicId: z.string().optional(),
   maxScore: z.number().positive().default(1),
-  config: z.unknown().optional(),
+  config: QuestionConfigSchema,
 });
 
 const SaveQuestionsSchema = z.object({
@@ -70,9 +83,7 @@ export async function POST(
 
     await saveQuestions(
       assessment.id,
-      validated.questions.map((q, i) => ({
-        position: i + 1,
-        code: `Q${i + 1}`,
+      validated.questions.map((q) => ({
         questionText: q.questionText,
         questionType: q.questionType,
         options: q.options,

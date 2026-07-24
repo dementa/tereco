@@ -2,6 +2,7 @@ import { getSupabaseAdmin } from "./supabase";
 import type { TablesUpdate } from "./database.types";
 import { UserFacingError } from "./apiResponse";
 import { notify } from "./entities/notifications";
+import { computeCodes, type QuestionConfig } from "./questionGrouping";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -83,7 +84,7 @@ export interface Question {
   imageUrl?: string;
   imagePublicId?: string;
   maxScore: number;
-  config?: unknown;
+  config?: QuestionConfig;
 }
 
 export interface CreateAssessmentInput {
@@ -186,7 +187,7 @@ function rowToQuestion(row: QuestionRow): Question {
     imageUrl: row.image_url ?? undefined,
     imagePublicId: row.image_public_id ?? undefined,
     maxScore: Number(row.max_score),
-    config: row.config ?? undefined,
+    config: (row.config as QuestionConfig | null) ?? undefined,
   };
 }
 
@@ -479,9 +480,9 @@ export async function getQuestions(assessmentId: string): Promise<Question[]> {
  * rejected insert used to leave the assessment with NO questions at all, so
  * the failure that told the author nothing also destroyed their work.
  */
-function validateQuestions(questions: Omit<Question, "id">[]): void {
+function validateQuestions(questions: Omit<Question, "id" | "position" | "code">[], codes: string[]): void {
   questions.forEach((q, i) => {
-    const label = q.code || `Q${i + 1}`;
+    const label = codes[i];
     const options = (q.questionType === "true_false" ? TRUE_FALSE_OPTIONS : q.options ?? [])
       .map((o) => o.trim())
       .filter(Boolean);
@@ -524,12 +525,19 @@ function validateQuestions(questions: Omit<Question, "id">[]): void {
 
 export async function saveQuestions(
   assessmentId: string,
-  questions: Omit<Question, "id">[]
+  questions: Omit<Question, "id" | "position" | "code">[]
 ): Promise<void> {
   const supabase = getSupabaseAdmin();
 
+  // The single source of truth for numbering — position/code are no longer
+  // accepted from callers (both save routes used to force-write their own
+  // Q1/Q2/Q3 here independently). A 'sub' group (22a, 22b, 22c) consumes one
+  // number for the whole run; everything else, including every member of a
+  // 'relative' group, consumes its own. See lib/questionGrouping.ts.
+  const codes = computeCodes(questions);
+
   // Before anything is deleted.
-  validateQuestions(questions);
+  validateQuestions(questions, codes);
 
   const { count, error: countError } = await supabase
     .from("assessment_submissions")
@@ -552,8 +560,8 @@ export async function saveQuestions(
 
   const rows = questions.map((q, index) => ({
     assessment_id: assessmentId,
-    position: q.position ?? index + 1,
-    code: q.code || `Q${index + 1}`,
+    position: index + 1,
+    code: codes[index],
     question_text: q.questionText,
     type: q.questionType,
     // True/false always has the same two options — taking them from the author
@@ -711,6 +719,7 @@ export interface MarkedAnswer {
   score: number | null;
   maxScore: number;
   verdict: AnswerVerdict;
+  config?: QuestionConfig;
 }
 
 export interface MarkedScript {
@@ -814,6 +823,7 @@ export async function getMarkedScript(
       score,
       maxScore: q.maxScore,
       verdict: verdictFor(score, q.maxScore),
+      config: q.config,
     };
   });
 

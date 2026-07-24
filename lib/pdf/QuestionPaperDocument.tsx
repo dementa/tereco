@@ -1,6 +1,7 @@
 import React from 'react';
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import type { Question } from '@/lib/assessments';
+import { groupQuestions, formatQuestionLabel } from '@/lib/questionGrouping';
 
 /**
  * A printable question paper that can be answered with a pen.
@@ -29,6 +30,11 @@ const styles = StyleSheet.create({
   instructionsBox: { borderWidth: 0.75, borderColor: '#02465B', backgroundColor: '#F1F6F8', padding: 8, marginBottom: 14 },
   instructionsTitle: { fontSize: 9, fontFamily: 'Helvetica-Bold', marginBottom: 3 },
   instruction: { fontSize: 8, marginBottom: 1.5, lineHeight: 1.35 },
+
+  sectionHeader: { fontSize: 11, fontFamily: 'Helvetica-Bold', color: '#02465B', marginTop: 10, marginBottom: 6, textTransform: 'uppercase' },
+  groupHeading: { fontSize: 9, fontStyle: 'italic', color: '#5A7D8A', marginBottom: 4 },
+  groupImage: { maxWidth: 220, maxHeight: 140, objectFit: 'contain', marginBottom: 6 },
+  group: { marginBottom: 12 },
 
   question: { marginBottom: 12 },
   questionHead: { flexDirection: 'row', justifyContent: 'space-between', gap: 10 },
@@ -141,44 +147,67 @@ export function QuestionPaperDocument({
           ))}
         </View>
 
-        {questions.map((q) => (
-          // wrap={false} keeps a question and its answer space on one page —
-          // a split question is unanswerable on paper.
-          <View key={q.id} style={styles.question} wrap={false}>
-            <View style={styles.questionHead}>
-              <Text style={styles.questionText}>
-                {q.position}. {q.questionText}
-              </Text>
-              <Text style={styles.marks}>
-                [{q.maxScore} {q.maxScore === 1 ? 'mark' : 'marks'}]
-              </Text>
-            </View>
+        {groupQuestions(questions).map((group, gi) => (
+          <View key={gi} style={styles.group}>
+            {group.sectionChanged && group.section && (
+              <Text style={styles.sectionHeader}>SECTION {group.section}</Text>
+            )}
 
-            {q.imageUrl ? <Image style={styles.questionImage} src={q.imageUrl} /> : null}
+            {group.groupHeading && (
+              // wrap={false} so the shared diagram never lands on its own
+              // page, separated from the heading that introduces it.
+              <View wrap={false}>
+                {group.groupImageUrl && <Image style={styles.groupImage} src={group.groupImageUrl} />}
+                <Text style={styles.groupHeading}>{group.groupHeading}</Text>
+              </View>
+            )}
 
-            {/* One answer per question: the learner circles the letter. */}
-            {(q.questionType === 'mcq' || q.questionType === 'true_false') &&
-              q.options.map((opt, i) => (
-                <View key={i} style={styles.optionRow}>
-                  <Text style={styles.optionLetter}>{LETTERS[i]}</Text>
-                  <Text style={styles.optionText}>{opt}</Text>
+            {group.members.map((q) => {
+              // The anchor's image is already shown as the group's shared
+              // diagram above — printing it again per-question would
+              // duplicate it under every member's own number.
+              const showOwnImage = q.imageUrl && q.imageUrl !== group.groupImageUrl;
+              return (
+                // wrap={false} keeps a question and its answer space on one
+                // page — a split question is unanswerable on paper.
+                <View key={q.id} style={styles.question} wrap={false}>
+                  <View style={styles.questionHead}>
+                    <Text style={styles.questionText}>
+                      {formatQuestionLabel(q.code)} {q.questionText}
+                    </Text>
+                    <Text style={styles.marks}>
+                      [{q.maxScore} {q.maxScore === 1 ? 'mark' : 'marks'}]
+                    </Text>
+                  </View>
+
+                  {showOwnImage ? <Image style={styles.questionImage} src={q.imageUrl} /> : null}
+
+                  {/* One answer per question: the learner circles the letter. */}
+                  {(q.questionType === 'mcq' || q.questionType === 'true_false') &&
+                    q.options.map((opt, i) => (
+                      <View key={i} style={styles.optionRow}>
+                        <Text style={styles.optionLetter}>{LETTERS[i]}</Text>
+                        <Text style={styles.optionText}>{opt}</Text>
+                      </View>
+                    ))}
+
+                  {/* Several answers possible: tick every box that applies. */}
+                  {q.questionType === 'checkbox' &&
+                    q.options.map((opt, i) => (
+                      <View key={i} style={styles.optionRow}>
+                        <View style={styles.tickBox} />
+                        <Text style={styles.optionText}>{opt}</Text>
+                      </View>
+                    ))}
+
+                  {q.questionType === 'fill' && <View style={styles.inlineBlank} />}
+
+                  {Array.from({ length: linesFor(q) }).map((_, i) => (
+                    <View key={i} style={styles.answerLine} />
+                  ))}
                 </View>
-              ))}
-
-            {/* Several answers possible: tick every box that applies. */}
-            {q.questionType === 'checkbox' &&
-              q.options.map((opt, i) => (
-                <View key={i} style={styles.optionRow}>
-                  <View style={styles.tickBox} />
-                  <Text style={styles.optionText}>{opt}</Text>
-                </View>
-              ))}
-
-            {q.questionType === 'fill' && <View style={styles.inlineBlank} />}
-
-            {Array.from({ length: linesFor(q) }).map((_, i) => (
-              <View key={i} style={styles.answerLine} />
-            ))}
+              );
+            })}
           </View>
         ))}
 

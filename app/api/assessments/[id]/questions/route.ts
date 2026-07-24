@@ -45,11 +45,15 @@ export async function GET(
 
     const questions = await getQuestions(assessment.id);
 
-    // Never expose correctAnswer / modelAnswer / config to students. Anything
-    // that IS part of the question as asked has to be here, though: this
-    // allow-list is the whole paper as the learner sees it, so a field left
-    // out simply does not exist for them. imageUrl was missing, which is why
-    // picture questions arrived as bare text.
+    // Never expose correctAnswer / modelAnswer to students. `config` IS
+    // exposed — it carries only authoring-structure metadata (section, which
+    // questions are grouped together, a shared stimulus heading/title; see
+    // lib/questionGrouping.ts), never marking data, and the sitting screen
+    // needs it to render the same sections/groups the paper was authored
+    // with. Anything that IS part of the question as asked has to be here,
+    // though: this allow-list is the whole paper as the learner sees it, so a
+    // field left out simply does not exist for them. imageUrl was missing,
+    // which is why picture questions arrived as bare text.
     const safeQuestions = questions.map((q) => ({
       id: q.id,
       code: q.code,
@@ -59,6 +63,7 @@ export async function GET(
       options: q.options,
       imageUrl: q.imageUrl,
       maxScore: q.maxScore,
+      config: q.config,
     }));
 
     return successResponse({ data: safeQuestions });

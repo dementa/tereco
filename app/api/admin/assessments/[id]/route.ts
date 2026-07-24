@@ -28,6 +28,16 @@ const TargetSchema = z
     message: 'A target must narrow by school, grade level or class',
   });
 
+const QuestionConfigSchema = z
+  .object({
+    section: z.string().trim().max(4).optional(),
+    groupId: z.string().optional(),
+    groupKind: z.enum(['relative', 'sub']).optional(),
+    groupImageTitle: z.string().trim().max(200).optional(),
+  })
+  .strict()
+  .optional();
+
 const QuestionSchema = z.object({
   questionText: z.string().min(1),
   questionType: z.enum([
@@ -39,7 +49,7 @@ const QuestionSchema = z.object({
   imageUrl: z.string().url().optional(),
   imagePublicId: z.string().optional(),
   maxScore: z.number().positive().default(1),
-  config: z.unknown().optional(),
+  config: QuestionConfigSchema,
 });
 
 const UpdateSchema = z.object({
@@ -113,9 +123,7 @@ export async function PUT(
       // questions under existing answers would invalidate every recorded score.
       await saveQuestions(
         assessment.id,
-        validated.questions.map((q, i) => ({
-          position: i + 1,
-          code: `Q${i + 1}`,
+        validated.questions.map((q) => ({
           questionText: q.questionText,
           questionType: q.questionType,
           options: q.options,
