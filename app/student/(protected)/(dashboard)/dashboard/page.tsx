@@ -3,10 +3,11 @@
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { useAuth } from '@/components/auth/AuthContext';
-import { ClipboardList } from 'lucide-react';
+import { Award, ClipboardList } from 'lucide-react';
 
 const TILES = [
   { href: '/student/list', label: 'My Assessments', description: 'See what’s open to sit and start one.', icon: ClipboardList },
+  { href: '/student/results', label: 'My Results', description: 'See every assessment you’ve attempted and its score.', icon: Award },
 ];
 
 export default function StudentDashboardPage() {

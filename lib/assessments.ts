@@ -1077,6 +1077,65 @@ export async function getAssessmentResults(assessmentId: string): Promise<Assess
   });
 }
 
+export interface MyAssessmentAttempt {
+  assessmentSystemId: string;
+  title: string;
+  submittedAt: string;
+  totalScore: number | null;
+  maxScore: number | null;
+  percentage: number | null;
+  /** Nothing about a script is visible to the learner until this is true — same rule getMarkedScript's caller enforces. */
+  released: boolean;
+}
+
+interface MyAttemptRow {
+  submitted_at: string;
+  total_score: number | null;
+  max_score: number | null;
+  status: string;
+  assessment: { system_id: string; title: string; results_released_at: string | null } | null;
+}
+
+const MY_ATTEMPT_COLUMNS =
+  "submitted_at, total_score, max_score, status, assessment:assessments(system_id, title, results_released_at)";
+
+/**
+ * Every assessment a student has ever sat, newest first — what the "My
+ * Results" screen shows so a learner isn't solely dependent on noticing the
+ * results_released notification to know a score is ready.
+ */
+export async function getMyAssessmentAttempts(studentId: string): Promise<MyAssessmentAttempt[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("assessment_submissions")
+    .select(MY_ATTEMPT_COLUMNS)
+    .eq("student_id", studentId)
+    .order("submitted_at", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  return (data as unknown as MyAttemptRow[])
+    .filter((row) => row.assessment !== null)
+    .map((row) => {
+      const total = row.total_score === null ? null : Number(row.total_score);
+      const max = row.max_score === null ? null : Number(row.max_score);
+      return {
+        assessmentSystemId: row.assessment!.system_id,
+        title: row.assessment!.title,
+        submittedAt: row.submitted_at,
+        totalScore: total,
+        maxScore: max,
+        // Same rule as getAssessmentResults: only meaningful once marking is
+        // finished, or a partial total reads as a low score instead of an
+        // incomplete one.
+        percentage:
+          row.status === "marked" && total !== null && max !== null && max > 0
+            ? Math.round((total / max) * 1000) / 10
+            : null,
+        released: row.assessment!.results_released_at !== null,
+      };
+    });
+}
+
 /**
  * Manual marking of one answer. The submission's totals are recalculated by a
  * database trigger, so a score can never disagree with the answers it is

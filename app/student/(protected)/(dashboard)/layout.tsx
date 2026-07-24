@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/components/auth/AuthContext';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 import { MobileTabBar } from '@/components/ui/MobileTabBar';
-import { LayoutDashboard, ClipboardList, LogOut } from 'lucide-react';
+import { LayoutDashboard, ClipboardList, Award, LogOut } from 'lucide-react';
 
 /**
  * Shell for the "browsing" student screens only (dashboard, assessment list)
@@ -18,6 +18,7 @@ import { LayoutDashboard, ClipboardList, LogOut } from 'lucide-react';
 const NAV = [
   { href: '/student/dashboard', label: 'Dashboard', icon: LayoutDashboard, exact: true },
   { href: '/student/list', label: 'Assessments', short: 'Assess', icon: ClipboardList },
+  { href: '/student/results', label: 'My Results', short: 'Results', icon: Award },
 ];
 
 export default function StudentDashboardLayout({ children }: { children: React.ReactNode }) {
