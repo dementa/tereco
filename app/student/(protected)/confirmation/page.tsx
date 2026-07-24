@@ -19,7 +19,7 @@ function Confirmation() {
         <p className="text-sm text-text-muted mb-6">
           Your answers have been recorded successfully. You may now close this page.
         </p>
-        <Button variant="primary" className="w-full" onClick={() => router.push('/assessment/list')}>
+        <Button variant="primary" className="w-full" onClick={() => router.push('/student/list')}>
           Done
         </Button>
       </Card>

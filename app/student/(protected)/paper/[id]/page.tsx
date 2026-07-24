@@ -66,7 +66,7 @@ export default function PaperSubmissionPage() {
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
-      router.push('/assessment');
+      router.push('/student');
       return;
     }
     void (async () => {
@@ -164,7 +164,7 @@ export default function PaperSubmissionPage() {
     <div className="max-w-2xl mx-auto p-4 sm:p-6 space-y-4">
       <button
         type="button"
-        onClick={() => router.push('/assessment/list')}
+        onClick={() => router.push('/student/list')}
         className="inline-flex items-center gap-1.5 text-sm text-[#5A7D8A] hover:text-[#02465B]"
       >
         <ArrowLeft className="w-4 h-4" aria-hidden />

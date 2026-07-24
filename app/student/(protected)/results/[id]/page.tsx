@@ -80,7 +80,7 @@ export default function StudentResultPage() {
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated) {
-      router.push('/assessment');
+      router.push('/student');
       return;
     }
     void (async () => {
@@ -137,7 +137,7 @@ export default function StudentResultPage() {
       <div className="max-w-lg mx-auto p-6 text-center">
         <Card>
           <p className="text-[#C26565] mb-4">{error || 'Result not found.'}</p>
-          <Button variant="outline" onClick={() => router.push('/assessment/list')}>
+          <Button variant="outline" onClick={() => router.push('/student/list')}>
             Back to assessments
           </Button>
         </Card>
@@ -151,7 +151,7 @@ export default function StudentResultPage() {
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-4">
       <button
         type="button"
-        onClick={() => router.push('/assessment/list')}
+        onClick={() => router.push('/student/list')}
         className="inline-flex items-center gap-1.5 text-sm text-[#5A7D8A] hover:text-[#02465B]"
       >
         <ArrowLeft className="w-4 h-4" aria-hidden />

@@ -91,7 +91,7 @@ export function AssessmentTake() {
   useEffect(() => {
     if (authLoading) return;
     if (!isAuthenticated || user?.role !== 'student') {
-      router.push('/assessment');
+      router.push('/student');
     }
   }, [authLoading, isAuthenticated, user, router]);
 
@@ -176,7 +176,7 @@ export function AssessmentTake() {
         localStorage.removeItem(progressKey(studentId, assessmentId, part));
         sessionStorage.removeItem(`assessment_${assessmentId}_${part}`);
       }
-      router.push(`/assessment/confirmation?ref=${encodeURIComponent(assessmentId)}`);
+      router.push(`/student/confirmation?ref=${encodeURIComponent(assessmentId)}`);
     } catch (err) {
       submittedRef.current = false;
       setError(err instanceof Error ? err.message : 'Submission failed. Please try again.');
@@ -267,7 +267,7 @@ export function AssessmentTake() {
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-error mx-auto mb-4" />
           <p className="text-error">{error}</p>
-          <Button className="mt-4" variant="outline" onClick={() => router.push('/assessment')}>Go Back</Button>
+          <Button className="mt-4" variant="outline" onClick={() => router.push('/student')}>Go Back</Button>
         </div>
       </div>
     );
@@ -278,7 +278,7 @@ export function AssessmentTake() {
       <div className="min-h-screen flex items-center justify-center bg-bg px-4">
         <div className="text-center">
           <p className="text-text-muted">No questions found for this assessment.</p>
-          <Button className="mt-4" variant="outline" onClick={() => router.push('/assessment/list')}>Back to List</Button>
+          <Button className="mt-4" variant="outline" onClick={() => router.push('/student/list')}>Back to List</Button>
         </div>
       </div>
     );

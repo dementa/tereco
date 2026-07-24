@@ -37,7 +37,7 @@ export function AssessmentList() {
     // Offered, not imposed: a learner who chose "not now" is not sent back here
     // on every navigation for the rest of their session.
     if (mustChangePassword && !sessionStorage.getItem(SKIP_PASSWORD_CHANGE_KEY)) {
-      router.push('/assessment/change-password');
+      router.push('/student/change-password');
       return;
     }
 
@@ -61,7 +61,7 @@ export function AssessmentList() {
   // writing them here as well duplicated that logic and started the clock even
   // when the navigation never completed.
   const handleStart = (assessment: Assessment) => {
-    router.push(`/assessment/take/${assessment.systemId}`);
+    router.push(`/student/take/${assessment.systemId}`);
   };
 
   if (loading) {
@@ -76,7 +76,7 @@ export function AssessmentList() {
     return (
       <div className="p-8 text-center">
         <p className="text-[#5A7A85]">No assessments available for your school and class.</p>
-        <Button className="mt-4" variant="outline" onClick={() => router.push('/assessment')}>
+        <Button className="mt-4" variant="outline" onClick={() => router.push('/student/dashboard')}>
           Go Back
         </Button>
       </div>
@@ -112,7 +112,7 @@ export function AssessmentList() {
               {/* For learners without a computer, or sitting the paper in class. */}
               <Button
                 variant="outline"
-                onClick={() => router.push(`/assessment/paper/${a.systemId}`)}
+                onClick={() => router.push(`/student/paper/${a.systemId}`)}
               >
                 Do it on paper
               </Button>

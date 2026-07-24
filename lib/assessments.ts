@@ -978,7 +978,7 @@ export async function releaseResults(
       audience: { profileId: s.student_id },
       entityType: "assessments",
       entityId: assessment.system_id,
-      link: `/assessment/results/${assessment.system_id}`,
+      link: `/student/results/${assessment.system_id}`,
       createdBy: releasedBy,
     });
   }

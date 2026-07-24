@@ -30,17 +30,30 @@ export async function proxy(request: NextRequest) {
 
   const { data } = await supabase.auth.getUser(); // triggers a refresh if the access token has expired
 
+  const { pathname } = request.nextUrl;
+
+  // Old URLs must keep working: bookmarks, and notifications.link values
+  // already written to the DB (e.g. "/assessment/results/ASS0042" from a
+  // results_released notification issued before the student portal was
+  // renamed to /student). One rule here covers every case — server-rendered
+  // visits and client-side router.push navigations alike, since this runs on
+  // every request that reaches the server.
+  if (pathname === "/assessment" || pathname.startsWith("/assessment/")) {
+    const url = request.nextUrl.clone();
+    url.pathname = pathname.replace(/^\/assessment/, "/student");
+    return NextResponse.redirect(url);
+  }
+
   // Coarse, session-only check: bounce a fully unauthenticated request away
   // from a protected prefix before any client code runs, so there's no flash
   // of protected content while AuthContext rehydrates. Role correctness is
   // deliberately NOT decided here — that stays with PortalGate/`/auth`, kept
   // to exactly one place (lib/auth/portals.ts) rather than duplicated at the
   // edge.
-  const { pathname } = request.nextUrl;
   const needsSession =
     pathname === "/admin" || pathname.startsWith("/admin/") ||
     pathname === "/staff" || pathname.startsWith("/staff/") ||
-    pathname.startsWith("/assessment/");
+    pathname.startsWith("/student/");
   if (needsSession && !data.user) {
     return NextResponse.redirect(new URL("/auth", request.url));
   }

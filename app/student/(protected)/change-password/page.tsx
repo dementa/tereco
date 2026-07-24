@@ -11,7 +11,7 @@ export default function AssessmentChangePasswordPage() {
 
   const handleDone = async () => {
     await refresh(); // clears mustChangePassword in context
-    router.push('/assessment/list');
+    router.push('/student/list');
   };
 
   // Skippable on purpose. A learner arriving to sit a timed paper must be able
@@ -22,7 +22,7 @@ export default function AssessmentChangePasswordPage() {
   // redirect and every navigation within the sitting, not just one URL.
   const handleSkip = () => {
     sessionStorage.setItem(SKIP_PASSWORD_CHANGE_KEY, '1');
-    router.push('/assessment/list');
+    router.push('/student/list');
   };
 
   return <ChangePasswordScreen onDone={handleDone} onSkip={handleSkip} />;

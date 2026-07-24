@@ -6,7 +6,7 @@ import { useAuth } from '@/components/auth/AuthContext';
 import type { Role } from '@/lib/auth/session';
 
 /**
- * Single role gate for every portal (/admin, /staff, /assessment). Bounces
+ * Single role gate for every portal (/admin, /staff, /student). Bounces
  * anyone unauthenticated or wrong-role to /auth, which owns the one
  * role->destination map and re-routes them correctly from there — this
  * component never needs to know where a rejected visitor actually belongs.

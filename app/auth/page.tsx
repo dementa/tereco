@@ -20,12 +20,12 @@ function AuthPageContent() {
 
   // Someone already signed in never sees the form — they're bounced straight
   // to their portal (or to the forced password change first). Students get
-  // the skippable version at /assessment/change-password (a timed paper
+  // the skippable version at /student/change-password (a timed paper
   // shouldn't wait on this); everyone else gets the non-skippable one.
   useEffect(() => {
     if (loading || !isAuthenticated || !user) return;
     if (mustChangePassword) {
-      router.replace(user.role === 'student' ? '/assessment/change-password' : '/auth/change-password');
+      router.replace(user.role === 'student' ? '/student/change-password' : '/auth/change-password');
       return;
     }
     const destination = destinationFor(user);
@@ -63,7 +63,7 @@ function AuthPageContent() {
   const handleLogin = (loggedInUser: User & { mustChangePassword?: boolean }) => {
     if (loggedInUser.mustChangePassword) {
       router.replace(
-        loggedInUser.role === 'student' ? '/assessment/change-password' : '/auth/change-password'
+        loggedInUser.role === 'student' ? '/student/change-password' : '/auth/change-password'
       );
       return;
     }

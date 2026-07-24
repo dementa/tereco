@@ -66,6 +66,19 @@ function asSearchText(value: string | number | null | undefined): string {
   return value === null || value === undefined ? '' : String(value).toLowerCase();
 }
 
+const PAGE_SIZE_OPTIONS = [15, 30, 50];
+
+/**
+ * A default max-width constraint, so a long free-text cell ellipsizes instead
+ * of forcing the whole row taller — but only when the caller hasn't already
+ * asked for a specific width via their own `className`, so an intentionally
+ * wide column (e.g. a "Description" column passing `max-w-[420px]`) is left
+ * alone rather than double-constrained.
+ */
+function cellWidthClass(column: { className?: string }): string {
+  return column.className?.includes('max-w-') ? '' : 'max-w-[240px]';
+}
+
 /**
  * Table with search, sorting, filtering and pagination, responsive down to
  * phones — below `sm` it becomes a list of cards, because a horizontally
@@ -84,7 +97,7 @@ export function DataTable<T>({
   searchPlaceholder = 'Search…',
   emptyMessage = 'Nothing to show yet.',
   loading = false,
-  pageSize = 25,
+  pageSize: initialPageSize = 15,
   onRowClick,
   actions,
   mobileTitle,
@@ -93,6 +106,9 @@ export function DataTable<T>({
   const [sort, setSort] = useState(initialSort ?? null);
   const [active, setActive] = useState<Record<string, string>>({});
   const [page, setPage] = useState(0);
+  // Seeded from the `pageSize` prop, but from here on the user's own choice —
+  // the selector below (15/30/50) is what actually drives it.
+  const [pageSize, setPageSize] = useState(initialPageSize);
   const [filtersOpen, setFiltersOpen] = useState(false);
 
   // Keeps typing responsive on large lists: the input updates immediately while
@@ -308,16 +324,25 @@ export function DataTable<T>({
                     onRowClick ? 'cursor-pointer hover:bg-[#F8FBFC] transition-colors' : ''
                   }`}
                 >
-                  {columns.map((column) => (
-                    <td
-                      key={column.key}
-                      className={`px-4 py-3 text-[#12333F] ${
-                        column.align === 'right' ? 'text-right' : ''
-                      } ${column.hideOnMobile ? 'hidden lg:table-cell' : ''} ${column.className ?? ''}`}
-                    >
-                      {column.render ? column.render(row) : (defaultValue(row, column) ?? '—')}
-                    </td>
-                  ))}
+                  {columns.map((column) => {
+                    const rawValue = defaultValue(row, column);
+                    return (
+                      <td
+                        key={column.key}
+                        className={`px-4 py-3 text-[#12333F] ${
+                          column.align === 'right' ? 'text-right' : ''
+                        } ${column.hideOnMobile ? 'hidden lg:table-cell' : ''} ${column.className ?? ''}`}
+                      >
+                        {column.render ? (
+                          <div className={`truncate ${cellWidthClass(column)}`}>{column.render(row)}</div>
+                        ) : (
+                          <span className={`block truncate ${cellWidthClass(column)}`} title={asSearchText(rawValue) ? String(rawValue) : undefined}>
+                            {rawValue ?? '—'}
+                          </span>
+                        )}
+                      </td>
+                    );
+                  })}
                 </tr>
               ))
             )}
@@ -348,43 +373,71 @@ export function DataTable<T>({
                     : (defaultValue(row, columns[0]) ?? '—')}
               </p>
               <dl className="space-y-1.5">
-                {columns.slice(1).map((column) => (
-                  <div key={column.key} className="flex justify-between gap-3 text-sm">
-                    <dt className="text-[#5A7D8A] shrink-0">{column.header}</dt>
-                    <dd className="text-[#12333F] text-right min-w-0">
-                      {column.render ? column.render(row) : (defaultValue(row, column) ?? '—')}
-                    </dd>
-                  </div>
-                ))}
+                {columns.slice(1).map((column) => {
+                  const rawValue = defaultValue(row, column);
+                  return (
+                    <div key={column.key} className="flex justify-between gap-3 text-sm">
+                      <dt className="text-[#5A7D8A] shrink-0">{column.header}</dt>
+                      <dd
+                        className="text-[#12333F] text-right min-w-0 truncate"
+                        title={!column.render && asSearchText(rawValue) ? String(rawValue) : undefined}
+                      >
+                        {column.render ? column.render(row) : (rawValue ?? '—')}
+                      </dd>
+                    </div>
+                  );
+                })}
               </dl>
             </div>
           ))
         )}
       </div>
 
-      {pageCount > 1 && (
-        <div className="flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.max(0, p - 1))}
-            disabled={safePage === 0}
-            className="inline-flex items-center gap-1 rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2 text-sm text-[#02465B] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[#02465B]/40 transition-colors"
-          >
-            <ChevronLeft className="w-4 h-4" aria-hidden />
-            Previous
-          </button>
-          <span className="text-xs text-[#5A7D8A]">
-            Page {safePage + 1} of {pageCount}
-          </span>
-          <button
-            type="button"
-            onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
-            disabled={safePage >= pageCount - 1}
-            className="inline-flex items-center gap-1 rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2 text-sm text-[#02465B] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[#02465B]/40 transition-colors"
-          >
-            Next
-            <ChevronRight className="w-4 h-4" aria-hidden />
-          </button>
+      {processed.length > 0 && (
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <label className="flex items-center gap-2 text-xs text-[#5A7D8A]">
+            Rows per page
+            <select
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPage(0);
+              }}
+              className="rounded-lg border-2 border-[#D1E0E8] bg-white px-2 py-1 text-xs text-[#02465B] focus:border-[#02465B] focus:outline-none"
+            >
+              {PAGE_SIZE_OPTIONS.map((size) => (
+                <option key={size} value={size}>
+                  {size}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          {pageCount > 1 && (
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={safePage === 0}
+                className="inline-flex items-center gap-1 rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2 text-sm text-[#02465B] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[#02465B]/40 transition-colors"
+              >
+                <ChevronLeft className="w-4 h-4" aria-hidden />
+                Previous
+              </button>
+              <span className="text-xs text-[#5A7D8A] whitespace-nowrap">
+                Page {safePage + 1} of {pageCount}
+              </span>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
+                disabled={safePage >= pageCount - 1}
+                className="inline-flex items-center gap-1 rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2 text-sm text-[#02465B] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[#02465B]/40 transition-colors"
+              >
+                Next
+                <ChevronRight className="w-4 h-4" aria-hidden />
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
