@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/components/auth/AuthContext';
 import { ArrowLeft, Check, Download, Minus, Share2, X } from 'lucide-react';
+import { groupQuestions, formatQuestionLabel, type QuestionConfig } from '@/lib/questionGrouping';
 
 type Verdict = 'correct' | 'partial' | 'wrong' | 'unmarked';
 
@@ -23,6 +24,7 @@ interface MarkedAnswer {
   score: number | null;
   maxScore: number;
   verdict: Verdict;
+  config?: QuestionConfig;
 }
 
 interface MarkedScript {
@@ -203,64 +205,90 @@ export default function StudentResultPage() {
         </div>
       </Card>
 
-      {script.answers.map((a) => {
-        const v = VERDICT[a.verdict];
-        const given = formatAnswer(a.givenAnswer, a.questionType);
-        const objective = !!a.correctAnswer;
-        return (
-          <Card key={a.questionId}>
-            <div className="flex items-start justify-between gap-3">
-              <p className="font-medium text-primary-900 flex-1">
-                {a.position}. {a.questionText}
-              </p>
-              <span className="text-sm font-semibold text-primary-900 shrink-0">
-                {a.score ?? '—'}/{a.maxScore}
-              </span>
-            </div>
+      {groupQuestions(script.answers).map((group, gi) => (
+        <div key={gi} className="space-y-4">
+          {group.sectionChanged && group.section && (
+            <p className="text-xs font-bold uppercase tracking-wider text-[#02465B] pt-2">
+              Section {group.section}
+            </p>
+          )}
+          {group.groupHeading && (
+            <Card className="space-y-2">
+              {group.groupImageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={group.groupImageUrl}
+                  alt=""
+                  className="max-h-40 rounded-lg object-contain bg-[#F1F6F8]"
+                />
+              )}
+              <p className="text-sm italic text-[#5A7D8A]">{group.groupHeading}</p>
+            </Card>
+          )}
+          {group.members.map((a) => {
+            const v = VERDICT[a.verdict];
+            const given = formatAnswer(a.givenAnswer, a.questionType);
+            const objective = !!a.correctAnswer;
+            // The group's shared image is already shown above once — showing
+            // it again per-member (it lives only on the anchor's row) would
+            // duplicate it under every question in the group.
+            const showOwnImage = a.imageUrl && a.imageUrl !== group.groupImageUrl;
+            return (
+              <Card key={a.questionId}>
+                <div className="flex items-start justify-between gap-3">
+                  <p className="font-medium text-primary-900 flex-1">
+                    {formatQuestionLabel(a.code)} {a.questionText}
+                  </p>
+                  <span className="text-sm font-semibold text-primary-900 shrink-0">
+                    {a.score ?? '—'}/{a.maxScore}
+                  </span>
+                </div>
 
-            {a.imageUrl && (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={a.imageUrl}
-                alt=""
-                className="mt-2 max-h-40 rounded-lg object-contain bg-[#F1F6F8]"
-              />
-            )}
+                {showOwnImage && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={a.imageUrl}
+                    alt=""
+                    className="mt-2 max-h-40 rounded-lg object-contain bg-[#F1F6F8]"
+                  />
+                )}
 
-            <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-3">YOUR ANSWER</p>
-            {given ? (
-              <p className="text-sm text-[#12333F] whitespace-pre-wrap">{given}</p>
-            ) : (
-              <p className="text-sm text-[#9BB3BD] italic">No answer given</p>
-            )}
+                <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-3">YOUR ANSWER</p>
+                {given ? (
+                  <p className="text-sm text-[#12333F] whitespace-pre-wrap">{given}</p>
+                ) : (
+                  <p className="text-sm text-[#9BB3BD] italic">No answer given</p>
+                )}
 
-            {/* Only shown once the question is marked — an expected answer beside
-                an unscored one invites arguing with a mark nobody has given. */}
-            {a.verdict !== 'unmarked' && objective && a.verdict !== 'correct' && (
-              <>
-                <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-3">CORRECT ANSWER</p>
-                <p className="text-sm text-[#1F7A54]">
-                  {formatAnswer(a.correctAnswer!, a.questionType)}
-                </p>
-              </>
-            )}
+                {/* Only shown once the question is marked — an expected answer beside
+                    an unscored one invites arguing with a mark nobody has given. */}
+                {a.verdict !== 'unmarked' && objective && a.verdict !== 'correct' && (
+                  <>
+                    <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-3">CORRECT ANSWER</p>
+                    <p className="text-sm text-[#1F7A54]">
+                      {formatAnswer(a.correctAnswer!, a.questionType)}
+                    </p>
+                  </>
+                )}
 
-            {a.verdict !== 'unmarked' && !objective && a.modelAnswer && (
-              <>
-                <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-3">WHAT WAS EXPECTED</p>
-                <p className="text-sm text-[#5A7D8A]">{a.modelAnswer}</p>
-              </>
-            )}
+                {a.verdict !== 'unmarked' && !objective && a.modelAnswer && (
+                  <>
+                    <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-3">WHAT WAS EXPECTED</p>
+                    <p className="text-sm text-[#5A7D8A]">{a.modelAnswer}</p>
+                  </>
+                )}
 
-            <span
-              className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium mt-3 ${v.className}`}
-            >
-              <v.Icon className="w-3.5 h-3.5" aria-hidden />
-              {v.label}
-            </span>
-          </Card>
-        );
-      })}
+                <span
+                  className={`inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium mt-3 ${v.className}`}
+                >
+                  <v.Icon className="w-3.5 h-3.5" aria-hidden />
+                  {v.label}
+                </span>
+              </Card>
+            );
+          })}
+        </div>
+      ))}
 
       <p className="text-xs text-text-muted text-center pb-4">
         Keep the PDF as your record of this paper.

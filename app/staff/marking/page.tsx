@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { ArrowLeft, Check, CheckSquare, Download, FileText, Minus, Plus, X } from 'lucide-react';
+import { groupQuestions, formatQuestionLabel, type QuestionConfig } from '@/lib/questionGrouping';
 
 interface AssessmentOption {
   id: string;
@@ -46,6 +47,7 @@ interface MarkedAnswer {
   score: number | null;
   maxScore: number;
   verdict: Verdict;
+  config?: QuestionConfig;
 }
 
 interface Scan {
@@ -432,133 +434,159 @@ export default function MarkingPage() {
           )}
 
           <div className="space-y-3">
-            {openScript.answers.map((a) => {
-              const given = formatAnswer(a.givenAnswer, a.questionType);
-              return (
-                <div key={a.questionId} className="rounded-xl border border-[#E8EFF3] p-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <p className="text-sm font-medium text-[#12333F] flex-1">
-                      {a.position}. {a.questionText}
-                    </p>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <span className="text-[10px] text-[#9BB3BD] mr-0.5">
-                        {a.maxScore} pt{a.maxScore === 1 ? '' : 's'}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => void saveScore(a, String(a.maxScore))}
-                        disabled={savingQuestionId === a.questionId}
-                        aria-pressed={a.score === a.maxScore}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border-2 transition-colors disabled:opacity-50 ${
-                          a.score === a.maxScore
-                            ? 'bg-[#1F7A54] border-[#1F7A54] text-white'
-                            : 'border-[#D1E0E8] text-[#5A7D8A] hover:border-[#1F7A54] hover:text-[#1F7A54]'
-                        }`}
-                      >
-                        <Check className="w-3.5 h-3.5" aria-hidden />
-                        Correct
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const half = Math.round((a.maxScore / 2) * 2) / 2;
-                          void saveScore(a, String(half));
-                        }}
-                        disabled={savingQuestionId === a.questionId}
-                        aria-pressed={a.score !== null && a.score > 0 && a.score < a.maxScore}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border-2 transition-colors disabled:opacity-50 ${
-                          a.score !== null && a.score > 0 && a.score < a.maxScore
-                            ? 'bg-[#8A6A16] border-[#8A6A16] text-white'
-                            : 'border-[#D1E0E8] text-[#5A7D8A] hover:border-[#8A6A16] hover:text-[#8A6A16]'
-                        }`}
-                      >
-                        <Minus className="w-3.5 h-3.5" aria-hidden />
-                        Partial
-                      </button>
-                      {a.score !== null && a.score > 0 && a.score < a.maxScore && (
-                        <div className="flex items-center gap-1 rounded-lg border-2 border-[#D1E0E8] px-1">
-                          <button
-                            type="button"
-                            onClick={() => adjustScore(a, -0.5)}
-                            disabled={savingQuestionId === a.questionId}
-                            aria-label={`Decrease score for ${a.code}`}
-                            className="text-[#5A7D8A] hover:text-[#02465B] disabled:opacity-50"
-                          >
-                            <Minus className="w-3.5 h-3.5" aria-hidden />
-                          </button>
-                          <span className="text-xs font-medium text-[#12333F] w-6 text-center tabular-nums">
-                            {a.score}
+            {groupQuestions(openScript.answers).map((group, gi) => (
+              <div key={gi} className="space-y-3">
+                {group.sectionChanged && group.section && (
+                  <p className="text-xs font-bold uppercase tracking-wider text-[#02465B] pt-2">
+                    Section {group.section}
+                  </p>
+                )}
+                {group.groupHeading && (
+                  <div className="space-y-1">
+                    {group.groupImageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={group.groupImageUrl}
+                        alt=""
+                        className="max-h-28 rounded object-contain bg-[#F1F6F8]"
+                      />
+                    )}
+                    <p className="text-xs italic text-[#5A7D8A]">{group.groupHeading}</p>
+                  </div>
+                )}
+                {group.members.map((a) => {
+                  const given = formatAnswer(a.givenAnswer, a.questionType);
+                  // The group's shared image is already shown above once — showing
+                  // it again per-member (it lives only on the anchor's row) would
+                  // duplicate it under every question in the group.
+                  const showOwnImage = a.imageUrl && a.imageUrl !== group.groupImageUrl;
+                  return (
+                    <div key={a.questionId} className="rounded-xl border border-[#E8EFF3] p-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <p className="text-sm font-medium text-[#12333F] flex-1">
+                          {formatQuestionLabel(a.code)} {a.questionText}
+                        </p>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] text-[#9BB3BD] mr-0.5">
+                            {a.maxScore} pt{a.maxScore === 1 ? '' : 's'}
                           </span>
                           <button
                             type="button"
-                            onClick={() => adjustScore(a, 0.5)}
+                            onClick={() => void saveScore(a, String(a.maxScore))}
                             disabled={savingQuestionId === a.questionId}
-                            aria-label={`Increase score for ${a.code}`}
-                            className="text-[#5A7D8A] hover:text-[#02465B] disabled:opacity-50"
+                            aria-pressed={a.score === a.maxScore}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border-2 transition-colors disabled:opacity-50 ${
+                              a.score === a.maxScore
+                                ? 'bg-[#1F7A54] border-[#1F7A54] text-white'
+                                : 'border-[#D1E0E8] text-[#5A7D8A] hover:border-[#1F7A54] hover:text-[#1F7A54]'
+                            }`}
                           >
-                            <Plus className="w-3.5 h-3.5" aria-hidden />
+                            <Check className="w-3.5 h-3.5" aria-hidden />
+                            Correct
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const half = Math.round((a.maxScore / 2) * 2) / 2;
+                              void saveScore(a, String(half));
+                            }}
+                            disabled={savingQuestionId === a.questionId}
+                            aria-pressed={a.score !== null && a.score > 0 && a.score < a.maxScore}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border-2 transition-colors disabled:opacity-50 ${
+                              a.score !== null && a.score > 0 && a.score < a.maxScore
+                                ? 'bg-[#8A6A16] border-[#8A6A16] text-white'
+                                : 'border-[#D1E0E8] text-[#5A7D8A] hover:border-[#8A6A16] hover:text-[#8A6A16]'
+                            }`}
+                          >
+                            <Minus className="w-3.5 h-3.5" aria-hidden />
+                            Partial
+                          </button>
+                          {a.score !== null && a.score > 0 && a.score < a.maxScore && (
+                            <div className="flex items-center gap-1 rounded-lg border-2 border-[#D1E0E8] px-1">
+                              <button
+                                type="button"
+                                onClick={() => adjustScore(a, -0.5)}
+                                disabled={savingQuestionId === a.questionId}
+                                aria-label={`Decrease score for ${a.code}`}
+                                className="text-[#5A7D8A] hover:text-[#02465B] disabled:opacity-50"
+                              >
+                                <Minus className="w-3.5 h-3.5" aria-hidden />
+                              </button>
+                              <span className="text-xs font-medium text-[#12333F] w-6 text-center tabular-nums">
+                                {a.score}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => adjustScore(a, 0.5)}
+                                disabled={savingQuestionId === a.questionId}
+                                aria-label={`Increase score for ${a.code}`}
+                                className="text-[#5A7D8A] hover:text-[#02465B] disabled:opacity-50"
+                              >
+                                <Plus className="w-3.5 h-3.5" aria-hidden />
+                              </button>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => void saveScore(a, '0')}
+                            disabled={savingQuestionId === a.questionId}
+                            aria-pressed={a.score === 0}
+                            className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border-2 transition-colors disabled:opacity-50 ${
+                              a.score === 0
+                                ? 'bg-[#A34C4C] border-[#A34C4C] text-white'
+                                : 'border-[#D1E0E8] text-[#5A7D8A] hover:border-[#A34C4C] hover:text-[#A34C4C]'
+                            }`}
+                          >
+                            <X className="w-3.5 h-3.5" aria-hidden />
+                            Wrong
                           </button>
                         </div>
+                      </div>
+
+                      {showOwnImage && (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img
+                          src={a.imageUrl}
+                          alt=""
+                          className="mt-2 max-h-28 rounded object-contain bg-[#F1F6F8]"
+                        />
                       )}
-                      <button
-                        type="button"
-                        onClick={() => void saveScore(a, '0')}
-                        disabled={savingQuestionId === a.questionId}
-                        aria-pressed={a.score === 0}
-                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border-2 transition-colors disabled:opacity-50 ${
-                          a.score === 0
-                            ? 'bg-[#A34C4C] border-[#A34C4C] text-white'
-                            : 'border-[#D1E0E8] text-[#5A7D8A] hover:border-[#A34C4C] hover:text-[#A34C4C]'
-                        }`}
-                      >
-                        <X className="w-3.5 h-3.5" aria-hidden />
-                        Wrong
-                      </button>
+
+                      <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-2">ANSWER GIVEN</p>
+                      {given ? (
+                        <p className="text-sm text-[#12333F] whitespace-pre-wrap">{given}</p>
+                      ) : (
+                        <p className="text-sm text-[#9BB3BD] italic">No answer given</p>
+                      )}
+
+                      {a.correctAnswer && (
+                        <>
+                          <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-2">CORRECT</p>
+                          <p className="text-sm text-[#1F7A54]">
+                            {formatAnswer(a.correctAnswer, a.questionType)}
+                          </p>
+                        </>
+                      )}
+
+                      {/* The author's guidance sits beside the box the marker types
+                          into, which is the only place it is any use. */}
+                      {a.modelAnswer && (
+                        <>
+                          <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-2">
+                            MARKING GUIDANCE
+                          </p>
+                          <p className="text-sm text-[#5A7D8A]">{a.modelAnswer}</p>
+                        </>
+                      )}
+
+                      <p className={`text-xs font-medium mt-2 ${VERDICT_CLASS[a.verdict]}`}>
+                        {a.verdict === 'unmarked' ? 'Not yet marked' : a.verdict}
+                      </p>
                     </div>
-                  </div>
-
-                  {a.imageUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={a.imageUrl}
-                      alt=""
-                      className="mt-2 max-h-28 rounded object-contain bg-[#F1F6F8]"
-                    />
-                  )}
-
-                  <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-2">ANSWER GIVEN</p>
-                  {given ? (
-                    <p className="text-sm text-[#12333F] whitespace-pre-wrap">{given}</p>
-                  ) : (
-                    <p className="text-sm text-[#9BB3BD] italic">No answer given</p>
-                  )}
-
-                  {a.correctAnswer && (
-                    <>
-                      <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-2">CORRECT</p>
-                      <p className="text-sm text-[#1F7A54]">
-                        {formatAnswer(a.correctAnswer, a.questionType)}
-                      </p>
-                    </>
-                  )}
-
-                  {/* The author's guidance sits beside the box the marker types
-                      into, which is the only place it is any use. */}
-                  {a.modelAnswer && (
-                    <>
-                      <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-2">
-                        MARKING GUIDANCE
-                      </p>
-                      <p className="text-sm text-[#5A7D8A]">{a.modelAnswer}</p>
-                    </>
-                  )}
-
-                  <p className={`text-xs font-medium mt-2 ${VERDICT_CLASS[a.verdict]}`}>
-                    {a.verdict === 'unmarked' ? 'Not yet marked' : a.verdict}
-                  </p>
-                </div>
-              );
-            })}
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </Card>
       ) : (

@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { AlertCircle, Clock, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthContext';
+import { groupQuestions, type QuestionConfig } from '@/lib/questionGrouping';
 
 // 'true_false' MUST be here. It was added to the schema after this component
 // was written, and because this union is local rather than shared with
@@ -29,6 +30,11 @@ interface Question {
    *  question for these — "name the shape below" is unanswerable without it. */
   imageUrl?: string;
   maxScore?: number;
+  /** Section/grouping metadata — see lib/questionGrouping.ts. A group's
+   *  shared image lives only on its anchor member's imageUrl, never
+   *  duplicated onto its siblings, so it must be looked up via the group
+   *  rather than the current question alone. */
+  config?: QuestionConfig;
 }
 
 const CHECKBOX_SEP = ' | ';
@@ -253,6 +259,13 @@ export function AssessmentTake() {
     if (index >= 0 && index < questions.length) setCurrentIndex(index);
   };
 
+  // A group's shared heading/image is looked up here rather than read off the
+  // current question directly, because only the group's anchor member's row
+  // actually carries imageUrl/groupImageTitle — every other member's config
+  // just points at the same groupId.
+  const groups = useMemo(() => groupQuestions(questions), [questions]);
+  const currentGroup = groups.find((g) => g.members.some((m) => m.id === questions[currentIndex]?.id));
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg px-4">
@@ -323,20 +336,29 @@ export function AssessmentTake() {
 
       <Card className="max-w-4xl mx-auto p-6">
         <div className="mb-4">
+          {q.config?.section && (
+            <p className="text-[10px] font-semibold text-[#5A7D8A] uppercase tracking-wider mb-1">
+              Section {q.config.section}
+            </p>
+          )}
           <p className="text-xs font-medium text-primary-700 uppercase tracking-wider">
-            Question {currentIndex + 1}
+            Question {q.code}
             {q.maxScore ? ` • ${q.maxScore} mark${q.maxScore === 1 ? '' : 's'}` : ''}
           </p>
-          <p className="text-lg font-medium text-primary-900 mt-1">{q.questionText}</p>
 
-          {q.imageUrl && (
+          {currentGroup?.groupImageUrl && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
-              src={q.imageUrl}
+              src={currentGroup.groupImageUrl}
               alt=""
               className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
             />
           )}
+          {currentGroup?.groupHeading && (
+            <p className="text-sm italic text-[#5A7D8A] mt-2">{currentGroup.groupHeading}</p>
+          )}
+
+          <p className="text-lg font-medium text-primary-900 mt-2">{q.questionText}</p>
         </div>
 
         <div className="mt-4">
@@ -423,7 +445,7 @@ export function AssessmentTake() {
             <button
               key={qq.id}
               onClick={() => goToQuestion(idx)}
-              className={`w-9 h-9 rounded-lg text-sm font-medium transition-all ${
+              className={`min-w-9 h-9 px-1.5 rounded-lg text-sm font-medium transition-all ${
                 active
                   ? 'bg-primary-700 text-white'
                   : answered
@@ -431,7 +453,7 @@ export function AssessmentTake() {
                     : 'bg-white text-text-muted border border-primary-700/10'
               }`}
             >
-              {idx + 1}
+              {qq.code}
             </button>
           );
         })}
