@@ -367,6 +367,81 @@ export type Database = {
           },
         ]
       }
+      attendance_sessions: {
+        Row: {
+          class_id: string
+          created_at: string
+          id: string
+          lesson_report_id: string | null
+          period: number
+          school_id: string
+          session_date: string
+          staff_id: string
+          stream_id: string | null
+          taken_at: string
+        }
+        Insert: {
+          class_id: string
+          created_at?: string
+          id?: string
+          lesson_report_id?: string | null
+          period: number
+          school_id: string
+          session_date: string
+          staff_id: string
+          stream_id?: string | null
+          taken_at?: string
+        }
+        Update: {
+          class_id?: string
+          created_at?: string
+          id?: string
+          lesson_report_id?: string | null
+          period?: number
+          school_id?: string
+          session_date?: string
+          staff_id?: string
+          stream_id?: string | null
+          taken_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_sessions_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_lesson_report_id_fkey"
+            columns: ["lesson_report_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_reports"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_stream_id_fkey"
+            columns: ["stream_id"]
+            isOneToOne: false
+            referencedRelation: "streams"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -610,30 +685,40 @@ export type Database = {
       }
       lesson_attendance: {
         Row: {
+          attendance_session_id: string | null
           created_at: string
           enrollment_id: string
           id: string
           is_present: boolean
-          lesson_report_id: string
+          lesson_report_id: string | null
           student_id: string
         }
         Insert: {
+          attendance_session_id?: string | null
           created_at?: string
           enrollment_id: string
           id?: string
           is_present?: boolean
-          lesson_report_id: string
+          lesson_report_id?: string | null
           student_id: string
         }
         Update: {
+          attendance_session_id?: string | null
           created_at?: string
           enrollment_id?: string
           id?: string
           is_present?: boolean
-          lesson_report_id?: string
+          lesson_report_id?: string | null
           student_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "lesson_attendance_attendance_session_id_fkey"
+            columns: ["attendance_session_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_sessions"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "lesson_attendance_enrollment_id_fkey"
             columns: ["enrollment_id"]

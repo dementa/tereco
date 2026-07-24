@@ -13,6 +13,8 @@ export type TabItem = {
   short?: string;
   icon: LucideIcon;
   exact?: boolean;
+  /** Extra path prefixes that also count as "on this tab" — defaults to just `href`. */
+  activePrefixes?: string[];
 };
 
 type MobileTabBarProps = {
@@ -44,7 +46,9 @@ export function MobileTabBar({ tabs, moreItems = [], onSignOut }: MobileTabBarPr
   }, [pathname]);
 
   const isActive = (item: TabItem) =>
-    item.exact ? pathname === item.href : pathname.startsWith(item.href);
+    item.exact
+      ? pathname === item.href
+      : (item.activePrefixes ?? [item.href]).some((prefix) => pathname.startsWith(prefix));
   const moreActive = moreItems.some(isActive);
 
   return (

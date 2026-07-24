@@ -14,7 +14,13 @@ const STAFF_ROLES: Role[] = ['staff'];
 
 const NAV = [
   { href: '/staff', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-  { href: '/staff/lessons', label: 'My Lesson Reports', short: 'Lessons', icon: FileText },
+  {
+    href: '/staff/forms',
+    label: 'Data Forms',
+    short: 'Forms',
+    icon: FileText,
+    activePrefixes: ['/staff/forms', '/staff/lessons', '/staff/attendance'],
+  },
   { href: '/staff/assessments', label: 'My Assessments', short: 'Assess', icon: ClipboardList },
   { href: '/staff/marking', label: 'Marking', icon: CheckSquare },
 ];
@@ -39,7 +45,9 @@ function StaffShell({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto">
           {NAV.map((item) => {
             const Icon = item.icon;
-            const active = item.exact ? pathname === item.href : pathname.startsWith(item.href);
+            const active = item.exact
+              ? pathname === item.href
+              : (item.activePrefixes ?? [item.href]).some((prefix) => pathname.startsWith(prefix));
             return (
               <Link
                 key={item.href}

@@ -3,6 +3,11 @@
 /**
  * DailyLessonWizard — TERECO Field Data Collection
  * ─────────────────────────────────────────────────
+ * Filed AFTER the lesson. Attendance is no longer marked live here — it was
+ * taken earlier through its own form (components/staff/AttendanceForm.tsx)
+ * and this wizard just attaches that record (AttendanceAttachPanel.tsx),
+ * auto-matched by class/stream/date/period.
+ *
  * Palette (locked, dark-mode immune via darkMode: 'class' + explicit values):
  *   Teal   #02465B  primary / nav / focus rings
  *   Amber  #F5CA93  Submit button ONLY (final irreversible action)
@@ -18,14 +23,17 @@
  * Everything else is restrained.
  */
 
-import React, { useState, useId, useRef, useEffect } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, ArrowRight, Save, Check, CheckCircle2,
-  ChevronDown, Eye, EyeOff, AlertCircle, Clock, Users,
-  Monitor, TrendingUp, FileText, Pencil, UserPlus, X,
+  AlertCircle, Users, Monitor, TrendingUp, FileText, Pencil,
 } from 'lucide-react'
 import { useAuth } from '@/components/auth/AuthContext'
+import {
+  cn, FloatingInput, FloatingSelect, FloatingTextarea, RadioCard, ProgressPill, ReviewRow, SuccessScreen,
+} from './wizardPrimitives'
+import { AttendanceAttachPanel, type AvailableAttendanceSession } from './AttendanceAttachPanel'
 
 /* ─────────────────────────────────────────────────
    Types
@@ -55,13 +63,6 @@ interface FormData {
 }
 
 interface FieldError { [key: string]: string }
-
-interface RosterEntry {
-  enrollmentId: string
-  studentId: string
-  systemId: string | null
-  name: string
-}
 
 interface DirectoryStream { id: string; name: string }
 /**
@@ -127,7 +128,12 @@ const INITIAL: FormData = {
 /* ─────────────────────────────────────────────────
    Validation
 ───────────────────────────────────────────────── */
-function validateStep(step: number, data: FormData, selectedClassHasStreams: boolean): FieldError {
+function validateStep(
+  step: number,
+  data: FormData,
+  selectedClassHasStreams: boolean,
+  selectedSession: AvailableAttendanceSession | null
+): FieldError {
   const err: FieldError = {}
   if (step === 0) {
     if (!data.school)    err.school = 'Select a school'
@@ -146,6 +152,8 @@ function validateStep(step: number, data: FormData, selectedClassHasStreams: boo
     if (!data.approach)       err.approach = 'Select an approach'
   }
   if (step === 2) {
+    if (data.status !== 'Missed' && !selectedSession)
+      err.attendance = 'Attach an attendance record for this class before continuing'
     if (!data.computerAccess) err.computerAccess = 'Select computer access'
   }
   if (step === 3) {
@@ -156,378 +164,6 @@ function validateStep(step: number, data: FormData, selectedClassHasStreams: boo
       err.challengeDetails = 'Describe the challenges'
   }
   return err
-}
-
-/* ─────────────────────────────────────────────────
-   Primitive: cn
-───────────────────────────────────────────────── */
-function cn(...c: (string | false | undefined | null)[]) { return c.filter(Boolean).join(' ') }
-
-/* ─────────────────────────────────────────────────
-   Primitive: FloatingInput
-───────────────────────────────────────────────── */
-function FloatingInput({
-  label, type = 'text', value, onChange, error, hint, required,
-  ...rest
-}: Omit<React.InputHTMLAttributes<HTMLInputElement>, 'value' | 'onChange' | 'type'> & {
-  label: string; type?: string; value: string; onChange: (v: string) => void
-  error?: string; hint?: string; required?: boolean
-}) {
-  const id = useId()
-  const [focused, setFocused] = useState(false)
-  const lifted = focused || value.length > 0
-
-  return (
-    <div className="relative">
-      <input
-        id={id}
-        type={type}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        aria-invalid={!!error}
-        aria-describedby={error ? `${id}-err` : hint ? `${id}-hint` : undefined}
-        required={required}
-        className={cn(
-          'peer w-full h-14 px-4 pt-5 pb-2 rounded-xl border bg-white text-sm text-[#011E28]',
-          'outline-none transition-all duration-200 placeholder-transparent',
-          error
-            ? 'border-[#C0392B] ring-1 ring-[#C0392B]/20'
-            : 'border-[#02465B]/15 hover:border-[#02465B]/30 focus:border-[#02465B] focus:ring-2 focus:ring-[#02465B]/10'
-        )}
-        placeholder={label}
-        {...rest}
-      />
-      <label
-        htmlFor={id}
-        className={cn(
-          'absolute left-4 pointer-events-none transition-all duration-200 font-medium select-none',
-          lifted ? 'top-2 text-[10px] tracking-wide uppercase' : 'top-[17px] text-sm',
-          error ? 'text-[#C0392B]' : focused ? 'text-[#02465B]' : 'text-[#9BBAC5]'
-        )}
-      >
-        {label}{required && ' *'}
-      </label>
-      {error && (
-        <p id={`${id}-err`} role="alert" className="mt-1.5 flex items-center gap-1.5 text-xs text-[#C0392B]">
-          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" aria-hidden /> {error}
-        </p>
-      )}
-      {!error && hint && <p id={`${id}-hint`} className="mt-1.5 text-xs text-[#9BBAC5]">{hint}</p>}
-    </div>
-  )
-}
-
-/* ─────────────────────────────────────────────────
-   Primitive: FloatingSelect
-───────────────────────────────────────────────── */
-function FloatingSelect({
-  label, options, value, onChange, error, hint, required,
-}: {
-  label: string
-  options: string[]
-  value: string
-  onChange: (v: string) => void
-  error?: string
-  hint?: string
-  required?: boolean
-}) {
-  const id = useId()
-  const [focused, setFocused] = useState(false)
-  const lifted = focused || value.length > 0
-
-  return (
-    <div className="relative">
-      <select
-        id={id}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        aria-invalid={!!error}
-        required={required}
-        className={cn(
-          'peer w-full h-14 px-4 pt-5 pb-2 rounded-xl border bg-white text-sm text-[#011E28]',
-          'outline-none appearance-none transition-all duration-200 cursor-pointer',
-          // Deliberately NOT `text-transparent` when empty: native <option>
-          // elements inherit their colour from the <select>, so hiding the
-          // placeholder that way also hid every item in the open dropdown
-          // until something was selected. The placeholder option below has no
-          // text content, so it already renders blank on its own.
-          error
-            ? 'border-[#C0392B] ring-1 ring-[#C0392B]/20'
-            : 'border-[#02465B]/15 hover:border-[#02465B]/30 focus:border-[#02465B] focus:ring-2 focus:ring-[#02465B]/10'
-        )}
-      >
-        <option value="" disabled />
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-      <label
-        htmlFor={id}
-        className={cn(
-          'absolute left-4 pointer-events-none transition-all duration-200 font-medium select-none',
-          lifted ? 'top-2 text-[10px] tracking-wide uppercase' : 'top-[17px] text-sm',
-          error ? 'text-[#C0392B]' : focused ? 'text-[#02465B]' : 'text-[#9BBAC5]'
-        )}
-      >
-        {label}{required && ' *'}
-      </label>
-      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9BBAC5] pointer-events-none" aria-hidden />
-      {error && (
-        <p role="alert" className="mt-1.5 flex items-center gap-1.5 text-xs text-[#C0392B]">
-          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" aria-hidden /> {error}
-        </p>
-      )}
-      {!error && hint && <p className="mt-1.5 text-xs text-[#9BBAC5]">{hint}</p>}
-    </div>
-  )
-}
-
-/* ─────────────────────────────────────────────────
-   Primitive: FloatingTextarea
-───────────────────────────────────────────────── */
-function FloatingTextarea({
-  label, value, onChange, error, required, rows = 3,
-}: {
-  label: string; value: string; onChange: (v: string) => void
-  error?: string; required?: boolean; rows?: number
-}) {
-  const id = useId()
-  const [focused, setFocused] = useState(false)
-  const lifted = focused || value.length > 0
-
-  return (
-    <div className="relative">
-      <textarea
-        id={id}
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        rows={rows}
-        aria-invalid={!!error}
-        required={required}
-        className={cn(
-          'peer w-full px-4 pt-7 pb-3 rounded-xl border bg-white text-sm text-[#011E28]',
-          'outline-none resize-none transition-all duration-200',
-          error
-            ? 'border-[#C0392B] ring-1 ring-[#C0392B]/20'
-            : 'border-[#02465B]/15 hover:border-[#02465B]/30 focus:border-[#02465B] focus:ring-2 focus:ring-[#02465B]/10'
-        )}
-        placeholder=" "
-      />
-      <label
-        htmlFor={id}
-        className={cn(
-          'absolute left-4 pointer-events-none transition-all duration-200 font-medium select-none',
-          lifted ? 'top-2.5 text-[10px] tracking-wide uppercase' : 'top-4 text-sm',
-          error ? 'text-[#C0392B]' : focused ? 'text-[#02465B]' : 'text-[#9BBAC5]'
-        )}
-      >
-        {label}{required && ' *'}
-      </label>
-      {error && (
-        <p role="alert" className="mt-1.5 flex items-center gap-1.5 text-xs text-[#C0392B]">
-          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" aria-hidden /> {error}
-        </p>
-      )}
-    </div>
-  )
-}
-
-/* ─────────────────────────────────────────────────
-   Primitive: RadioCard
-───────────────────────────────────────────────── */
-function RadioCard({
-  value, label, description, selected, onChange,
-}: { value: string; label: string; description?: string; selected: boolean; onChange: (v: string) => void }) {
-  return (
-    <button
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      onClick={() => onChange(value)}
-      className={cn(
-        'w-full text-left p-4 rounded-xl border-2 transition-all duration-150 cursor-pointer',
-        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B] focus-visible:ring-offset-1',
-        selected
-          ? 'border-[#02465B] bg-[#EBF8FC]'
-          : 'border-[#02465B]/10 bg-white hover:border-[#02465B]/25 hover:bg-[#F5FDFF]'
-      )}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className={cn('text-sm font-semibold', selected ? 'text-[#02465B]' : 'text-[#011E28]')}>{label}</p>
-          {description && <p className="text-xs text-[#5A7A85] mt-0.5 leading-relaxed">{description}</p>}
-        </div>
-        <div className={cn(
-          'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-150',
-          selected ? 'border-[#02465B] bg-[#02465B]' : 'border-[#9BBAC5]'
-        )}>
-          {selected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
-        </div>
-      </div>
-    </button>
-  )
-}
-
-/* ─────────────────────────────────────────────────
-   Primitive: AttendanceRow — one learner, tap to mark absent
-───────────────────────────────────────────────── */
-function AttendanceRow({
-  name, systemId, present, onToggle,
-}: { name: string; systemId: string | null; present: boolean; onToggle: () => void }) {
-  return (
-    <div className="flex items-center justify-between gap-3 py-2.5 px-1 border-b border-[#02465B]/06 last:border-0">
-      <div className="min-w-0">
-        <p className="text-sm font-medium text-[#011E28] truncate">{name}</p>
-        {systemId && <p className="text-xs text-[#9BBAC5]">{systemId}</p>}
-      </div>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-pressed={!present}
-        className={cn(
-          'shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-150 cursor-pointer',
-          present
-            ? 'bg-[#EBF8FC] text-[#0489AE] hover:bg-[#D6F0F7]'
-            : 'bg-[#C0392B]/10 text-[#C0392B] hover:bg-[#C0392B]/15'
-        )}
-      >
-        {present ? 'Present' : 'Absent'}
-      </button>
-    </div>
-  )
-}
-
-/* ─────────────────────────────────────────────────
-   Signature element: Segmented progress pill
-───────────────────────────────────────────────── */
-function ProgressPill({ current, total }: { current: number; total: number }) {
-  return (
-    <div className="flex items-center gap-1.5" role="progressbar" aria-valuenow={current + 1} aria-valuemin={1} aria-valuemax={total}>
-      {Array.from({ length: total }, (_, i) => (
-        <div
-          key={i}
-          className={cn(
-            'h-1.5 rounded-full transition-all duration-400',
-            i === current
-              ? 'flex-1 bg-[#02465B]'          // active — wide
-              : i < current
-              ? 'w-5 bg-[#0489AE]'              // done — medium teal
-              : 'w-5 bg-[#02465B]/12'           // future — faint
-          )}
-          style={{ transition: 'all 350ms cubic-bezier(0.22, 1, 0.36, 1)' }}
-        />
-      ))}
-    </div>
-  )
-}
-
-/* ─────────────────────────────────────────────────
-   Review field row
-───────────────────────────────────────────────── */
-function ReviewRow({
-  label, value, onEdit,
-}: { label: string; value: string; onEdit?: () => void }) {
-  if (!value || value.trim() === '') return null
-  return (
-    <div className="flex items-start justify-between gap-6 py-3 border-b border-[#02465B]/06 last:border-0 group">
-      <p className="text-xs text-[#9BBAC5] font-medium shrink-0 w-32 pt-0.5">{label}</p>
-      <p className="text-sm text-[#011E28] flex-1 leading-relaxed">{value}</p>
-      {onEdit && (
-        <button
-          type="button"
-          onClick={onEdit}
-          aria-label={`Edit ${label}`}
-          className="opacity-0 group-hover:opacity-100 focus:opacity-100 flex items-center gap-1 text-xs text-[#02465B] hover:text-[#035D77] transition-all duration-150 cursor-pointer flex-shrink-0"
-        >
-          <Pencil className="w-3 h-3" /> Edit
-        </button>
-      )}
-    </div>
-  )
-}
-
-/* ─────────────────────────────────────────────────
-   Success screen
-───────────────────────────────────────────────── */
-function SuccessScreen({
-  reference, teacherName, onAnother, onHome,
-}: { reference: string; teacherName: string; onAnother: () => void; onHome: () => void }) {
-  const [countdown, setCountdown] = useState(5)
-
-  useEffect(() => {
-    const id = setInterval(() => setCountdown(c => {
-      if (c <= 1) { clearInterval(id); onHome(); return 0 }
-      return c - 1
-    }), 1000)
-    return () => clearInterval(id)
-  }, [onHome])
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.97 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="flex flex-col items-center justify-center min-h-screen bg-[#F5FDFF] px-6 text-center"
-    >
-      {/* Check mark */}
-      <motion.div
-        initial={{ scale: 0 }}
-        animate={{ scale: 1 }}
-        transition={{ delay: 0.15, type: 'spring', stiffness: 260, damping: 20 }}
-        className="w-20 h-20 rounded-full flex items-center justify-center mb-8"
-        style={{ background: 'linear-gradient(145deg, #02465B 0%, #0489AE 100%)' }}
-      >
-        <CheckCircle2 className="w-9 h-9 text-white" strokeWidth={1.75} />
-      </motion.div>
-
-      <motion.div
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3, duration: 0.4 }}
-      >
-        <h2 className="text-2xl font-bold text-[#011E28] tracking-tight mb-2">Lesson submitted</h2>
-        <p className="text-[#5A7A85] text-sm mb-6">Your record has been saved successfully.</p>
-
-        {/* Reference card */}
-        <div className="inline-block rounded-2xl border border-[#02465B]/12 bg-white px-8 py-5 mb-8"
-          style={{ boxShadow: '0 2px 12px rgba(2,70,91,0.08)' }}>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#9BBAC5] mb-1">Reference</p>
-          <p className="text-xl font-bold text-[#02465B] tracking-wider font-mono">{reference}</p>
-          <div className="mt-3 pt-3 border-t border-[#02465B]/08 space-y-0.5">
-            <p className="text-xs text-[#5A7A85]">{teacherName}</p>
-            <p className="text-xs text-[#9BBAC5]">{new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</p>
-          </div>
-        </div>
-
-        {/* Actions */}
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <button
-            type="button"
-            onClick={onAnother}
-            className="w-full sm:w-auto h-11 px-6 rounded-xl bg-[#02465B] text-white text-sm font-semibold hover:bg-[#035D77] active:bg-[#02303F] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B] focus-visible:ring-offset-2"
-          >
-            Submit another lesson
-          </button>
-          <button
-            type="button"
-            onClick={onHome}
-            className="w-full sm:w-auto h-11 px-6 rounded-xl border border-[#02465B]/20 text-[#02465B] text-sm font-semibold hover:bg-[#EBF8FC] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B] focus-visible:ring-offset-2"
-          >
-            Back to forms
-          </button>
-        </div>
-
-        {/* Auto-redirect countdown */}
-        <p className="mt-6 text-xs text-[#9BBAC5]">
-          Returning to forms in <span className="font-semibold text-[#5A7A85]">{countdown}s</span>
-        </p>
-      </motion.div>
-    </motion.div>
-  )
 }
 
 /* ─────────────────────────────────────────────────
@@ -546,18 +182,9 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   const topRef  = useRef<HTMLDivElement>(null)
   const [directory, setDirectory] = useState<DirectorySchool[]>([])
 
-  // Attendance: the roster for the picked class/stream, and who's been
-  // flipped to absent (absence is keyed by studentId; a learner not in this
-  // set is present — that's the common case, so it costs nothing to store).
-  const [roster,        setRoster]        = useState<RosterEntry[]>([])
-  const [rosterLoading, setRosterLoading] = useState(false)
-  const [rosterError,   setRosterError]   = useState('')
-  const [absentIds,     setAbsentIds]     = useState<Set<string>>(new Set())
-  const [showAddLearner, setShowAddLearner] = useState(false)
-  const [newLearner, setNewLearner] = useState({ firstName: '', lastName: '', gender: '' as '' | 'male' | 'female', dateOfBirth: '' })
-  const [addingLearner, setAddingLearner] = useState(false)
-  const [addLearnerError, setAddLearnerError] = useState('')
-  const [pendingLearners, setPendingLearners] = useState<string[]>([])
+  // Attendance is attached, not marked here — the id of whatever
+  // AttendanceAttachPanel resolved (auto-matched or explicitly picked).
+  const [selectedSession, setSelectedSession] = useState<AvailableAttendanceSession | null>(null)
 
   useEffect(() => {
     fetch('/api/directory/schools')
@@ -578,92 +205,8 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   const selectedStream   = availableStreams.find(s => s.name === data.stream)
   const skillsForArea    = SKILLS[data.learningArea] || []
 
-  // Whether there's a settled class (and stream, if it has one) to take
-  // attendance against at all — a missed lesson, or a class/stream still
-  // being picked, has nobody to fetch a roster for.
-  const rosterSettled = !isMissed && !!selectedClass && (!selectedClass.hasStreams || !!selectedStream)
-
-  // The roster is fetched once rosterSettled becomes true. When it isn't, the
-  // effect simply does nothing — emptiness here is derived at render time via
-  // `activeRoster` below, not written back into state, so switching away from
-  // a class never needs this effect to reset anything itself.
-  useEffect(() => {
-    if (!rosterSettled || !selectedClass) return
-    let cancelled = false
-    const query = selectedStream ? `?streamId=${selectedStream.id}` : ''
-
-    // The loading/error resets happen inside the first callback rather than
-    // synchronously in the effect body, same reasoning as everywhere else in
-    // this file that fetches on a dependency change.
-    Promise.resolve()
-      .then(() => {
-        if (cancelled) return undefined
-        setRosterLoading(true)
-        setRosterError('')
-        return fetch(`/api/directory/classes/${selectedClass.id}/roster${query}`).then(r => r.json())
-      })
-      .then(d => {
-        if (cancelled || !d) return
-        if (d.success) { setRoster(d.data); setAbsentIds(new Set()) }
-        else setRosterError(d.message || 'Could not load the class roster.')
-      })
-      .catch(() => { if (!cancelled) setRosterError('Network error loading the class roster.') })
-      .finally(() => { if (!cancelled) setRosterLoading(false) })
-
-    return () => { cancelled = true }
-  }, [rosterSettled, selectedClass, selectedStream])
-
-  function toggleAbsent(studentId: string) {
-    setAbsentIds(prev => {
-      const next = new Set(prev)
-      if (next.has(studentId)) next.delete(studentId); else next.add(studentId)
-      return next
-    })
-  }
-
-  // Stale roster/absence from a previously picked class never leaks through:
-  // once the class changes, this recomputes to empty until the new fetch
-  // lands, rather than trusting whatever the last successful fetch left in
-  // state.
-  const activeRoster = rosterSettled ? roster : []
-  const activeRosterIds = new Set(activeRoster.map(r => r.studentId))
-  const effectiveAbsentIds = new Set([...absentIds].filter(id => activeRosterIds.has(id)))
-  const presentCount = activeRoster.length - effectiveAbsentIds.size
-  const absentCount  = effectiveAbsentIds.size
-
-  async function submitNewLearner() {
-    if (!selectedClass || !selectedSchool) return
-    if (!newLearner.firstName.trim() || !newLearner.lastName.trim()) {
-      setAddLearnerError('First and last name are required.')
-      return
-    }
-    setAddingLearner(true)
-    setAddLearnerError('')
-    try {
-      const res = await fetch('/api/student-requests', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          schoolId: selectedSchool.id,
-          classId: selectedClass.id,
-          streamId: selectedStream?.id,
-          firstName: newLearner.firstName.trim(),
-          lastName: newLearner.lastName.trim(),
-          gender: newLearner.gender || undefined,
-          dateOfBirth: newLearner.dateOfBirth || undefined,
-        }),
-      })
-      const json = await res.json()
-      if (!res.ok || !json.success) throw new Error(json.message || 'Could not submit that learner.')
-      setPendingLearners(p => [...p, `${newLearner.firstName} ${newLearner.lastName}`])
-      setNewLearner({ firstName: '', lastName: '', gender: '', dateOfBirth: '' })
-      setShowAddLearner(false)
-    } catch (e) {
-      setAddLearnerError(e instanceof Error ? e.message : 'Something went wrong.')
-    } finally {
-      setAddingLearner(false)
-    }
-  }
+  const presentCount = selectedSession?.present ?? 0
+  const absentCount  = selectedSession?.absent ?? 0
 
   /* Clear errors when field changes */
   const clearErr = (key: string) => {
@@ -675,7 +218,7 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   }
 
   function goNext() {
-    const errs = validateStep(step, data, !!selectedClass?.hasStreams)
+    const errs = validateStep(step, data, !!selectedClass?.hasStreams, selectedSession)
     if (Object.keys(errs).length > 0) {
       setErrors(errs)
       setTouched(true)
@@ -700,16 +243,12 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   async function handleSubmit() {
     setSubmitting(true)
     try {
-      const attendance = activeRoster.map(r => ({
-        studentId: r.studentId,
-        enrollmentId: r.enrollmentId,
-        present: !effectiveAbsentIds.has(r.studentId),
-      }))
       const res = await fetch('/api/lesson', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          ...data, reference: ref, teacher: user?.name, attendance,
+          ...data, reference: ref, teacher: user?.name,
+          attendanceSessionId: isMissed ? undefined : selectedSession?.id,
           schoolId: selectedSchool?.id, classId: selectedClass?.id, streamId: selectedStream?.id,
         }),
       })
@@ -907,8 +446,8 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
           </div>
         ) : (
           <>
-            {/* Live stats */}
-            {activeRoster.length > 0 && (
+            {/* Live stats, derived from the attached attendance record */}
+            {selectedSession && (
               <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-xl bg-[#EBF8FC] border border-[#02465B]/08 px-4 py-3.5">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Present</p>
@@ -921,126 +460,30 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
                 <div className="rounded-xl bg-[#EBF8FC] border border-[#02465B]/08 px-4 py-3.5">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Rate</p>
                   <p className="text-2xl font-bold text-[#011E28] tabular-nums">
-                    {activeRoster.length > 0 ? `${Math.round((presentCount / activeRoster.length) * 100)}%` : '—'}
+                    {presentCount + absentCount > 0 ? `${Math.round((presentCount / (presentCount + absentCount)) * 100)}%` : '—'}
                   </p>
                 </div>
               </div>
             )}
 
             <div>
-              <div className="flex items-center justify-between mb-2.5">
-                <p className="text-xs font-semibold uppercase tracking-wider text-[#02465B]">
-                  Attendance — tap to mark absent
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setShowAddLearner(v => !v)}
-                  className="inline-flex items-center gap-1 text-xs font-medium text-[#02465B] hover:text-[#035D77] cursor-pointer"
-                >
-                  <UserPlus className="w-3.5 h-3.5" /> Add a learner not on this list
-                </button>
-              </div>
-
-              {rosterLoading && <p className="text-sm text-[#9BBAC5] py-4">Loading the class roster…</p>}
-              {!rosterLoading && rosterError && (
-                <p role="alert" className="flex items-center gap-1.5 text-xs text-[#C0392B] py-2">
-                  <AlertCircle className="w-3.5 h-3.5" aria-hidden /> {rosterError}
+              <p className="text-xs font-semibold uppercase tracking-wider text-[#02465B] mb-2.5">
+                Attendance
+              </p>
+              <AttendanceAttachPanel
+                classId={selectedClass?.id}
+                streamId={selectedStream?.id}
+                date={data.date}
+                period={data.period}
+                isMissed={isMissed}
+                selected={selectedSession}
+                onSelect={setSelectedSession}
+              />
+              {errors.attendance && (
+                <p role="alert" className="mt-1.5 flex items-center gap-1.5 text-xs text-[#C0392B]">
+                  <AlertCircle className="w-3.5 h-3.5" aria-hidden /> {errors.attendance}
                 </p>
               )}
-              {!rosterLoading && !rosterError && activeRoster.length === 0 && (
-                <p className="text-sm text-[#9BBAC5] py-4">
-                  Nobody is currently enrolled in this class{data.stream ? ' / stream' : ''}.
-                </p>
-              )}
-              {!rosterLoading && activeRoster.length > 0 && (
-                <div className="rounded-xl border border-[#02465B]/08 bg-white px-3">
-                  {activeRoster.map(r => (
-                    <AttendanceRow
-                      key={r.studentId}
-                      name={r.name}
-                      systemId={r.systemId}
-                      present={!effectiveAbsentIds.has(r.studentId)}
-                      onToggle={() => toggleAbsent(r.studentId)}
-                    />
-                  ))}
-                </div>
-              )}
-
-              {pendingLearners.length > 0 && (
-                <div className="mt-3 space-y-1.5">
-                  {pendingLearners.map(name => (
-                    <div key={name} className="flex items-center gap-2 text-xs text-[#8A6A16] bg-[#FCF3DE] rounded-lg px-3 py-2">
-                      <Clock className="w-3.5 h-3.5 shrink-0" aria-hidden />
-                      {name} — pending approval, not yet on the roster
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              <AnimatePresence>
-                {showAddLearner && (
-                  <motion.div
-                    initial={{ opacity: 0, height: 0 }}
-                    animate={{ opacity: 1, height: 'auto' }}
-                    exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.25 }}
-                    className="overflow-hidden"
-                  >
-                    <div className="mt-3 p-4 rounded-xl border-2 border-[#02465B]/10 space-y-3">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-semibold uppercase tracking-wider text-[#02465B]">New learner</p>
-                        <button type="button" onClick={() => setShowAddLearner(false)} aria-label="Cancel">
-                          <X className="w-4 h-4 text-[#9BBAC5]" />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <FloatingInput
-                          label="First name"
-                          value={newLearner.firstName}
-                          onChange={v => setNewLearner(p => ({ ...p, firstName: v }))}
-                          required
-                        />
-                        <FloatingInput
-                          label="Last name"
-                          value={newLearner.lastName}
-                          onChange={v => setNewLearner(p => ({ ...p, lastName: v }))}
-                          required
-                        />
-                      </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <FloatingSelect
-                          label="Gender (optional)"
-                          options={['male', 'female']}
-                          value={newLearner.gender}
-                          onChange={v => setNewLearner(p => ({ ...p, gender: v as 'male' | 'female' }))}
-                        />
-                        <FloatingInput
-                          label="Date of birth (optional)"
-                          type="date"
-                          value={newLearner.dateOfBirth}
-                          onChange={v => setNewLearner(p => ({ ...p, dateOfBirth: v }))}
-                        />
-                      </div>
-                      {addLearnerError && (
-                        <p role="alert" className="flex items-center gap-1.5 text-xs text-[#C0392B]">
-                          <AlertCircle className="w-3.5 h-3.5" aria-hidden /> {addLearnerError}
-                        </p>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => void submitNewLearner()}
-                        disabled={addingLearner}
-                        className="w-full h-10 rounded-xl bg-[#02465B] text-white text-sm font-semibold hover:bg-[#035D77] disabled:opacity-60 cursor-pointer"
-                      >
-                        {addingLearner ? 'Submitting…' : 'Submit for approval'}
-                      </button>
-                      <p className="text-xs text-[#9BBAC5]">
-                        Sent to a super admin to approve — they will not appear on the roster until then.
-                      </p>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
             </div>
           </>
         )}
@@ -1257,7 +700,10 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
       <SuccessScreen
         reference={ref}
         teacherName={user?.name || 'Teacher'}
-        onAnother={() => { setSubmitted(false); setData({ ...INITIAL, school: user?.school || '' }); setStep(0) }}
+        heading="Lesson submitted"
+        subheading="Your record has been saved successfully."
+        anotherLabel="Submit another lesson"
+        onAnother={() => { setSubmitted(false); setData({ ...INITIAL, school: user?.school || '' }); setStep(0); setSelectedSession(null) }}
         onHome={onBack}
       />
     )

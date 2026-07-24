@@ -8,6 +8,12 @@ import {
   successResponse,
 } from "@/lib/apiResponse";
 import { notify } from "@/lib/entities/notifications";
+import {
+  claimAttendanceSession,
+  linkAttendanceRows,
+  precheckAttendanceSession,
+  releaseAttendanceSession,
+} from "@/lib/attendance";
 
 /**
  * Field names match the payload sent by DailyLessonWizard.
@@ -43,18 +49,12 @@ const LessonSchema = z
     specificSkill: z.string().min(1, "Specific skill is required"),
     approach: z.string().min(1, "Lesson approach is required"),
 
-    // Replaces typed-in present/absent counts: one row per learner actually on
-    // the class roster, so present/absent below is DERIVED from this, never
-    // trusted as a separate client-sent total.
-    attendance: z
-      .array(
-        z.object({
-          studentId: z.string().uuid(),
-          enrollmentId: z.string().uuid(),
-          present: z.boolean(),
-        })
-      )
-      .default([]),
+    // Replaces typed-in present/absent counts AND the old client-sent
+    // attendance array: attendance is now taken as its own form beforehand
+    // (see app/api/attendance/route.ts), and a report just attaches one such
+    // session by id. present/absent are DERIVED server-side from the
+    // attached session's rows, never trusted as a client-sent total.
+    attendanceSessionId: z.string().uuid().optional(),
 
     computerAccess: z.string().min(1, "Computer access is required"),
     overallProgress: z.string().min(1, "Overall progress is required"),
@@ -69,7 +69,20 @@ const LessonSchema = z
 
     reference: z.string().optional(),
   })
-  .strip();
+  .strip()
+  // The true hard block: client-side validation is one `curl` away from
+  // bypass. A lesson that happened must arrive with the attendance it was
+  // taken against already attached; a missed lesson has nobody in it, so it
+  // never needs one.
+  .superRefine((val, ctx) => {
+    if (val.status !== "Missed" && !val.attendanceSessionId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["attendanceSessionId"],
+        message: "Attach an attendance record before submitting. Fill the Attendance form first.",
+      });
+    }
+  });
 
 export async function POST(request: NextRequest) {
   const denied = await requireRole(request, ["staff", "admin", "super_admin"]);
@@ -112,8 +125,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const present = validated.attendance.filter((a) => a.present).length;
-    const absent = validated.attendance.length - present;
+    // Missed lessons have nobody in them (enforced by the DB check
+    // constraint below) and never claim a session. Everything else must
+    // attach one — the superRefine above already guarantees the id is
+    // present by this point.
+    let present = 0;
+    let absent = 0;
+    if (validated.status !== "Missed") {
+      const precheck = await precheckAttendanceSession({
+        sessionId: validated.attendanceSessionId!,
+        staffId: profile.id,
+        classId: validated.classId,
+        streamId: validated.streamId ?? null,
+        date: validated.date,
+        period: validated.period,
+      });
+
+      if (!precheck.ok) {
+        const messages: Record<typeof precheck.reason, string> = {
+          not_found: "That attendance record could not be found.",
+          wrong_owner: "That attendance record belongs to another teacher.",
+          already_attached: "That attendance record has already been attached to a different lesson report.",
+          slot_mismatch: "That attendance record doesn't match this class, stream, date or period.",
+        };
+        const status = precheck.reason === "already_attached" ? 409 : precheck.reason === "wrong_owner" ? 403 : 400;
+        return errorResponse(messages[precheck.reason], status);
+      }
+
+      present = precheck.present;
+      absent = precheck.absent;
+    }
 
     const { data: report, error } = await supabase
       .from("lesson_reports")
@@ -170,23 +211,27 @@ export async function POST(request: NextRequest) {
       return errorResponse("Failed to save lesson record.", 500);
     }
 
-    if (validated.attendance.length > 0) {
-      const { error: attendanceError } = await supabase.from("lesson_attendance").insert(
-        validated.attendance.map((a) => ({
-          lesson_report_id: report.id,
-          student_id: a.studentId,
-          enrollment_id: a.enrollmentId,
-          is_present: a.present,
-        }))
-      );
-
-      if (attendanceError) {
-        // Same reasoning as saveSubmission() in lib/assessments.ts: a report
-        // whose attendance failed to save is worse than no report at all, so
-        // roll the parent row back rather than leave a half-filed one behind.
+    if (validated.status !== "Missed") {
+      const claimed = await claimAttendanceSession(validated.attendanceSessionId!, report.id);
+      if (!claimed) {
+        // Lost the race: another submit (a double-tap, a second tab) claimed
+        // this exact session between the pre-check and here. A report
+        // attached to nothing reviewable is worse than no report at all, so
+        // roll it back rather than leave a half-filed one behind.
         await supabase.from("lesson_reports").delete().eq("id", report.id);
-        console.error("Lesson attendance insert error:", attendanceError);
-        return errorResponse("Failed to save attendance for this lesson.", 500);
+        return errorResponse(
+          "That attendance record was just attached to another report. Refresh and pick again.",
+          409
+        );
+      }
+
+      try {
+        await linkAttendanceRows(validated.attendanceSessionId!, report.id);
+      } catch (linkError) {
+        await releaseAttendanceSession(validated.attendanceSessionId!);
+        await supabase.from("lesson_reports").delete().eq("id", report.id);
+        console.error("Lesson attendance link error:", linkError);
+        return errorResponse("Failed to attach attendance to this lesson.", 500);
       }
     }
 
