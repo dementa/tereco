@@ -146,6 +146,11 @@ export default function AssessmentDetailPage() {
   const [releasing, setReleasing] = useState(false);
   const [emailOnRelease, setEmailOnRelease] = useState(true);
   const [instructions, setInstructions] = useState('');
+  // A closed paper whose closing time has already passed needs a new one
+  // before reopening does anything — assessments_for_student still hides it
+  // otherwise. Only asked for when that's actually the case.
+  const [reopenClosesAt, setReopenClosesAt] = useState('');
+  const [showReopenForm, setShowReopenForm] = useState(false);
 
   // Deleting and releasing results stay with the creator or an admin, even
   // though a collaborator can otherwise edit and mark this same paper.
@@ -410,6 +415,26 @@ export default function AssessmentDetailPage() {
     await patchAssessment({ targets: next }, 'Audience updated.');
   }
 
+  async function reopenAssessment() {
+    if (!assessment) return;
+    const closingHasPassed = assessment.closesAt ? new Date(assessment.closesAt).getTime() < Date.now() : false;
+    if (closingHasPassed && !showReopenForm) {
+      setShowReopenForm(true);
+      return;
+    }
+    if (showReopenForm) {
+      if (!reopenClosesAt) return;
+      await patchAssessment(
+        { status: 'published', closesAt: new Date(reopenClosesAt).toISOString() },
+        'Assessment reopened.'
+      );
+      setShowReopenForm(false);
+      setReopenClosesAt('');
+      return;
+    }
+    await patchAssessment({ status: 'published' }, 'Assessment reopened.');
+  }
+
   async function removeAssessment() {
     if (
       !confirm(
@@ -571,6 +596,37 @@ export default function AssessmentDetailPage() {
               onClick={() => void patchAssessment({ status: 'closed' }, 'Assessment closed.')}
             >
               Close
+            </Button>
+          )}
+          {assessment.status === 'closed' && showReopenForm && (
+            <div className="flex items-end gap-2">
+              <Input
+                label="New closing time"
+                type="datetime-local"
+                value={reopenClosesAt}
+                onChange={(e) => setReopenClosesAt(e.target.value)}
+              />
+              <Button onClick={() => void reopenAssessment()} disabled={!reopenClosesAt}>
+                Reopen
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowReopenForm(false);
+                  setReopenClosesAt('');
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+          {assessment.status === 'closed' && !showReopenForm && (
+            <Button
+              variant="outline"
+              onClick={() => void reopenAssessment()}
+              title="Students who already submitted still can't resit it — only students who haven't sat this paper yet will regain access."
+            >
+              Reopen
             </Button>
           )}
           {isOwner && (
