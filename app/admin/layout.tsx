@@ -44,7 +44,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-bg flex">
-      <aside className="w-60 shrink-0 bg-bg-card border-r border-primary-100 hidden md:flex flex-col">
+      <aside className="w-60 shrink-0 bg-bg-card border-r border-primary-100 hidden md:flex flex-col sticky top-0 h-screen">
         <div className="p-5 flex items-center gap-3 border-b border-primary-100">
           <div className="w-10 h-10 rounded-xl bg-primary-700 flex items-center justify-center">
             <span className="text-white text-sm font-bold">TC</span>

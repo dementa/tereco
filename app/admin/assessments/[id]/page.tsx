@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -183,6 +183,25 @@ export default function AssessmentDetailPage() {
   // Once anyone has sat the paper, the questions are frozen: rewriting them
   // under existing answers would invalidate every score already recorded.
   const locked = results.length > 0;
+
+  // A paper can run to dozens of questions, all appended to the end — without
+  // this, "Add question" (which stays put at the top of the card) lands the
+  // new blank question far below the fold, and reaching it means scrolling
+  // all the way down manually. addedTick only ticks on an explicit add (never
+  // on the initial load from the server), so this never auto-scrolls a
+  // freshly opened paper out from under the person viewing it.
+  const [addedTick, setAddedTick] = useState(0);
+  const lastQuestionRef = useRef<HTMLDivElement | null>(null);
+
+  function addQuestion() {
+    setQuestions((q) => [...q, blankQuestion(q.length + 1)]);
+    setAddedTick((t) => t + 1);
+  }
+
+  useEffect(() => {
+    if (addedTick === 0) return;
+    lastQuestionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [addedTick]);
 
   function updateQuestion(index: number, patch: Partial<Question>) {
     setQuestions((current) =>
@@ -628,7 +647,7 @@ export default function AssessmentDetailPage() {
         <div className="flex items-center justify-between mb-3">
           <h2 className="font-semibold text-primary-900">Questions</h2>
           {!locked && (
-            <Button variant="outline" onClick={() => setQuestions((q) => [...q, blankQuestion(q.length + 1)])}>
+            <Button variant="outline" onClick={addQuestion}>
               <Plus className="w-4 h-4 mr-1.5" aria-hidden />
               Add question
             </Button>
@@ -649,7 +668,11 @@ export default function AssessmentDetailPage() {
           )}
 
           {questions.map((q, index) => (
-            <div key={q.id ?? index} className="rounded-xl border border-[#E8EFF3] p-3 space-y-2">
+            <div
+              key={q.id ?? index}
+              ref={index === questions.length - 1 ? lastQuestionRef : undefined}
+              className="rounded-xl border border-[#E8EFF3] p-3 space-y-2"
+            >
               <div className="flex items-center gap-2">
                 <span className="text-xs font-medium text-[#5A7D8A] w-8">{q.code}</span>
                 <input
@@ -858,7 +881,14 @@ export default function AssessmentDetailPage() {
         </div>
 
         {!locked && questions.length > 0 && (
-          <div className="mt-4">
+          <div className="mt-4 flex flex-wrap gap-2">
+            {/* Same action as the button above the list — placed here too so
+                adding several questions in a row never means scrolling back
+                up to the top of a long paper. */}
+            <Button variant="outline" onClick={addQuestion}>
+              <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+              Add question
+            </Button>
             <Button onClick={() => void saveQuestions()} isLoading={saving}>
               <Save className="w-4 h-4 mr-1.5" aria-hidden />
               Save questions
