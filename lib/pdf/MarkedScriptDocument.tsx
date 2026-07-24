@@ -18,6 +18,13 @@ const styles = StyleSheet.create({
   school: { fontSize: 12, fontFamily: 'Helvetica-Bold', marginTop: 1 },
   title: { fontSize: 11, fontFamily: 'Helvetica-Bold', marginTop: 5 },
   meta: { fontSize: 8, color: '#5A7D8A', marginTop: 3 },
+  // The full header (school, paper title, learner's name/class/date sat) only
+  // needs stating once per script. A learner's script can run to several
+  // pages, and repeating the whole block on each read as the page introducing
+  // itself over and over — a continuing page just needs enough to identify a
+  // stray sheet.
+  continuationHeader: { borderBottomWidth: 0.75, borderBottomColor: '#02465B', paddingBottom: 5, marginBottom: 12 },
+  continuationHeaderText: { fontSize: 8, color: '#5A7D8A', letterSpacing: 0.3 },
 
   scoreRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
   scoreBox: { flexGrow: 1, padding: 9, backgroundColor: '#F1F6F8', borderRadius: 4 },
@@ -78,17 +85,36 @@ function formatAnswer(value: string, type: string): string {
 function ScriptPages({ script }: { script: MarkedScript }) {
   return (
     <Page size="A4" style={styles.page}>
-        <View style={styles.header} fixed>
-          <Text style={styles.org}>TERECO</Text>
-          <Text style={styles.school}>{script.school || 'TERECO Programme'}</Text>
-          <Text style={styles.title}>{script.assessmentTitle}</Text>
-          <Text style={styles.meta}>
-            {script.studentName}
-            {script.studentSystemId ? ` · ${script.studentSystemId}` : ''}
-            {script.className ? ` · ${script.className}` : ''} · Sat{' '}
-            {new Date(script.submittedAt).toLocaleDateString('en-GB')}
-          </Text>
-        </View>
+        <View
+          fixed
+          render={({ subPageNumber }) =>
+            // subPageNumber, not pageNumber: in a whole-class bundle every
+            // learner's script is its own <Page> element, and pageNumber
+            // runs across the WHOLE document (see the footer note below) —
+            // it would only be 1 for the very first learner's first page.
+            // subPageNumber resets per <Page> element, so it correctly means
+            // "the first physical page of THIS learner's script."
+            subPageNumber === 1 ? (
+              <View style={styles.header}>
+                <Text style={styles.org}>TERECO</Text>
+                <Text style={styles.school}>{script.school || 'TERECO Programme'}</Text>
+                <Text style={styles.title}>{script.assessmentTitle}</Text>
+                <Text style={styles.meta}>
+                  {script.studentName}
+                  {script.studentSystemId ? ` · ${script.studentSystemId}` : ''}
+                  {script.className ? ` · ${script.className}` : ''} · Sat{' '}
+                  {new Date(script.submittedAt).toLocaleDateString('en-GB')}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.continuationHeader}>
+                <Text style={styles.continuationHeaderText}>
+                  {script.assessmentSystemId} · {script.studentName} · {script.assessmentTitle}
+                </Text>
+              </View>
+            )
+          }
+        />
 
         <View style={styles.scoreRow}>
           {/* The mark out of 100 leads, the Ugandan report-card convention —
