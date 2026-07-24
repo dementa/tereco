@@ -15,6 +15,12 @@ const styles = StyleSheet.create({
   page: { paddingTop: 40, paddingBottom: 48, paddingHorizontal: 44, fontSize: 10, fontFamily: 'Helvetica', color: '#12333F' },
 
   header: { flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: 1.5, borderBottomColor: '#02465B', paddingBottom: 10, marginBottom: 12 },
+  // The full letterhead (logo, school name, paper title, the time/marks meta
+  // row) only ever needs stating once. Repeating it on every page reads as
+  // the paper introducing itself over and over; a continuing page just needs
+  // enough to identify a stray sheet, not the whole cover block again.
+  continuationHeader: { borderBottomWidth: 0.75, borderBottomColor: '#02465B', paddingBottom: 6, marginBottom: 12 },
+  continuationHeaderText: { fontSize: 8, color: '#5A7D8A', letterSpacing: 0.3 },
   logo: { width: 46, height: 46, objectFit: 'contain' },
   headerText: { flexGrow: 1 },
   schoolName: { fontSize: 13, fontFamily: 'Helvetica-Bold' },
@@ -108,20 +114,33 @@ export function QuestionPaperDocument({
   return (
     <Document title={`${assessmentSystemId} — ${assessmentTitle}`} author="TERECO" subject="Question paper">
       <Page size="A4" style={styles.page}>
-        <View style={styles.header} fixed>
-          {schoolLogoUrl ? <Image style={styles.logo} src={schoolLogoUrl} /> : null}
-          <View style={styles.headerText}>
-            <Text style={styles.org}>TERECO</Text>
-            <Text style={styles.schoolName}>{schoolName ?? 'TERECO Programme'}</Text>
-            <Text style={styles.paperTitle}>{assessmentTitle}</Text>
-            <View style={styles.metaRow}>
-              <Text style={styles.meta}>Paper: {assessmentSystemId}</Text>
-              {academicYear ? <Text style={styles.meta}>Academic year: {academicYear}</Text> : null}
-              <Text style={styles.meta}>Time: {timeLimitMinutes} minutes</Text>
-              <Text style={styles.meta}>Total marks: {totalMarks}</Text>
-            </View>
-          </View>
-        </View>
+        <View
+          fixed
+          render={({ pageNumber }) =>
+            pageNumber === 1 ? (
+              <View style={styles.header}>
+                {schoolLogoUrl ? <Image style={styles.logo} src={schoolLogoUrl} /> : null}
+                <View style={styles.headerText}>
+                  <Text style={styles.org}>TERECO</Text>
+                  <Text style={styles.schoolName}>{schoolName ?? 'TERECO Programme'}</Text>
+                  <Text style={styles.paperTitle}>{assessmentTitle}</Text>
+                  <View style={styles.metaRow}>
+                    <Text style={styles.meta}>Paper: {assessmentSystemId}</Text>
+                    {academicYear ? <Text style={styles.meta}>Academic year: {academicYear}</Text> : null}
+                    <Text style={styles.meta}>Time: {timeLimitMinutes} minutes</Text>
+                    <Text style={styles.meta}>Total marks: {totalMarks}</Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View style={styles.continuationHeader}>
+                <Text style={styles.continuationHeaderText}>
+                  {assessmentSystemId} · {schoolName ?? 'TERECO Programme'} · {assessmentTitle}
+                </Text>
+              </View>
+            )
+          }
+        />
 
         <View style={styles.candidate}>
           <View style={[styles.candidateField, { flexGrow: 2 }]}>
