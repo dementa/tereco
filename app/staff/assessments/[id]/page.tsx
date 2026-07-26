@@ -107,6 +107,14 @@ interface Result {
   status: string;
 }
 
+/** Fixed set of sections a paper can use — matches the section Select's own options. */
+const SECTION_TABS: { value: string; label: string }[] = [
+  { value: '', label: 'No section' },
+  { value: 'A', label: 'Section A' },
+  { value: 'B', label: 'Section B' },
+  { value: 'C', label: 'Section C' },
+];
+
 function blankQuestion(position: number, config?: QuestionConfig): Question {
   return {
     position,
@@ -131,6 +139,10 @@ export default function AssessmentDetailPage() {
 
   const [assessment, setAssessment] = useState<Assessment | null>(null);
   const [questions, setQuestions] = useState<Question[]>([]);
+  // Which section tab the author is currently working in. Drives both what
+  // the question list shows and what "Add question" tags the new row with —
+  // set once when the paper loads (see load()), then only by clicking a tab.
+  const [activeSection, setActiveSection] = useState('');
   const [schools, setSchools] = useState<School[]>([]);
   const [levels, setLevels] = useState<GradeLevel[]>([]);
   const [results, setResults] = useState<Result[]>([]);
@@ -165,8 +177,13 @@ export default function AssessmentDetailPage() {
 
       if (detail.success) {
         setAssessment(detail.data);
-        setQuestions(detail.data.questions ?? []);
+        const loadedQuestions: Question[] = detail.data.questions ?? [];
+        setQuestions(loadedQuestions);
         setInstructions(detail.data.instructions ?? '');
+        // Land on whichever section the paper already ends with, so the
+        // very first "Add question" continues it instead of silently
+        // starting a fresh "No section" block underneath it.
+        setActiveSection(loadedQuestions[loadedQuestions.length - 1]?.config?.section ?? '');
       } else {
         toast.error(detail.message ?? 'Failed to load assessment.');
       }
@@ -208,6 +225,19 @@ export default function AssessmentDetailPage() {
   );
   const groups = useMemo(() => groupQuestions(displayQuestions), [displayQuestions]);
 
+  const sectionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    questions.forEach((q) => {
+      const key = q.config?.section ?? '';
+      counts[key] = (counts[key] ?? 0) + 1;
+    });
+    return counts;
+  }, [questions]);
+  const visibleGroups = useMemo(
+    () => groups.filter((g) => (g.section ?? '') === activeSection),
+    [groups, activeSection]
+  );
+
   // A paper can run to dozens of questions, all appended to the end — without
   // this, "Add question" (which stays put at the top of the card) lands the
   // new blank question far below the fold, and reaching it means scrolling
@@ -220,21 +250,34 @@ export default function AssessmentDetailPage() {
   const newlyAddedRef = useRef<HTMLDivElement | null>(null);
 
   function addQuestion() {
-    // Inherit the previous question's section, so the author only touches it
-    // when actually starting a new section.
-    const inheritedSection = questions[questions.length - 1]?.config?.section;
-    const insertAt = questions.length;
+    // Tagged with whichever section tab is active, and inserted right after
+    // that section's last existing question — never at the bare end of the
+    // array — so adding to an earlier section never splits it by landing
+    // after a later section and breaking the contiguous-block invariant
+    // sections rely on. Only falls back to the very end when this section
+    // has no questions yet (starting a brand new section).
+    const section = activeSection || undefined;
+    let insertAt = questions.length;
+    for (let i = questions.length - 1; i >= 0; i--) {
+      if ((questions[i].config?.section ?? '') === activeSection) {
+        insertAt = i + 1;
+        break;
+      }
+    }
     setQuestions((q) => [
-      ...q,
-      blankQuestion(insertAt + 1, inheritedSection ? { section: inheritedSection } : undefined),
+      ...q.slice(0, insertAt),
+      blankQuestion(insertAt + 1, section ? { section } : undefined),
+      ...q.slice(insertAt),
     ]);
     setNewlyAddedIndex(insertAt);
   }
 
   /**
    * "13, 14 share a diagram" — each keeps its own full number. Creates (or
-   * reuses) a group on the target question and inserts a new sibling right
-   * after it.
+   * reuses) a group on the target question and inserts a new sibling at the
+   * run's END, mirroring addSubQuestion — otherwise clicking this on any
+   * member but the last splices the new question into the middle of the
+   * group instead of appending after it.
    */
   function addRelatedQuestion(index: number) {
     const target = questions[index];
@@ -243,7 +286,8 @@ export default function AssessmentDetailPage() {
     const updated = questions.map((q, i) =>
       i === index ? { ...q, config: { ...q.config, groupId, groupKind: 'relative' as const, section } } : q
     );
-    const insertAt = index + 1;
+    let insertAt = index + 1;
+    while (insertAt < updated.length && updated[insertAt].config?.groupId === groupId) insertAt++;
     const newQuestion = blankQuestion(0, { groupId, groupKind: 'relative', section });
     setQuestions([...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]);
     setNewlyAddedIndex(insertAt);
@@ -267,15 +311,6 @@ export default function AssessmentDetailPage() {
     const newQuestion = blankQuestion(0, { groupId, groupKind: 'sub', section });
     setQuestions([...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]);
     setNewlyAddedIndex(insertAt);
-  }
-
-  /** Writes a section label onto every member of a group at once. */
-  function setSectionForGroup(globalIndices: number[], section: string) {
-    setQuestions((current) =>
-      current.map((q, i) =>
-        globalIndices.includes(i) ? { ...q, config: { ...q.config, section: section || undefined } } : q
-      )
-    );
   }
 
   useEffect(() => {
@@ -777,37 +812,42 @@ export default function AssessmentDetailPage() {
           </p>
         )}
 
+        {/* Each tab is its own section: switching tabs both filters the list
+            below and decides what "Add question" tags the new row with, so
+            building a section end-to-end never touches the section field by
+            hand past the first question. */}
+        <div className="flex gap-1 mb-4 border-b border-[#E8EFF3] overflow-x-auto">
+          {SECTION_TABS.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => setActiveSection(tab.value)}
+              className={`px-3 py-1.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
+                activeSection === tab.value
+                  ? 'border-[#02465B] text-[#02465B]'
+                  : 'border-transparent text-[#5A7D8A] hover:text-[#02465B]'
+              }`}
+            >
+              {tab.label}
+              {sectionCounts[tab.value] ? (
+                <span className="ml-1.5 text-xs text-[#9BB3BD]">({sectionCounts[tab.value]})</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+
         <div className="space-y-4">
-          {questions.length === 0 && (
-            <p className="text-sm text-text-muted">No questions yet.</p>
+          {visibleGroups.length === 0 && (
+            <p className="text-sm text-text-muted">
+              No questions in {SECTION_TABS.find((t) => t.value === activeSection)?.label} yet.
+            </p>
           )}
 
-          {groups.map((group) => {
+          {visibleGroups.map((group) => {
             const anchor = group.members[0];
             return (
               <div key={anchor.id ?? anchor.globalIndex} className="space-y-2">
-                {group.sectionChanged && group.section && (
-                  <p className="text-xs font-bold uppercase tracking-wider text-[#02465B] pt-2">
-                    Section {group.section}
-                  </p>
-                )}
                 <div className="rounded-xl border-2 border-[#E8EFF3] p-3 space-y-3">
-                  {!locked && (
-                    <Select
-                      label="Section (optional)"
-                      options={[
-                        { value: '', label: 'No section' },
-                        { value: 'A', label: 'A' },
-                        { value: 'B', label: 'B' },
-                        { value: 'C', label: 'C' },
-                      ]}
-                      value={group.section ?? ''}
-                      onChange={(e) =>
-                        setSectionForGroup(group.members.map((m) => m.globalIndex), e.target.value)
-                      }
-                    />
-                  )}
-
                   <GroupImageField
                     assessmentId={assessment.id}
                     anchorPosition={anchor.position}
@@ -829,15 +869,15 @@ export default function AssessmentDetailPage() {
                     }
                   />
 
-                  {group.members.map((q) => (
+                  {group.members.map((q, mi) => (
                     <div
                       key={q.id ?? q.globalIndex}
                       ref={q.globalIndex === newlyAddedIndex ? newlyAddedRef : undefined}
                       className="space-y-2 pt-2 border-t border-[#E8EFF3] first:border-t-0 first:pt-0"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-[#5A7D8A] w-10 shrink-0">
-                          {formatQuestionLabel(q.code)}
+                        <span className="text-xs font-medium text-[#5A7D8A] w-14 shrink-0">
+                          {formatQuestionLabel(q.code, mi === 0)}
                         </span>
                         <input
                           type="text"

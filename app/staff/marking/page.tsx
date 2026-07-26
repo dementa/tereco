@@ -441,7 +441,7 @@ export default function MarkingPage() {
                     Section {group.section}
                   </p>
                 )}
-                {group.groupHeading && (
+                {(group.groupImageUrl || group.groupHeading) && (
                   <div className="space-y-1">
                     {group.groupImageUrl && (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -451,10 +451,12 @@ export default function MarkingPage() {
                         className="max-h-28 rounded object-contain bg-[#F1F6F8]"
                       />
                     )}
-                    <p className="text-xs italic text-[#5A7D8A]">{group.groupHeading}</p>
+                    {group.groupHeading && (
+                      <p className="text-xs italic text-[#5A7D8A]">{group.groupHeading}</p>
+                    )}
                   </div>
                 )}
-                {group.members.map((a) => {
+                {group.members.map((a, mi) => {
                   const given = formatAnswer(a.givenAnswer, a.questionType);
                   // The group's shared image is already shown above once — showing
                   // it again per-member (it lives only on the anchor's row) would
@@ -464,7 +466,7 @@ export default function MarkingPage() {
                     <div key={a.questionId} className="rounded-xl border border-[#E8EFF3] p-3">
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-sm font-medium text-[#12333F] flex-1">
-                          {formatQuestionLabel(a.code)} {a.questionText}
+                          {formatQuestionLabel(a.code, mi === 0)} {a.questionText}
                         </p>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className="text-[10px] text-[#9BB3BD] mr-0.5">

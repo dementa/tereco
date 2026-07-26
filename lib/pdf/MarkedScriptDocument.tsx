@@ -147,21 +147,21 @@ function ScriptPages({ script }: { script: MarkedScript }) {
               <Text style={styles.sectionHeader}>SECTION {group.section}</Text>
             )}
 
-            {group.groupHeading && (
+            {(group.groupImageUrl || group.groupHeading) && (
               <View wrap={false}>
                 {group.groupImageUrl && <Image style={styles.groupImage} src={group.groupImageUrl} />}
-                <Text style={styles.groupHeading}>{group.groupHeading}</Text>
+                {group.groupHeading && <Text style={styles.groupHeading}>{group.groupHeading}</Text>}
               </View>
             )}
 
-            {group.members.map((a) => {
+            {group.members.map((a, mi) => {
               const given = formatAnswer(a.givenAnswer, a.questionType);
               const objective = a.correctAnswer !== undefined && a.correctAnswer !== '';
               return (
                 <View key={a.questionId} style={styles.q} wrap={false}>
                   <View style={styles.qHead}>
                     <Text style={styles.qText}>
-                      {formatQuestionLabel(a.code)} {a.questionText}
+                      {formatQuestionLabel(a.code, mi === 0)} {a.questionText}
                     </Text>
                     <Text style={styles.awarded}>
                       {a.score ?? '—'} / {a.maxScore}

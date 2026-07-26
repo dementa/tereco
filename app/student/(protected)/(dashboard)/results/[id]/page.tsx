@@ -212,7 +212,7 @@ export default function StudentResultPage() {
               Section {group.section}
             </p>
           )}
-          {group.groupHeading && (
+          {(group.groupImageUrl || group.groupHeading) && (
             <Card className="space-y-2">
               {group.groupImageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
@@ -222,10 +222,12 @@ export default function StudentResultPage() {
                   className="max-h-40 rounded-lg object-contain bg-[#F1F6F8]"
                 />
               )}
-              <p className="text-sm italic text-[#5A7D8A]">{group.groupHeading}</p>
+              {group.groupHeading && (
+                <p className="text-sm italic text-[#5A7D8A]">{group.groupHeading}</p>
+              )}
             </Card>
           )}
-          {group.members.map((a) => {
+          {group.members.map((a, mi) => {
             const v = VERDICT[a.verdict];
             const given = formatAnswer(a.givenAnswer, a.questionType);
             const objective = !!a.correctAnswer;
@@ -237,7 +239,7 @@ export default function StudentResultPage() {
               <Card key={a.questionId}>
                 <div className="flex items-start justify-between gap-3">
                   <p className="font-medium text-primary-900 flex-1">
-                    {formatQuestionLabel(a.code)} {a.questionText}
+                    {formatQuestionLabel(a.code, mi === 0)} {a.questionText}
                   </p>
                   <span className="text-sm font-semibold text-primary-900 shrink-0">
                     {a.score ?? '—'}/{a.maxScore}

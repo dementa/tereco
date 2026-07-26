@@ -122,7 +122,7 @@ export function QuestionPaperDocument({
                 {schoolLogoUrl ? <Image style={styles.logo} src={schoolLogoUrl} /> : null}
                 <View style={styles.headerText}>
                   <Text style={styles.org}>TERECO</Text>
-                  <Text style={styles.schoolName}>{schoolName ?? 'TERECO Programme'}</Text>
+                  <Text style={styles.schoolName}>{schoolName?.toUpperCase() ?? 'TERECO Programme'}</Text>
                   <Text style={styles.paperTitle}>{assessmentTitle}</Text>
                   <View style={styles.metaRow}>
                     <Text style={styles.meta}>Paper: {assessmentSystemId}</Text>
@@ -172,16 +172,19 @@ export function QuestionPaperDocument({
               <Text style={styles.sectionHeader}>SECTION {group.section}</Text>
             )}
 
-            {group.groupHeading && (
+            {(group.groupImageUrl || group.groupHeading) && (
               // wrap={false} so the shared diagram never lands on its own
-              // page, separated from the heading that introduces it.
+              // page, separated from the heading that introduces it. The
+              // image must print whenever it exists — an author who never
+              // typed the optional caption still uploaded a diagram the
+              // paper needs.
               <View wrap={false}>
                 {group.groupImageUrl && <Image style={styles.groupImage} src={group.groupImageUrl} />}
-                <Text style={styles.groupHeading}>{group.groupHeading}</Text>
+                {group.groupHeading && <Text style={styles.groupHeading}>{group.groupHeading}</Text>}
               </View>
             )}
 
-            {group.members.map((q) => {
+            {group.members.map((q, mi) => {
               // The anchor's image is already shown as the group's shared
               // diagram above — printing it again per-question would
               // duplicate it under every member's own number.
@@ -192,7 +195,7 @@ export function QuestionPaperDocument({
                 <View key={q.id} style={styles.question} wrap={false}>
                   <View style={styles.questionHead}>
                     <Text style={styles.questionText}>
-                      {formatQuestionLabel(q.code)} {q.questionText}
+                      {formatQuestionLabel(q.code, mi === 0)} {q.questionText}
                     </Text>
                     <Text style={styles.marks}>
                       [{q.maxScore} {q.maxScore === 1 ? 'mark' : 'marks'}]

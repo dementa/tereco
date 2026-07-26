@@ -87,9 +87,19 @@ export function computeCodes<T extends Codeable>(questions: T[]): string[] {
   return codes;
 }
 
-/** "13." for a plain number, "22a)" for a lettered sub-part. */
-export function formatQuestionLabel(code: string): string {
-  return /^\d+[a-z]$/.test(code) ? `${code})` : `${code}.`;
+/**
+ * "13." for a plain number or any 'relative' group member. For a lettered
+ * 'sub' run, UNEB prints the shared number once on the first part — "22. (a)"
+ * — and every later part as a bare bracketed letter — "(b)", "(c)" — never
+ * repeating the number. Callers pass whether this member is the first in its
+ * group (group.members.map's own index === 0); the plain-number branch below
+ * ignores it, so it's always safe to pass regardless of the code's shape.
+ */
+export function formatQuestionLabel(code: string, isFirstInGroup: boolean): string {
+  const m = /^(\d+)([a-z])$/.exec(code);
+  if (!m) return `${code}.`;
+  const [, num, letter] = m;
+  return isFirstInGroup ? `${num}. (${letter})` : `(${letter})`;
 }
 
 export interface QuestionGroup<T> {
@@ -146,7 +156,14 @@ export function groupQuestions<T extends Groupable>(items: T[]): QuestionGroup<T
       groupHeading: anchorCfg.groupImageTitle
         ? composeHeading(anchorCfg.groupImageTitle, members.map((m) => m.code))
         : undefined,
-      groupImageUrl: anchor.imageUrl,
+      // Only a real multi-member group hoists its image above the shared
+      // heading, matching how UNEB prints a stimulus shared by several
+      // questions (e.g. "Use it to answer questions 18 and 19"). A
+      // single-member "group" is just a standalone question with its own
+      // image — that has to print inline with its own text (every renderer's
+      // showOwnImage check falls back to it once groupImageUrl is unset
+      // here), not floated above it as if it were a shared stimulus.
+      groupImageUrl: members.length > 1 ? anchor.imageUrl : undefined,
       members,
     });
     prevSection = cfg.section;
