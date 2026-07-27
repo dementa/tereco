@@ -431,19 +431,44 @@ export async function deleteAccount(profileId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
+/** Splits an array into fixed-size chunks, preserving order. */
+function chunk<T>(items: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
+  return chunks;
+}
+
 export async function listAccounts(role: AccountRole | AccountRole[]): Promise<AccountRow[]> {
   const supabase = getSupabaseAdmin();
   const roles = Array.isArray(role) ? role : [role];
-  const { data, error } = await supabase
-    .from("profiles")
-    .select(
-      "id, system_id, role, first_name, middle_name, last_name, contact_email, school_id, gender, photo_url, must_change_password, is_active, created_at, school:schools!profiles_school_id_fkey(name)"
-    )
-    .in("role", roles)
-    .order("created_at", { ascending: false });
 
-  if (error) throw new Error(error.message);
-  const rows = data ?? [];
+  // PostgREST caps a single response at 1000 rows, so a school with more
+  // accounts than that was silently getting truncated — page through with
+  // .range() until a page comes back short. id is a secondary sort key so
+  // ties on created_at can't shift a row across a page boundary.
+  const PAGE_SIZE = 1000;
+  const rows: {
+    id: string; system_id: string | null; role: string; first_name: string;
+    middle_name: string | null; last_name: string; contact_email: string | null;
+    school_id: string | null; gender: string | null; photo_url: string | null;
+    must_change_password: boolean; is_active: boolean; created_at: string;
+    school: { name: string } | null;
+  }[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select(
+        "id, system_id, role, first_name, middle_name, last_name, contact_email, school_id, gender, photo_url, must_change_password, is_active, created_at, school:schools!profiles_school_id_fkey(name)"
+      )
+      .in("role", roles)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+
+    if (error) throw new Error(error.message);
+    rows.push(...(data ?? []));
+    if (!data || data.length < PAGE_SIZE) break;
+  }
 
   // Placement is not on the profile — it is the student's open enrollment. One
   // batched lookup keyed by student id, rather than a join per row.
@@ -458,13 +483,22 @@ export async function listAccounts(role: AccountRole | AccountRole[]): Promise<A
     { schoolId: string | null; schoolName: string | null; className: string | null; streamName: string | null }
   >();
 
-  if (studentIds.length > 0) {
-    const { data: enrollments, error: enrollError } = await supabase
-      .from("current_enrollments")
-      .select("student_id, school_id, class_display_name, stream_name, school:schools(name)")
-      .in("student_id", studentIds);
-    if (enrollError) throw new Error(enrollError.message);
+  // A single `.in("student_id", studentIds)` with a school's full roster (one
+  // long UUID per id) builds a URL long enough that it gets rejected upstream
+  // as a bare "Bad Request" well before PostgREST's own row cap matters —
+  // chunking keeps each request's id list a safe size.
+  const idBatches = chunk(studentIds, 200);
+  const enrollmentBatches = await Promise.all(
+    idBatches.map((batch) =>
+      supabase
+        .from("current_enrollments")
+        .select("student_id, school_id, class_display_name, stream_name, school:schools(name)")
+        .in("student_id", batch)
+    )
+  );
 
+  for (const { data: enrollments, error: enrollError } of enrollmentBatches) {
+    if (enrollError) throw new Error(enrollError.message);
     for (const e of enrollments ?? []) {
       if (e.student_id === null) continue;
       placements.set(e.student_id, {
