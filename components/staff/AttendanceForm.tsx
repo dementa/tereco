@@ -15,7 +15,7 @@ import React, { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ArrowLeft, ArrowRight, Check, CheckCircle2,
-  AlertCircle, Clock, Users, FileText, UserPlus, X,
+  AlertCircle, Clock, Users, FileText, UserPlus, X, Search,
 } from 'lucide-react'
 import { useAuth } from '@/components/auth/AuthContext'
 import {
@@ -96,6 +96,7 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
   const [addingLearner, setAddingLearner] = useState(false)
   const [addLearnerError, setAddLearnerError] = useState('')
   const [pendingLearners, setPendingLearners] = useState<string[]>([])
+  const [rosterQuery, setRosterQuery] = useState('')
 
   useEffect(() => {
     fetch('/api/directory/schools')
@@ -129,7 +130,7 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
       })
       .then(d => {
         if (cancelled || !d) return
-        if (d.success) { setRoster(d.data); setAbsentIds(new Set()) }
+        if (d.success) { setRoster(d.data); setAbsentIds(new Set()); setRosterQuery('') }
         else setRosterError(d.message || 'Could not load the class roster.')
       })
       .catch(() => { if (!cancelled) setRosterError('Network error loading the class roster.') })
@@ -151,6 +152,14 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
   const effectiveAbsentIds = new Set([...absentIds].filter(id => activeRosterIds.has(id)))
   const presentCount = activeRoster.length - effectiveAbsentIds.size
   const absentCount = effectiveAbsentIds.size
+
+  const trimmedRosterQuery = rosterQuery.trim().toLowerCase()
+  const visibleRoster = trimmedRosterQuery
+    ? activeRoster.filter(r =>
+        r.name.toLowerCase().includes(trimmedRosterQuery) ||
+        (r.systemId || '').toLowerCase().includes(trimmedRosterQuery)
+      )
+    : activeRoster
 
   async function submitNewLearner() {
     if (!selectedClass || !selectedSchool) return
@@ -344,17 +353,38 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
             </p>
           )}
           {!rosterLoading && activeRoster.length > 0 && (
-            <div className="rounded-xl border border-[#02465B]/08 bg-white px-3">
-              {activeRoster.map(r => (
-                <AttendanceRow
-                  key={r.studentId}
-                  name={r.name}
-                  systemId={r.systemId}
-                  present={!effectiveAbsentIds.has(r.studentId)}
-                  onToggle={() => toggleAbsent(r.studentId)}
+            <>
+              <div className="relative mb-2.5">
+                <Search className="w-4 h-4 text-[#9BBAC5] absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" aria-hidden />
+                <input
+                  type="text"
+                  value={rosterQuery}
+                  onChange={e => setRosterQuery(e.target.value)}
+                  placeholder="Search by name or ID…"
+                  aria-label="Search the roster by name or ID"
+                  className={cn(
+                    'w-full h-10 pl-9 pr-3 rounded-xl border bg-white text-sm text-[#011E28]',
+                    'outline-none transition-all duration-200 placeholder-[#9BBAC5]',
+                    'border-[#02465B]/15 hover:border-[#02465B]/30 focus:border-[#02465B] focus:ring-2 focus:ring-[#02465B]/10'
+                  )}
                 />
-              ))}
-            </div>
+              </div>
+              <div className="rounded-xl border border-[#02465B]/08 bg-white px-3">
+                {visibleRoster.length === 0 ? (
+                  <p className="text-sm text-[#9BBAC5] py-4 text-center">No student matches &ldquo;{rosterQuery.trim()}&rdquo;.</p>
+                ) : (
+                  visibleRoster.map(r => (
+                    <AttendanceRow
+                      key={r.studentId}
+                      name={r.name}
+                      systemId={r.systemId}
+                      present={!effectiveAbsentIds.has(r.studentId)}
+                      onToggle={() => toggleAbsent(r.studentId)}
+                    />
+                  ))
+                )}
+              </div>
+            </>
           )}
 
           {pendingLearners.length > 0 && (
