@@ -65,7 +65,7 @@ export default function StaffLessonsPage() {
   });
 
   return (
-    <div className="max-w-5xl">
+    <div className="max-w-7xl">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
         <h1 className="text-2xl font-bold text-primary-900">My Lesson Reports</h1>
         <Link href="/staff/lessons/new">

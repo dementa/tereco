@@ -566,7 +566,7 @@ export default function AssessmentDetailPage() {
   };
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="max-w-7xl space-y-4">
       <button
         type="button"
         onClick={() => router.push('/staff/assessments')}
@@ -1180,6 +1180,7 @@ export default function AssessmentDetailPage() {
           initialSort={{ key: 'studentName', direction: 'asc' }}
           searchPlaceholder="Search results by student, ID, school or class…"
           emptyMessage="Nobody has sat this assessment yet."
+          exportFileName={`${systemId}-results`}
           mobileTitle={(r) => r.studentName}
           filters={[
             {

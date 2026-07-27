@@ -571,7 +571,7 @@ export default function SystemStudentsPage() {
   );
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="max-w-7xl space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Student Accounts</h1>
         <p className="text-sm text-text-muted">
@@ -741,6 +741,7 @@ export default function SystemStudentsPage() {
         initialSort={{ key: 'name', direction: 'asc' }}
         searchPlaceholder="Search by name, student ID, school or class…"
         emptyMessage="No student accounts yet. Add one, or use bulk import."
+        exportFileName="students"
         mobileTitle={(a) => a.name}
         filters={[
           {

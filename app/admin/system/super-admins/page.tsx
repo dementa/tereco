@@ -234,7 +234,7 @@ export default function SuperAdminsPage() {
   );
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="max-w-7xl space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Super Admins</h1>
         <p className="text-sm text-text-muted">
@@ -302,6 +302,7 @@ export default function SuperAdminsPage() {
         initialSort={{ key: 'name', direction: 'asc' }}
         searchPlaceholder="Search by name or email…"
         emptyMessage="No super admin accounts yet."
+        exportFileName="super-admin-accounts"
         mobileTitle={(a) => a.name}
         actions={
           <Button onClick={() => setShowForm((v) => !v)}>

@@ -302,7 +302,7 @@ export default function MarkingPage() {
   const unmarked = results.filter((r) => r.percentage === null).length;
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="max-w-7xl space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Marking</h1>
         <p className="text-sm text-text-muted">
@@ -598,6 +598,7 @@ export default function MarkingPage() {
           initialSort={{ key: 'studentName', direction: 'asc' }}
           searchPlaceholder="Search by student, ID or class…"
           emptyMessage="Nobody has sat this assessment yet."
+          exportFileName={`${selected}-results`}
           mobileTitle={(r) => r.studentName}
           onRowClick={(r) => void openPaper(r)}
           filters={[

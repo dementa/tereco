@@ -415,7 +415,7 @@ export default function SystemSchoolsPage() {
   );
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="max-w-7xl space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Schools</h1>
         <p className="text-sm text-text-muted">
@@ -542,6 +542,7 @@ export default function SystemSchoolsPage() {
         initialSort={{ key: 'name', direction: 'asc' }}
         searchPlaceholder="Search schools by name, ID or location…"
         emptyMessage="No schools yet. Add one to get started."
+        exportFileName="schools"
         filters={[
           {
             key: 'status',

@@ -1,16 +1,21 @@
 'use client';
 
-import React, { useDeferredValue, useMemo, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertCircle,
   ArrowDown,
   ArrowUp,
   ChevronLeft,
   ChevronRight,
   ChevronsUpDown,
+  Download,
+  FileSpreadsheet,
+  FileText,
   Search,
   SlidersHorizontal,
   X,
 } from 'lucide-react';
+import { exportToCsv, exportToExcel, exportToPdf, type ExportCell } from '@/lib/tableExport';
 
 export interface DataTableColumn<T> {
   /** Stable key, also used as the sort key. */
@@ -23,6 +28,8 @@ export interface DataTableColumn<T> {
    * numeric ordering; strings compare case-insensitively.
    */
   value?: (row: T) => string | number | null | undefined;
+  /** Plain value written to exported files. Defaults to `value`. */
+  exportValue?: (row: T) => string | number | null | undefined;
   sortable?: boolean;
   /** Hide below the `sm` breakpoint — the card layout shows it regardless. */
   hideOnMobile?: boolean;
@@ -54,6 +61,11 @@ interface DataTableProps<T> {
   actions?: React.ReactNode;
   /** Headline for each card in the mobile layout. Defaults to the first column. */
   mobileTitle?: (row: T) => React.ReactNode;
+  /**
+   * Base name for exported files and the PDF's title. Defaults to "export".
+   * Exports cover every filtered/sorted row, not just the current page.
+   */
+  exportFileName?: string;
 }
 
 function defaultValue<T>(row: T, column: DataTableColumn<T>): string | number | null | undefined {
@@ -64,6 +76,11 @@ function defaultValue<T>(row: T, column: DataTableColumn<T>): string | number | 
 
 function asSearchText(value: string | number | null | undefined): string {
   return value === null || value === undefined ? '' : String(value).toLowerCase();
+}
+
+function exportValueFor<T>(row: T, column: DataTableColumn<T>): string | number | null | undefined {
+  if (column.exportValue) return column.exportValue(row);
+  return defaultValue(row, column);
 }
 
 const PAGE_SIZE_OPTIONS = [15, 30, 50];
@@ -101,6 +118,7 @@ export function DataTable<T>({
   onRowClick,
   actions,
   mobileTitle,
+  exportFileName = 'export',
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState(initialSort ?? null);
@@ -110,6 +128,10 @@ export function DataTable<T>({
   // the selector below (15/30/50) is what actually drives it.
   const [pageSize, setPageSize] = useState(initialPageSize);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState<'csv' | 'excel' | 'pdf' | null>(null);
+  const [exportError, setExportError] = useState('');
+  const exportRef = useRef<HTMLDivElement>(null);
 
   // Keeps typing responsive on large lists: the input updates immediately while
   // the filtering work runs against the deferred value.
@@ -177,6 +199,36 @@ export function DataTable<T>({
     setSearch('');
   }
 
+  useEffect(() => {
+    if (!exportOpen) return;
+    function onClickOutside(e: MouseEvent) {
+      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
+    }
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [exportOpen]);
+
+  async function handleExport(format: 'csv' | 'excel' | 'pdf') {
+    setExportOpen(false);
+    setExportError('');
+    setExporting(format);
+    try {
+      const headers = columns.map((c) => c.header);
+      // Every filtered/sorted row, not just the current page — a person
+      // exporting wants the whole result set they've narrowed down to.
+      const exportRows: ExportCell[][] = processed.map((row) =>
+        columns.map((c) => exportValueFor(row, c) ?? '')
+      );
+      if (format === 'csv') exportToCsv(exportFileName, headers, exportRows);
+      else if (format === 'excel') await exportToExcel(exportFileName, headers, exportRows);
+      else await exportToPdf(exportFileName, exportFileName, headers, exportRows);
+    } catch {
+      setExportError('Export failed. Please try again.');
+    } finally {
+      setExporting(null);
+    }
+  }
+
   return (
     <div className="space-y-3">
       {/* Controls */}
@@ -216,9 +268,61 @@ export function DataTable<T>({
               )}
             </button>
           )}
+          {rows.length > 0 && (
+            <div className="relative" ref={exportRef}>
+              <button
+                type="button"
+                onClick={() => setExportOpen((v) => !v)}
+                disabled={exporting !== null}
+                aria-expanded={exportOpen}
+                aria-haspopup="menu"
+                className="inline-flex items-center gap-2 rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2.5 text-sm font-medium text-[#02465B] hover:border-[#02465B]/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="w-4 h-4" aria-hidden />
+                {exporting ? 'Exporting…' : 'Export'}
+              </button>
+              {exportOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 z-10 mt-1 w-40 overflow-hidden rounded-xl border border-[#E8EFF3] bg-white shadow-lg"
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void handleExport('csv')}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#F8FBFC]"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-[#5A7D8A]" aria-hidden /> CSV
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void handleExport('excel')}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#F8FBFC]"
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-[#5A7D8A]" aria-hidden /> Excel
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => void handleExport('pdf')}
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#F8FBFC]"
+                  >
+                    <FileText className="w-3.5 h-3.5 text-[#5A7D8A]" aria-hidden /> PDF
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
           {actions}
         </div>
       </div>
+
+      {exportError && (
+        <p role="alert" className="flex items-center gap-1.5 text-xs text-[#C0392B]">
+          <AlertCircle className="w-3.5 h-3.5" aria-hidden /> {exportError}
+        </p>
+      )}
 
       {filtersOpen && filters.length > 0 && (
         <div className="rounded-xl border border-[#E8EFF3] bg-[#F8FBFC] p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">

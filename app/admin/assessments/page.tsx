@@ -159,7 +159,7 @@ export default function AdminAssessments() {
   );
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="max-w-7xl space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Assessments</h1>
         <p className="text-sm text-text-muted">
@@ -233,6 +233,7 @@ export default function AdminAssessments() {
         emptyMessage="No assessments yet."
         mobileTitle={(a) => a.title}
         onRowClick={(a) => router.push(`/admin/assessments/${a.systemId}`)}
+        exportFileName="assessments"
         filters={[
           {
             key: 'status',
