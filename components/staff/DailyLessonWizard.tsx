@@ -93,7 +93,7 @@ const LEARNING_AREAS = [
 ]
 
 const SKILLS: Record<string, string[]> = {
-  'Computer Studies':                   ['Word processing', 'Spreadsheets', 'Presentations', 'File management', 'Internet safety'],
+  'Computer Studies':                   ['Computer Lab Rules & Regulation', 'Introduction to Computers', 'Mouse Skills', 'Keyboard Skills', 'Graphical User Interface 1'],
   'Information & Communication Technology': ['Email composition', 'Cloud storage', 'Digital citizenship', 'Online research', 'Data privacy'],
   'Programming & Coding':               ['Variables & data types', 'Control flow', 'Functions', 'Debugging', 'Simple projects'],
   'Data Analysis':                      ['Sorting & filtering', 'Charts & graphs', 'Formulas', 'Pivot tables', 'Data visualisation'],
