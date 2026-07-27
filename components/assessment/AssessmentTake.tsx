@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { AlertCircle, Clock, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthContext';
-import { groupQuestions, type QuestionConfig } from '@/lib/questionGrouping';
+import { groupQuestions, formatQuestionLabel, type QuestionConfig } from '@/lib/questionGrouping';
 
 // 'true_false' MUST be here. It was added to the schema after this component
 // was written, and because this union is local rather than shared with
@@ -266,6 +266,18 @@ export function AssessmentTake() {
   const groups = useMemo(() => groupQuestions(questions), [questions]);
   const currentGroup = groups.find((g) => g.members.some((m) => m.id === questions[currentIndex]?.id));
 
+  // Mirrors formatQuestionLabel usage in the builder, results, marking and PDF
+  // views: a lettered "sub" run (22a/22b/22c) prints as "22. (a)", "(b)", "(c)"
+  // everywhere else, so the live sitting screen must use the same lookup
+  // rather than echoing the raw stored code.
+  const labelByQuestionId = useMemo(() => {
+    const map = new Map<string, string>();
+    groups.forEach((g) => {
+      g.members.forEach((m, mi) => map.set(m.id, formatQuestionLabel(m.code, mi === 0)));
+    });
+    return map;
+  }, [groups]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-bg px-4">
@@ -342,7 +354,7 @@ export function AssessmentTake() {
             </p>
           )}
           <p className="text-xs font-medium text-primary-700 uppercase tracking-wider">
-            Question {q.code}
+            Question {labelByQuestionId.get(q.id) ?? q.code}
             {q.maxScore ? ` • ${q.maxScore} mark${q.maxScore === 1 ? '' : 's'}` : ''}
           </p>
 
@@ -359,6 +371,15 @@ export function AssessmentTake() {
           )}
 
           <p className="text-lg font-medium text-primary-900 mt-2">{q.questionText}</p>
+
+          {q.imageUrl && q.imageUrl !== currentGroup?.groupImageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={q.imageUrl}
+              alt=""
+              className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
+            />
+          )}
         </div>
 
         <div className="mt-4">
@@ -453,7 +474,7 @@ export function AssessmentTake() {
                     : 'bg-white text-text-muted border border-primary-700/10'
               }`}
             >
-              {qq.code}
+              {labelByQuestionId.get(qq.id) ?? qq.code}
             </button>
           );
         })}
