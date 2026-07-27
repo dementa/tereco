@@ -103,7 +103,7 @@ const SKILLS: Record<string, string[]> = {
   'Multimedia & Graphics':              ['Image editing', 'Vector graphics', 'Video basics', 'Audio editing', 'Presentation design'],
 }
 
-const APPROACHES = ['Demonstration', 'Pair work', 'Group work', 'Individual practice', 'Discussion', 'Project-based', 'Flipped classroom']
+const APPROACHES = ['Theory', 'Practical', 'Demonstration', 'Pair work', 'Group work', 'Individual practice', 'Discussion', 'Project-based', 'Flipped classroom']
 const PROGRESS_LEVELS = ['Excellent', 'Good', 'Satisfactory', 'Needs improvement', 'Poor']
 const PERIODS = Array.from({ length: 8 }, (_, i) => `Period ${i + 1}`)
 const COMPUTER_ACCESS = ['Full access — 1 computer per learner', 'Shared — 2–3 learners per computer', 'Limited — 4+ per computer', 'No computer access']
