@@ -172,14 +172,14 @@ export function QuestionPaperDocument({
               <Text style={styles.sectionHeader}>SECTION {group.section}</Text>
             )}
 
-            {(group.groupImageUrl || group.groupHeading) && (
+            {group.groupImageUrl && (
               // wrap={false} so the shared diagram never lands on its own
               // page, separated from the heading that introduces it. The
               // image must print whenever it exists — an author who never
               // typed the optional caption still uploaded a diagram the
               // paper needs.
               <View wrap={false}>
-                {group.groupImageUrl && <Image style={styles.groupImage} src={group.groupImageUrl} />}
+                <Image style={styles.groupImage} src={group.groupImageUrl} />
                 {group.groupHeading && <Text style={styles.groupHeading}>{group.groupHeading}</Text>}
               </View>
             )}
@@ -202,7 +202,14 @@ export function QuestionPaperDocument({
                     </Text>
                   </View>
 
-                  {showOwnImage ? <Image style={styles.questionImage} src={q.imageUrl} /> : null}
+                  {showOwnImage && <Image style={styles.questionImage} src={q.imageUrl} />}
+                  {/* A true shared stimulus already printed its caption above,
+                      next to the group's own image — this is the standalone
+                      case, where the description belongs with the picture it's
+                      actually describing. */}
+                  {showOwnImage && !group.groupImageUrl && group.groupHeading && (
+                    <Text style={styles.groupHeading}>{group.groupHeading}</Text>
+                  )}
 
                   {/* One answer per question: the learner circles the letter. */}
                   {(q.questionType === 'mcq' || q.questionType === 'true_false') &&

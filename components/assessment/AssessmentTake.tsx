@@ -359,26 +359,37 @@ export function AssessmentTake() {
           </p>
 
           {currentGroup?.groupImageUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={currentGroup.groupImageUrl}
-              alt=""
-              className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
-            />
-          )}
-          {currentGroup?.groupHeading && (
-            <p className="text-sm italic text-[#5A7D8A] mt-2">{currentGroup.groupHeading}</p>
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={currentGroup.groupImageUrl}
+                alt=""
+                className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
+              />
+              {currentGroup.groupHeading && (
+                <p className="text-sm italic text-[#5A7D8A] mt-2">{currentGroup.groupHeading}</p>
+              )}
+            </>
           )}
 
           <p className="text-lg font-medium text-primary-900 mt-2">{q.questionText}</p>
 
           {q.imageUrl && q.imageUrl !== currentGroup?.groupImageUrl && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={q.imageUrl}
-              alt=""
-              className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
-            />
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={q.imageUrl}
+                alt=""
+                className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
+              />
+              {/* A true shared stimulus already printed its caption above,
+                  next to the group's own image — this is the standalone
+                  case, where the description belongs with the picture it's
+                  actually describing. */}
+              {!currentGroup?.groupImageUrl && currentGroup?.groupHeading && (
+                <p className="text-sm italic text-[#5A7D8A] mt-2">{currentGroup.groupHeading}</p>
+              )}
+            </>
           )}
         </div>
 
