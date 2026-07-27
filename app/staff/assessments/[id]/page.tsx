@@ -952,7 +952,14 @@ export default function AssessmentDetailPage() {
                   <GroupImageField
                     assessmentId={assessment.id}
                     anchorPosition={anchor.position}
-                    imageUrl={group.groupImageUrl}
+                    // group.groupImageUrl is only ever set for a true
+                    // multi-question group (see groupQuestions in
+                    // lib/questionGrouping.ts) — for an ordinary standalone
+                    // question it's always undefined, which hid the image
+                    // right after uploading it. Falls back to the anchor's
+                    // own imageUrl, which for a single-member group IS this
+                    // question's image.
+                    imageUrl={group.groupImageUrl ?? anchor.imageUrl}
                     imagePublicId={anchor.imagePublicId}
                     title={anchor.config?.groupImageTitle}
                     memberCodes={group.members.map((m) => m.code)}
