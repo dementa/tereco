@@ -32,7 +32,7 @@ const QuestionConfigSchema = z
   .object({
     section: z.string().trim().max(4).optional(),
     groupId: z.string().optional(),
-    groupKind: z.enum(['relative', 'sub']).optional(),
+    groupKind: z.enum(['relative', 'sub', 'subsub']).optional(),
     groupImageTitle: z.string().trim().max(200).optional(),
   })
   .strict()

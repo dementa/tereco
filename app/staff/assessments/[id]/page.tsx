@@ -10,7 +10,9 @@ import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useAuth } from '@/components/auth/AuthContext';
-import { ArrowLeft, Download, KeyRound, Plus, Printer, Save, Send, Trash2, UserPlus } from 'lucide-react';
+import {
+  ArrowLeft, ChevronDown, ChevronRight, Download, KeyRound, Plus, Printer, Save, Send, Trash2, UserPlus,
+} from 'lucide-react';
 import { GroupImageField } from '@/components/admin/GroupImageField';
 import {
   computeCodes,
@@ -40,6 +42,18 @@ const QUESTION_TYPES: { value: QuestionType; label: string }[] = [
   { value: 'short', label: 'Short answer (marked by hand)' },
   { value: 'long', label: 'Long answer (marked by hand)' },
 ];
+
+/** Short form for the collapsed row's badge — QUESTION_TYPES' labels are too long to fit there. */
+const TYPE_SHORT_LABEL: Record<QuestionType, string> = {
+  mcq: 'MCQ',
+  checkbox: 'Checkbox',
+  true_false: 'True/False',
+  fill: 'Fill blank',
+  matching: 'Matching',
+  dragdrop: 'Drag & drop',
+  short: 'Short answer',
+  long: 'Long answer',
+};
 
 interface Question {
   id?: string;
@@ -117,6 +131,15 @@ const SECTION_TABS: { value: string; label: string }[] = [
 
 function blankQuestion(position: number, config?: QuestionConfig): Question {
   return {
+    // saveQuestions() never reads this back off the payload — it always
+    // deletes and re-inserts the whole paper, minting real ids server-side —
+    // so this only ever exists to give the row a STABLE React key. Without
+    // it, a freshly added question fell back to keying on its array index,
+    // which shifts every time a question is inserted or removed anywhere
+    // before it in the list: React would then reuse the wrong row's
+    // component instance (and its in-flight upload state) for whatever
+    // question now landed on that index.
+    id: crypto.randomUUID(),
     position,
     // Display code is now always computed live (see computeCodes) — this is
     // just a harmless placeholder until the next render recomputes it.
@@ -249,6 +272,21 @@ export default function AssessmentDetailPage() {
   const [newlyAddedIndex, setNewlyAddedIndex] = useState<number | null>(null);
   const newlyAddedRef = useRef<HTMLDivElement | null>(null);
 
+  // A paper with dozens of questions rendering every one's full editing form
+  // at once was the whole page — collapsed to a one-line summary by default,
+  // a question only shows its fields while its id is in this set. Freshly
+  // added questions are expanded immediately (see the add* functions below),
+  // since you're about to fill them in.
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  function toggleExpanded(id: string) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   function addQuestion() {
     // Tagged with whichever section tab is active, and inserted right after
     // that section's last existing question — never at the bare end of the
@@ -264,12 +302,15 @@ export default function AssessmentDetailPage() {
         break;
       }
     }
-    setQuestions((q) => [
-      ...q.slice(0, insertAt),
-      blankQuestion(insertAt + 1, section ? { section } : undefined),
-      ...q.slice(insertAt),
-    ]);
+    const newQuestion = blankQuestion(0, section ? { section } : undefined);
+    setQuestions((q) =>
+      [...q.slice(0, insertAt), newQuestion, ...q.slice(insertAt)].map((item, i) => ({
+        ...item,
+        position: i + 1,
+      }))
+    );
     setNewlyAddedIndex(insertAt);
+    setExpanded((prev) => new Set(prev).add(newQuestion.id!));
   }
 
   /**
@@ -289,8 +330,11 @@ export default function AssessmentDetailPage() {
     let insertAt = index + 1;
     while (insertAt < updated.length && updated[insertAt].config?.groupId === groupId) insertAt++;
     const newQuestion = blankQuestion(0, { groupId, groupKind: 'relative', section });
-    setQuestions([...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]);
+    const next = [...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]
+      .map((q, i) => ({ ...q, position: i + 1 }));
+    setQuestions(next);
     setNewlyAddedIndex(insertAt);
+    setExpanded((prev) => new Set(prev).add(newQuestion.id!));
   }
 
   /**
@@ -309,8 +353,34 @@ export default function AssessmentDetailPage() {
     let insertAt = index + 1;
     while (insertAt < updated.length && updated[insertAt].config?.groupId === groupId) insertAt++;
     const newQuestion = blankQuestion(0, { groupId, groupKind: 'sub', section });
-    setQuestions([...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]);
+    const next = [...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]
+      .map((q, i) => ({ ...q, position: i + 1 }));
+    setQuestions(next);
     setNewlyAddedIndex(insertAt);
+    setExpanded((prev) => new Set(prev).add(newQuestion.id!));
+  }
+
+  /**
+   * "(b) becomes (b) (i), (b) (ii)" — only offered on a lettered part's LAST
+   * sibling, and always appends at the nested run's own end. Nesting must
+   * stay the tail of its outer run — computeCodes (lib/questionGrouping.ts)
+   * reads the parent's code by array position, one slot back, not by a
+   * stored pointer, so a lettered sibling can never be added after this.
+   */
+  function addSubSubQuestion(index: number) {
+    const target = questions[index];
+    const next1 = questions[index + 1];
+    const groupId =
+      next1?.config?.groupKind === 'subsub' ? next1.config.groupId! : crypto.randomUUID();
+    const section = target.config?.section;
+    let insertAt = index + 1;
+    while (insertAt < questions.length && questions[insertAt].config?.groupId === groupId) insertAt++;
+    const newQuestion = blankQuestion(0, { groupId, groupKind: 'subsub', section });
+    const next = [...questions.slice(0, insertAt), newQuestion, ...questions.slice(insertAt)]
+      .map((q, i) => ({ ...q, position: i + 1 }));
+    setQuestions(next);
+    setNewlyAddedIndex(insertAt);
+    setExpanded((prev) => new Set(prev).add(newQuestion.id!));
   }
 
   useEffect(() => {
@@ -327,7 +397,16 @@ export default function AssessmentDetailPage() {
   function removeQuestion(index: number) {
     setQuestions((current) => {
       const removed = current[index];
-      let next = current.filter((_, i) => i !== index);
+
+      // Roman sub-parts have nowhere to nest without their lettered anchor —
+      // removing "(b)" takes "(b) (i)"/"(b) (ii)" with it, rather than
+      // leaving them to renumber under whichever letter now precedes them.
+      let end = index + 1;
+      if (removed.config?.groupKind === 'sub' && current[end]?.config?.groupKind === 'subsub') {
+        const nestedId = current[end].config!.groupId;
+        while (end < current.length && current[end].config?.groupId === nestedId) end++;
+      }
+      let next = current.filter((_, i) => i < index || i >= end);
 
       // If the removed question was a group's anchor holding the shared
       // image/title, migrate it to the new first remaining member — or the
@@ -364,6 +443,26 @@ export default function AssessmentDetailPage() {
         }
         return q;
       });
+
+      // A 'sub' member demoted above may have been the anchor a 'subsub' run
+      // was nesting under — that run is now orphaned (its parent's code no
+      // longer has a letter to append a roman numeral to), so it collapses
+      // to plain standalone questions too, same as any group whose structure
+      // fell out from under it.
+      const invalid = new Set<number>();
+      for (let i = 0; i < next.length; i++) {
+        const cfg = next[i].config;
+        const isRunStart = cfg?.groupKind === 'subsub' && next[i - 1]?.config?.groupId !== cfg.groupId;
+        if (isRunStart && next[i - 1]?.config?.groupKind !== 'sub') {
+          const gid = cfg!.groupId;
+          for (let j = i; j < next.length && next[j].config?.groupId === gid; j++) invalid.add(j);
+        }
+      }
+      if (invalid.size > 0) {
+        next = next.map((q, i) =>
+          invalid.has(i) ? { ...q, config: q.config?.section ? { section: q.config.section } : undefined } : q
+        );
+      }
 
       return next.map((q, i) => ({ ...q, position: i + 1 }));
     });
@@ -845,8 +944,10 @@ export default function AssessmentDetailPage() {
 
           {visibleGroups.map((group) => {
             const anchor = group.members[0];
+            const lastMember = group.members[group.members.length - 1];
+            const hasNestedRun = questions[lastMember.globalIndex + 1]?.config?.groupKind === 'subsub';
             return (
-              <div key={anchor.id ?? anchor.globalIndex} className="space-y-2">
+              <div key={anchor.id} className="space-y-2">
                 <div className="rounded-xl border-2 border-[#E8EFF3] p-3 space-y-3">
                   <GroupImageField
                     assessmentId={assessment.id}
@@ -869,36 +970,66 @@ export default function AssessmentDetailPage() {
                     }
                   />
 
-                  {group.members.map((q, mi) => (
+                  {group.members.map((q, mi) => {
+                    const isOpen = expanded.has(q.id!);
+                    return (
                     <div
-                      key={q.id ?? q.globalIndex}
+                      key={q.id}
                       ref={q.globalIndex === newlyAddedIndex ? newlyAddedRef : undefined}
                       className="space-y-2 pt-2 border-t border-[#E8EFF3] first:border-t-0 first:pt-0"
                     >
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-[#5A7D8A] w-14 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => toggleExpanded(q.id!)}
+                          aria-label={isOpen ? `Collapse ${q.code}` : `Expand ${q.code}`}
+                          className="shrink-0 text-[#5A7D8A]"
+                        >
+                          {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </button>
+                        <span className="text-xs font-medium text-[#5A7D8A] w-12 shrink-0">
                           {formatQuestionLabel(q.code, mi === 0)}
                         </span>
-                        <input
-                          type="text"
-                          value={q.questionText}
-                          disabled={locked}
-                          onChange={(e) => updateQuestion(q.globalIndex, { questionText: e.target.value })}
-                          placeholder="Question text"
-                          aria-label={`${q.code} text`}
-                          className="flex-1 rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
-                        />
+                        {isOpen ? (
+                          <input
+                            type="text"
+                            value={q.questionText}
+                            disabled={locked}
+                            onChange={(e) => updateQuestion(q.globalIndex, { questionText: e.target.value })}
+                            placeholder="Question text"
+                            aria-label={`${q.code} text`}
+                            className="flex-1 rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => toggleExpanded(q.id!)}
+                            className="flex-1 min-w-0 flex items-center gap-2 text-left"
+                          >
+                            <span className="truncate text-sm text-primary-900">
+                              {q.questionText.trim() || (
+                                <span className="italic text-text-muted">Untitled question</span>
+                              )}
+                            </span>
+                            <span className="shrink-0 text-[10px] text-text-muted">
+                              {TYPE_SHORT_LABEL[q.questionType]} · {q.maxScore} mark{q.maxScore === 1 ? '' : 's'}
+                            </span>
+                          </button>
+                        )}
                         {!locked && (
                           <button
                             type="button"
                             onClick={() => removeQuestion(q.globalIndex)}
                             aria-label={`Remove ${q.code}`}
-                            className="text-[#C26565] hover:text-[#A34C4C]"
+                            className="shrink-0 text-[#C26565] hover:text-[#A34C4C]"
                           >
                             <Trash2 className="w-4 h-4" aria-hidden />
                           </button>
                         )}
                       </div>
+
+                      {isOpen && (
+                      <>
 
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <Select
@@ -1073,7 +1204,7 @@ export default function AssessmentDetailPage() {
 
                       {!locked && (
                         <div className="flex gap-3 pl-10">
-                          {q.config?.groupKind !== 'sub' && (
+                          {q.config?.groupKind !== 'sub' && q.config?.groupKind !== 'subsub' && (
                             <button
                               type="button"
                               onClick={() => addRelatedQuestion(q.globalIndex)}
@@ -1082,7 +1213,7 @@ export default function AssessmentDetailPage() {
                               + Related question
                             </button>
                           )}
-                          {q.config?.groupKind !== 'relative' && (
+                          {q.config?.groupKind !== 'relative' && q.config?.groupKind !== 'subsub' && !hasNestedRun && (
                             <button
                               type="button"
                               onClick={() => addSubQuestion(q.globalIndex)}
@@ -1091,10 +1222,22 @@ export default function AssessmentDetailPage() {
                               + Sub-part
                             </button>
                           )}
+                          {q.config?.groupKind === 'sub' && mi === group.members.length - 1 && (
+                            <button
+                              type="button"
+                              onClick={() => addSubSubQuestion(q.globalIndex)}
+                              className="text-xs text-[#02465B] hover:underline"
+                            >
+                              + Roman sub-part
+                            </button>
+                          )}
                         </div>
                       )}
+                      </>
+                      )}
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );

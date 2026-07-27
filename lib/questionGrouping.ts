@@ -21,9 +21,13 @@ export interface QuestionConfig {
   /**
    * 'relative': each member keeps its own paper number (13, 14 — they just
    * share a heading/image). 'sub': the whole contiguous run consumes ONE
-   * paper number, members get lettered suffixes (22a, 22b, 22c).
+   * paper number, members get lettered suffixes (22a, 22b, 22c). 'subsub':
+   * a run of roman-numeral parts nested under the single lettered member
+   * immediately before it (41b, 41b(i), 41b(ii)) — only ever the tail of a
+   * 'sub' run, never followed by another letter of that same run, because
+   * computeCodes reads the parent's code by array position, not by pointer.
    */
-  groupKind?: 'relative' | 'sub';
+  groupKind?: 'relative' | 'sub' | 'subsub';
   /**
    * Set only on a group's anchor (its first member in position order), only
    * when the author gave the shared image a caption, e.g. "The sketch map of
@@ -60,6 +64,15 @@ interface Codeable {
  * Section changes never reset the counter: numbering is continuous across
  * sections (Section A: 1-10, Section B continues 11-20). A section is purely
  * a visual divider, not a renumbering point.
+ *
+ * A 'subsub' run nests under whichever code was JUST assigned — i.e. the row
+ * immediately before it in array order — and never touches the counter
+ * itself. This only produces the intended "41b, 41b(i), 41b(ii)" result
+ * because the authoring UI only ever lets a 'subsub' run start right after
+ * the 'sub' member it nests under, and never inserts another lettered
+ * sibling after it (see addSubSubQuestion in the assessment builder): the
+ * array position doubling as the parent pointer only holds up under that
+ * constraint.
  */
 export function computeCodes<T extends Codeable>(questions: T[]): string[] {
   const codes: string[] = new Array(questions.length);
@@ -78,6 +91,22 @@ export function computeCodes<T extends Codeable>(questions: T[]): string[] {
         for (let k = i; k < j; k++) codes[k] = `${counter}${String.fromCharCode(97 + (k - i))}`;
       }
       i = j;
+    } else if (cfg.groupId && cfg.groupKind === 'subsub') {
+      const groupId = cfg.groupId;
+      let j = i;
+      while (j < questions.length && readConfig(questions[j].config).groupId === groupId) j++;
+      const parentCode = i > 0 ? codes[i - 1] : undefined;
+      if (parentCode && j - i > 1) {
+        for (let k = i; k < j; k++) codes[k] = `${parentCode}${toRoman(k - i + 1)}`;
+      } else {
+        // No lettered parent to nest under, or the run has shrunk to one —
+        // the same defensive backstop as the 'sub' branch above.
+        for (let k = i; k < j; k++) {
+          counter += 1;
+          codes[k] = `${counter}`;
+        }
+      }
+      i = j;
     } else {
       counter += 1;
       codes[i] = `${counter}`;
@@ -87,15 +116,37 @@ export function computeCodes<T extends Codeable>(questions: T[]): string[] {
   return codes;
 }
 
+/** Lowercase roman numerals, 1-indexed — exam sub-parts never run past (v) or (vi). */
+function toRoman(n: number): string {
+  const numerals: [number, string][] = [[10, 'x'], [9, 'ix'], [5, 'v'], [4, 'iv'], [1, 'i']];
+  let result = '';
+  for (const [value, symbol] of numerals) {
+    while (n >= value) {
+      result += symbol;
+      n -= value;
+    }
+  }
+  return result;
+}
+
 /**
  * "13." for a plain number or any 'relative' group member. For a lettered
  * 'sub' run, UNEB prints the shared number once on the first part — "22. (a)"
  * — and every later part as a bare bracketed letter — "(b)", "(c)" — never
- * repeating the number. Callers pass whether this member is the first in its
- * group (group.members.map's own index === 0); the plain-number branch below
- * ignores it, so it's always safe to pass regardless of the code's shape.
+ * repeating the number. A nested 'subsub' (roman) run follows the identical
+ * rule one level down: its first part repeats the letter — "(b) (i)" — and
+ * later parts print the bare numeral — "(ii)". Callers pass whether this
+ * member is the first in its group (group.members.map's own index === 0);
+ * the plain-number branch below ignores it, so it's always safe to pass
+ * regardless of the code's shape.
  */
 export function formatQuestionLabel(code: string, isFirstInGroup: boolean): string {
+  const roman = /^(\d+[a-z])([ivx]+)$/.exec(code);
+  if (roman) {
+    const [, letterCode, numeral] = roman;
+    const letter = letterCode.slice(-1);
+    return isFirstInGroup ? `(${letter}) (${numeral})` : `(${numeral})`;
+  }
   const m = /^(\d+)([a-z])$/.exec(code);
   if (!m) return `${code}.`;
   const [, num, letter] = m;
