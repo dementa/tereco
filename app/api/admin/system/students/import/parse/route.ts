@@ -60,6 +60,13 @@ export async function POST(request: NextRequest) {
         if (!field) return;
         let value: unknown = cell.value;
         if (value && typeof value === "object" && "result" in value) value = (value as { result: unknown }).result;
+        // A cell with mixed/custom formatting (e.g. pasted in from another
+        // sheet) stores its value as rich text runs rather than a plain
+        // string — read as-is, `String(value)` on that object prints
+        // "[object Object]" instead of the text it displays.
+        if (value && typeof value === "object" && "richText" in value) {
+          value = (value as { richText: { text: string }[] }).richText.map((run) => run.text).join("");
+        }
         if (value instanceof Date) {
           data[field] = value.toISOString().slice(0, 10);
         } else if (value !== null && value !== undefined) {
