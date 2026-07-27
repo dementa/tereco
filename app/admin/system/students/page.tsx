@@ -572,7 +572,7 @@ export default function SystemStudentsPage() {
 
   return (
     <div className="max-w-7xl space-y-4">
-      <div>
+      <div className="print:hidden">
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Student Accounts</h1>
         <p className="text-sm text-text-muted">
           Creating a student opens an enrolment for the chosen class — placement is a dated record,
@@ -584,6 +584,10 @@ export default function SystemStudentsPage() {
         <CredentialsCard {...newCredentials} onDismiss={() => setNewCredentials(null)} />
       )}
 
+      {/* Everything below is irrelevant once a credential slip is on screen to
+          print — without this, printing a just-reset password also printed
+          the whole roster table and every open modal behind it. */}
+      <div className="print:hidden space-y-4">
       {requests.length > 0 && (
         <Card>
           <h2 className="font-semibold text-primary-900 mb-1">Pending student requests</h2>
@@ -1013,6 +1017,7 @@ export default function SystemStudentsPage() {
           />
         </Card>
       )}
+      </div>
     </div>
   );
 }

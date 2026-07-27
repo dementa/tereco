@@ -44,7 +44,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen bg-bg flex">
-      <aside className="w-60 shrink-0 bg-bg-card border-r border-primary-100 hidden md:flex flex-col sticky top-0 h-screen">
+      <aside className="w-60 shrink-0 bg-bg-card border-r border-primary-100 hidden md:flex flex-col sticky top-0 h-screen print:hidden">
         <div className="p-5 flex items-center gap-3 border-b border-primary-100">
           <div className="w-10 h-10 rounded-xl bg-primary-700 flex items-center justify-center">
             <span className="text-white text-sm font-bold">TC</span>
@@ -111,12 +111,12 @@ function AdminShell({ children }: { children: React.ReactNode }) {
       <div className="flex-1 min-w-0 flex flex-col">
         {/* Desktop header strip: the sidebar has no room for the bell, and it
             must stay reachable from every page. */}
-        <div className="hidden md:flex items-center justify-end gap-2 px-8 py-2 border-b border-primary-100 bg-bg-card">
+        <div className="hidden md:flex items-center justify-end gap-2 px-8 py-2 border-b border-primary-100 bg-bg-card print:hidden">
           <NotificationBell />
         </div>
 
         {/* Mobile top bar: just branding + the bell, nav lives in the bottom tab bar. */}
-        <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-primary-100 bg-bg-card">
+        <div className="md:hidden flex items-center justify-between px-4 py-3 border-b border-primary-100 bg-bg-card print:hidden">
           <div className="flex items-center gap-2 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-primary-700 flex items-center justify-center shrink-0">
               <span className="text-white text-xs font-bold">TC</span>
@@ -125,7 +125,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
           <NotificationBell />
         </div>
-        <main className="flex-1 p-4 sm:p-6 md:p-8 pb-24 md:pb-8 overflow-x-hidden">{children}</main>
+        <main className="flex-1 p-4 sm:p-6 md:p-8 pb-24 md:pb-8 overflow-x-hidden print:p-0">{children}</main>
       </div>
 
       <MobileTabBar

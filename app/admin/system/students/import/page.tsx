@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Select';
 import { useToast } from '@/components/ui/ToastProvider';
-import { Download, Upload, ArrowLeft, CheckCircle2, XCircle, MinusCircle } from 'lucide-react';
+import { Download, Upload, ArrowLeft, CheckCircle2, XCircle, MinusCircle, Printer } from 'lucide-react';
 
 interface ParsedRow {
   row: number;
@@ -227,14 +227,36 @@ export default function StudentImportPage() {
               {skippedCount > 0 && <Badge variant="muted">{skippedCount} already existed</Badge>}{' '}
               {errorCount > 0 && <Badge variant="muted" className="text-error">{errorCount} failed</Badge>}
             </h2>
-            <Button variant="outline" onClick={downloadResultsCsv}>
-              <Download className="w-4 h-4 mr-1.5" /> Download results (system IDs + passwords)
-            </Button>
+            <div className="flex gap-2 print:hidden">
+              <Button variant="outline" onClick={() => window.print()}>
+                <Printer className="w-4 h-4 mr-1.5" /> Print credential slips
+              </Button>
+              <Button variant="outline" onClick={downloadResultsCsv}>
+                <Download className="w-4 h-4 mr-1.5" /> Download results (system IDs + passwords)
+              </Button>
+            </div>
           </div>
-          <p className="text-xs text-text-muted mb-3">
+          <p className="text-xs text-text-muted mb-3 print:hidden">
             Safe to re-upload the same file — students that already exist (matched by name + class + stream) are skipped, not duplicated.
           </p>
-          <div className="max-h-96 overflow-y-auto space-y-1.5">
+
+          {/* Printable credential slips — one per created student. Passwords are
+              only ever held in this in-memory results list, never re-fetched
+              from storage, so this is the only place they can be printed from. */}
+          <div className="hidden print:block">
+            <h2 className="text-lg font-semibold mb-4">Student login credentials</h2>
+            <div className="grid grid-cols-2 gap-3">
+              {results.filter((r) => r.status === 'created').map((r) => (
+                <div key={r.row} className="border border-black rounded-lg p-3 break-inside-avoid">
+                  <p className="font-medium">{r.name}</p>
+                  <p className="text-sm">Student ID: <span className="font-mono">{r.systemId}</span></p>
+                  <p className="text-sm">Password: <span className="font-mono">{r.temporaryPassword}</span></p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="max-h-96 overflow-y-auto space-y-1.5 print:hidden">
             {results.map((r) => (
               <div key={r.row} className="flex items-center justify-between gap-3 text-xs py-1.5 border-b border-primary-50 last:border-0">
                 <span className="flex items-center gap-1.5 min-w-0">
