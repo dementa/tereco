@@ -9,6 +9,7 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { ArrowLeft, Check, CheckSquare, Download, FileText, Minus, Plus, X } from 'lucide-react';
 import { groupQuestions, formatQuestionLabel, type QuestionConfig } from '@/lib/questionGrouping';
+import { MarkingGuidance } from '@/components/MarkingGuidance';
 
 interface AssessmentOption {
   id: string;
@@ -575,7 +576,7 @@ export default function MarkingPage() {
                           <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-2">
                             MARKING GUIDANCE
                           </p>
-                          <p className="text-sm text-[#5A7D8A]">{a.modelAnswer}</p>
+                          <MarkingGuidance text={a.modelAnswer} />
                         </>
                       )}
 

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Document, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import type { Question } from '@/lib/assessments';
+import { PdfMarkingGuidance } from './MarkingGuidance';
 
 /**
  * The marking key: correct answers for objective questions, and the author's
@@ -110,7 +111,7 @@ export function AnswerKeyDocument({
                 <>
                   <Text style={styles.label}>MARKING GUIDANCE</Text>
                   {q.modelAnswer ? (
-                    <Text style={styles.model}>{q.modelAnswer}</Text>
+                    <PdfMarkingGuidance text={q.modelAnswer} style={styles.model} />
                   ) : (
                     // Saying so beats printing an empty line the marker cannot
                     // interpret.

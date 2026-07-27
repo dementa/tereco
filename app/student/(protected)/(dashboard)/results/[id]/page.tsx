@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/components/auth/AuthContext';
 import { ArrowLeft, Check, Download, Minus, Share2, X } from 'lucide-react';
 import { groupQuestions, formatQuestionLabel, type QuestionConfig } from '@/lib/questionGrouping';
+import { MarkingGuidance } from '@/components/MarkingGuidance';
 
 type Verdict = 'correct' | 'partial' | 'wrong' | 'unmarked';
 
@@ -276,7 +277,7 @@ export default function StudentResultPage() {
                 {a.verdict !== 'unmarked' && !objective && a.modelAnswer && (
                   <>
                     <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-3">WHAT WAS EXPECTED</p>
-                    <p className="text-sm text-[#5A7D8A]">{a.modelAnswer}</p>
+                    <MarkingGuidance text={a.modelAnswer} />
                   </>
                 )}
 

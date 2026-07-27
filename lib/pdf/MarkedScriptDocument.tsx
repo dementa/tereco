@@ -2,6 +2,7 @@ import React from 'react';
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import type { MarkedScript } from '@/lib/assessments';
 import { groupQuestions, formatQuestionLabel } from '@/lib/questionGrouping';
+import { PdfMarkingGuidance } from './MarkingGuidance';
 
 /**
  * One learner's marked paper: what they answered, what was correct, and the
@@ -191,7 +192,7 @@ function ScriptPages({ script }: { script: MarkedScript }) {
                   {a.verdict !== 'unmarked' && !objective && a.modelAnswer && (
                     <>
                       <Text style={styles.label}>WHAT WAS EXPECTED</Text>
-                      <Text style={styles.guidance}>{a.modelAnswer}</Text>
+                      <PdfMarkingGuidance text={a.modelAnswer} style={styles.guidance} />
                     </>
                   )}
 
