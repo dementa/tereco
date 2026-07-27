@@ -294,7 +294,9 @@ export default function AssessmentDetailPage() {
     let insertAt = index + 1;
     while (insertAt < updated.length && updated[insertAt].config?.groupId === groupId) insertAt++;
     const newQuestion = blankQuestion(0, { groupId, groupKind: 'relative', section });
-    setQuestions([...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]);
+    const next = [...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]
+      .map((q, i) => ({ ...q, position: i + 1 }));
+    setQuestions(next);
     setNewlyAddedIndex(insertAt);
   }
 
@@ -314,7 +316,9 @@ export default function AssessmentDetailPage() {
     let insertAt = index + 1;
     while (insertAt < updated.length && updated[insertAt].config?.groupId === groupId) insertAt++;
     const newQuestion = blankQuestion(0, { groupId, groupKind: 'sub', section });
-    setQuestions([...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]);
+    const next = [...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]
+      .map((q, i) => ({ ...q, position: i + 1 }));
+    setQuestions(next);
     setNewlyAddedIndex(insertAt);
   }
 
