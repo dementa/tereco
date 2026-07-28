@@ -167,7 +167,7 @@ export function QuestionPaperDocument({
         </View>
 
         {groupQuestions(questions).map((group, gi) => (
-          <View key={gi} style={styles.group}>
+          <View key={gi} style={styles.group} break={gi > 0 && group.sectionChanged}>
             {group.sectionChanged && group.section && (
               <Text style={styles.sectionHeader}>SECTION {group.section}</Text>
             )}
@@ -258,9 +258,13 @@ export function QuestionPaperDocument({
         ))}
 
         <View style={styles.footer} fixed>
-          <Text>
-            {assessmentSystemId} · {schoolName ?? 'TERECO'} · END OF PAPER
-          </Text>
+          <Text
+            render={({ pageNumber, totalPages }) =>
+              pageNumber === totalPages
+                ? `${assessmentSystemId} · ${schoolName ?? 'TERECO'} · END OF PAPER`
+                : ''
+            }
+          />
           <Text render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
         </View>
       </Page>
