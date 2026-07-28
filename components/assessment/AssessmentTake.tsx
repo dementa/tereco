@@ -6,7 +6,13 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { AlertCircle, Clock, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthContext';
-import { groupQuestions, formatQuestionLabel, type QuestionConfig } from '@/lib/questionGrouping';
+import {
+  groupQuestions,
+  formatQuestionLabel,
+  isStemParent,
+  stemParentIndex,
+  type QuestionConfig,
+} from '@/lib/questionGrouping';
 
 // 'true_false' MUST be here. It was added to the schema after this component
 // was written, and because this union is local rather than shared with
@@ -313,7 +319,20 @@ export function AssessmentTake() {
   const total = questions.length;
   const isLast = currentIndex === total - 1;
   const isFirst = currentIndex === 0;
-  const answeredCount = questions.filter(qq => (answers[qq.id] ?? '').trim() !== '').length;
+  // Answered count only ever needs to reflect questions the learner could
+  // actually answer — a stem row never gets a response of its own.
+  const answeredCount = questions.filter(
+    (qq, i) => !isStemParent(questions, i) && (answers[qq.id] ?? '').trim() !== ''
+  ).length;
+
+  // A lettered part with roman-numeral children is a stem/prompt only —
+  // "Identify the parts labelled:" — never answered itself; see
+  // isStemParent in lib/questionGrouping.ts. Its roman children print the
+  // stem's own text (and image, if any) above their own, so the context
+  // isn't lost when navigating straight to "(i)" or "(ii)".
+  const stem = isStemParent(questions, currentIndex);
+  const stemParentIdx = stemParentIndex(questions, currentIndex);
+  const stemQuestion = stemParentIdx !== null ? questions[stemParentIdx] : null;
 
   const mins = Math.floor(remaining / 60);
   const secs = remaining % 60;
@@ -372,7 +391,27 @@ export function AssessmentTake() {
             </>
           )}
 
+          {/* Roman-numeral parts repeat their stem's own text (and image, if
+              any) here — the stem itself is never its own screen the
+              learner answers, so its context has to travel with each part. */}
+          {stemQuestion && (
+            <>
+              {stemQuestion.imageUrl && (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={stemQuestion.imageUrl}
+                  alt=""
+                  className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
+                />
+              )}
+              <p className="text-lg font-medium text-primary-900 mt-2">{stemQuestion.questionText}</p>
+            </>
+          )}
+
           <p className="text-lg font-medium text-primary-900 mt-2">{q.questionText}</p>
+          {stem && (
+            <p className="text-sm text-text-muted mt-1">See the numbered parts below to answer.</p>
+          )}
 
           {q.imageUrl && q.imageUrl !== currentGroup?.groupImageUrl && (
             <>
@@ -393,6 +432,7 @@ export function AssessmentTake() {
           )}
         </div>
 
+        {!stem && (
         <div className="mt-4">
           {/* True/false is a two-option multiple choice and answers identically:
               one radio per option, where the options are always True and False. */}
@@ -450,6 +490,7 @@ export function AssessmentTake() {
             />
           )}
         </div>
+        )}
 
         <div className="flex justify-between items-center mt-6 pt-4 border-t border-primary-700/10">
           <Button variant="outline" onClick={() => goToQuestion(currentIndex - 1)} disabled={isFirst}>
@@ -471,7 +512,9 @@ export function AssessmentTake() {
       {/* Question navigator */}
       <div className="max-w-4xl mx-auto mt-4 flex flex-wrap gap-2">
         {questions.map((qq, idx) => {
-          const answered = (answers[qq.id] ?? '').trim() !== '';
+          // A stem row is never answered itself — don't flag it as
+          // outstanding, there's nothing for the learner to fill in here.
+          const answered = isStemParent(questions, idx) || (answers[qq.id] ?? '').trim() !== '';
           const active = idx === currentIndex;
           return (
             <button

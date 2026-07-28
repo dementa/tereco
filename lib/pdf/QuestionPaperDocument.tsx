@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import type { Question } from '@/lib/assessments';
-import { groupQuestions, formatQuestionLabel } from '@/lib/questionGrouping';
+import { groupQuestions, formatQuestionLabel, isStemParent } from '@/lib/questionGrouping';
 
 /**
  * A printable question paper that can be answered with a pen.
@@ -189,6 +189,14 @@ export function QuestionPaperDocument({
               // diagram above — printing it again per-question would
               // duplicate it under every member's own number.
               const showOwnImage = q.imageUrl && q.imageUrl !== group.groupImageUrl;
+              // A lettered part with roman-numeral children is a stem/prompt
+              // only ("Identify the parts labelled:") — it carries no marks
+              // and no answer space of its own; its roman children print
+              // those. See isStemParent, lib/questionGrouping.ts.
+              const stem = isStemParent(
+                questions,
+                questions.findIndex((x) => x.id === q.id)
+              );
               return (
                 // wrap={false} keeps a question and its answer space on one
                 // page — a split question is unanswerable on paper.
@@ -197,9 +205,11 @@ export function QuestionPaperDocument({
                     <Text style={styles.questionText}>
                       {formatQuestionLabel(q.code, mi === 0)} {q.questionText}
                     </Text>
-                    <Text style={styles.marks}>
-                      [{q.maxScore} {q.maxScore === 1 ? 'mark' : 'marks'}]
-                    </Text>
+                    {!stem && (
+                      <Text style={styles.marks}>
+                        [{q.maxScore} {q.maxScore === 1 ? 'mark' : 'marks'}]
+                      </Text>
+                    )}
                   </View>
 
                   {showOwnImage && <Image style={styles.questionImage} src={q.imageUrl} />}
@@ -211,29 +221,33 @@ export function QuestionPaperDocument({
                     <Text style={styles.groupHeading}>{group.groupHeading}</Text>
                   )}
 
-                  {/* One answer per question: the learner circles the letter. */}
-                  {(q.questionType === 'mcq' || q.questionType === 'true_false') &&
-                    q.options.map((opt, i) => (
-                      <View key={i} style={styles.optionRow}>
-                        <Text style={styles.optionLetter}>{LETTERS[i]}</Text>
-                        <Text style={styles.optionText}>{opt}</Text>
-                      </View>
-                    ))}
+                  {!stem && (
+                    <>
+                      {/* One answer per question: the learner circles the letter. */}
+                      {(q.questionType === 'mcq' || q.questionType === 'true_false') &&
+                        q.options.map((opt, i) => (
+                          <View key={i} style={styles.optionRow}>
+                            <Text style={styles.optionLetter}>{LETTERS[i]}</Text>
+                            <Text style={styles.optionText}>{opt}</Text>
+                          </View>
+                        ))}
 
-                  {/* Several answers possible: tick every box that applies. */}
-                  {q.questionType === 'checkbox' &&
-                    q.options.map((opt, i) => (
-                      <View key={i} style={styles.optionRow}>
-                        <View style={styles.tickBox} />
-                        <Text style={styles.optionText}>{opt}</Text>
-                      </View>
-                    ))}
+                      {/* Several answers possible: tick every box that applies. */}
+                      {q.questionType === 'checkbox' &&
+                        q.options.map((opt, i) => (
+                          <View key={i} style={styles.optionRow}>
+                            <View style={styles.tickBox} />
+                            <Text style={styles.optionText}>{opt}</Text>
+                          </View>
+                        ))}
 
-                  {q.questionType === 'fill' && <View style={styles.inlineBlank} />}
+                      {q.questionType === 'fill' && <View style={styles.inlineBlank} />}
 
-                  {Array.from({ length: linesFor(q) }).map((_, i) => (
-                    <View key={i} style={styles.answerLine} />
-                  ))}
+                      {Array.from({ length: linesFor(q) }).map((_, i) => (
+                        <View key={i} style={styles.answerLine} />
+                      ))}
+                    </>
+                  )}
                 </View>
               );
             })}

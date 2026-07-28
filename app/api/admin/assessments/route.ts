@@ -69,7 +69,7 @@ const QuestionSchema = z.object({
   ]),
   options: z.array(z.string()).default([]),
   correctAnswer: z.string().optional(),
-  maxScore: z.number().positive().default(1),
+  maxScore: z.number().nonnegative().default(1),
   config: QuestionConfigSchema,
 });
 

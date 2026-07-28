@@ -6,7 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/components/auth/AuthContext';
 import { ArrowLeft, Check, Download, Minus, Share2, X } from 'lucide-react';
-import { groupQuestions, formatQuestionLabel, type QuestionConfig } from '@/lib/questionGrouping';
+import { groupQuestions, formatQuestionLabel, isStemParent, type QuestionConfig } from '@/lib/questionGrouping';
 import { MarkingGuidance } from '@/components/MarkingGuidance';
 
 type Verdict = 'correct' | 'partial' | 'wrong' | 'unmarked';
@@ -149,6 +149,10 @@ export default function StudentResultPage() {
   }
 
   const correctCount = script.answers.filter((a) => a.verdict === 'correct').length;
+  // A stem row (isStemParent) is never itself a scored question — counting
+  // it in the denominator would understate the result (e.g. "3/5" when only
+  // 4 rows were ever answerable).
+  const answerableCount = script.answers.filter((a, i) => !isStemParent(script.answers, i)).length;
 
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-4">
@@ -187,7 +191,7 @@ export default function StudentResultPage() {
             <p className="text-[10px] text-[#5A7D8A] tracking-wide">CORRECT</p>
             <p className="text-2xl font-bold text-primary-900">
               {correctCount}
-              <span className="text-sm font-normal text-[#5A7D8A]">/{script.answers.length}</span>
+              <span className="text-sm font-normal text-[#5A7D8A]">/{answerableCount}</span>
             </p>
           </div>
         </div>
@@ -236,6 +240,31 @@ export default function StudentResultPage() {
             // it again per-member (it lives only on the anchor's row) would
             // duplicate it under every question in the group.
             const showOwnImage = a.imageUrl && a.imageUrl !== group.groupImageUrl;
+            // A lettered part with roman-numeral children is a stem/prompt
+            // only — never answered or scored itself; its roman children
+            // carry those. See isStemParent, lib/questionGrouping.ts.
+            const stem = isStemParent(
+              script.answers,
+              script.answers.findIndex((x) => x.questionId === a.questionId)
+            );
+            if (stem) {
+              return (
+                <Card key={a.questionId}>
+                  <p className="font-medium text-primary-900">
+                    {formatQuestionLabel(a.code, mi === 0)} {a.questionText}
+                  </p>
+                  {showOwnImage && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={a.imageUrl}
+                      alt=""
+                      className="mt-2 max-h-40 rounded-lg object-contain bg-[#F1F6F8]"
+                    />
+                  )}
+                  <p className="text-xs text-[#9BB3BD] italic mt-2">Scored on the parts below.</p>
+                </Card>
+              );
+            }
             return (
               <Card key={a.questionId}>
                 <div className="flex items-start justify-between gap-3">

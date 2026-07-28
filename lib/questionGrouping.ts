@@ -65,15 +65,47 @@ interface Codeable {
  * sections (Section A: 1-10, Section B continues 11-20). A section is purely
  * a visual divider, not a renumbering point.
  *
- * A 'subsub' run nests under whichever code was JUST assigned — i.e. the row
- * immediately before it in array order — and never touches the counter
- * itself. This only produces the intended "41b, 41b(i), 41b(ii)" result
- * because the authoring UI only ever lets a 'subsub' run start right after
- * the 'sub' member it nests under, and never inserts another lettered
- * sibling after it (see addSubSubQuestion in the assessment builder): the
- * array position doubling as the parent pointer only holds up under that
- * constraint.
+ * A 'subsub' run nests under whichever code was JUST assigned to the letter
+ * immediately before it in array order, and never touches the counter
+ * itself. It can sit under ANY letter of the outer 'sub' run, not only the
+ * last — the run-boundary scan below steps over an embedded 'subsub' block
+ * without letting it end the outer run early, so "41a, 41b, 41b(i), 41b(ii),
+ * 41c, 41d" numbers correctly (see addSubSubQuestion in the assessment
+ * builder, which allows nesting under any letter for the same reason).
  */
+
+/**
+ * Scans forward from `from`, collecting every 'sub' member sharing
+ * `groupId`, transparently stepping over (but not consuming) any 'subsub'
+ * run in between so it doesn't look like the end of the run. `end` is the
+ * index just past everything consumed (letters and any nested subsub
+ * blocks) — i.e. where the run's next letter belongs. Shared by
+ * computeCodes (numbering) and the assessment builder's addSubQuestion
+ * (where to insert the next letter), so both agree on what "the end of this
+ * lettered run" means.
+ */
+export function scanSubRun<T extends Codeable>(
+  questions: T[],
+  groupId: string,
+  from: number
+): { letterIndexes: number[]; end: number } {
+  const letterIndexes: number[] = [];
+  let j = from;
+  while (j < questions.length) {
+    const c = readConfig(questions[j].config);
+    if (c.groupId === groupId && c.groupKind === 'sub') {
+      letterIndexes.push(j);
+      j++;
+    } else if (c.groupKind === 'subsub') {
+      const nestedId = c.groupId;
+      while (j < questions.length && readConfig(questions[j].config).groupId === nestedId) j++;
+    } else {
+      break;
+    }
+  }
+  return { letterIndexes, end: j };
+}
+
 export function computeCodes<T extends Codeable>(questions: T[]): string[] {
   const codes: string[] = new Array(questions.length);
   let counter = 0;
@@ -82,30 +114,34 @@ export function computeCodes<T extends Codeable>(questions: T[]): string[] {
     const cfg = readConfig(questions[i].config);
     if (cfg.groupId && cfg.groupKind === 'sub') {
       const groupId = cfg.groupId;
-      let j = i;
-      while (j < questions.length && readConfig(questions[j].config).groupId === groupId) j++;
+      const { letterIndexes, end: j } = scanSubRun(questions, groupId, i);
       counter += 1;
-      if (j - i === 1) {
-        codes[i] = `${counter}`;
+      if (letterIndexes.length === 1) {
+        codes[letterIndexes[0]] = `${counter}`;
       } else {
-        for (let k = i; k < j; k++) codes[k] = `${counter}${String.fromCharCode(97 + (k - i))}`;
+        letterIndexes.forEach((pos, k) => {
+          codes[pos] = `${counter}${String.fromCharCode(97 + k)}`;
+        });
+      }
+      // Now fill in any 'subsub' block(s) skipped over above, each parented
+      // to whichever code was just assigned immediately before it.
+      for (let k = i; k < j; k++) {
+        if (codes[k] !== undefined) continue;
+        const nestedId = readConfig(questions[k].config).groupId;
+        let m = k;
+        while (m < questions.length && readConfig(questions[m].config).groupId === nestedId) m++;
+        assignSubsubCodes(codes, k, m, k > 0 ? codes[k - 1] : undefined, () => (counter += 1));
+        k = m - 1;
       }
       i = j;
     } else if (cfg.groupId && cfg.groupKind === 'subsub') {
+      // Reached directly rather than skipped-over above — its lettered
+      // parent doesn't exist or isn't a 'sub' member immediately before it.
+      // Defensive backstop: fall back to plain numbers.
       const groupId = cfg.groupId;
       let j = i;
       while (j < questions.length && readConfig(questions[j].config).groupId === groupId) j++;
-      const parentCode = i > 0 ? codes[i - 1] : undefined;
-      if (parentCode && j - i > 1) {
-        for (let k = i; k < j; k++) codes[k] = `${parentCode}${toRoman(k - i + 1)}`;
-      } else {
-        // No lettered parent to nest under, or the run has shrunk to one —
-        // the same defensive backstop as the 'sub' branch above.
-        for (let k = i; k < j; k++) {
-          counter += 1;
-          codes[k] = `${counter}`;
-        }
-      }
+      assignSubsubCodes(codes, i, j, i > 0 ? codes[i - 1] : undefined, () => (counter += 1));
       i = j;
     } else {
       counter += 1;
@@ -114,6 +150,57 @@ export function computeCodes<T extends Codeable>(questions: T[]): string[] {
     }
   }
   return codes;
+}
+
+function assignSubsubCodes(
+  codes: string[],
+  start: number,
+  end: number,
+  parentCode: string | undefined,
+  bumpCounter: () => number
+): void {
+  if (parentCode && end - start > 1) {
+    for (let p = start; p < end; p++) codes[p] = `${parentCode}${toRoman(p - start + 1)}`;
+  } else {
+    // No lettered parent to nest under, or the run has shrunk to one — the
+    // same defensive backstop as the 'sub' branch above.
+    for (let p = start; p < end; p++) codes[p] = `${bumpCounter()}`;
+  }
+}
+
+/**
+ * True when `questions[index]` is a lettered ('sub') part whose very next
+ * row starts a roman-numeral ('subsub') run — i.e. it's a stem/prompt only
+ * ("Identify the parts labelled:") rather than an answerable question of its
+ * own. Its roman children carry the actual question type, marks, and
+ * answer; this row's own type/marks/answer fields are never read.
+ * Framework-free like the rest of this file so the authoring UI, live
+ * attempt screen, marking screens, PDF renderers, and results all agree on
+ * which rows are stem-only without duplicating the check.
+ */
+export function isStemParent<T extends Codeable>(questions: T[], index: number): boolean {
+  const current = questions[index];
+  if (!current || readConfig(current.config).groupKind !== 'sub') return false;
+  const next = questions[index + 1];
+  return !!next && readConfig(next.config).groupKind === 'subsub';
+}
+
+/**
+ * For a roman-numeral ('subsub') question, the array index of the lettered
+ * ('sub') row it's nested under — the stem-only prompt printed once before
+ * the run (e.g. 41(b) "Identify the parts labelled:"). Null for anything
+ * else: not a 'subsub' row, or one with no valid lettered anchor (the
+ * orphan case the assessment builder already prevents from persisting).
+ * Shared so the live attempt screen, marking screens, PDF renderers, and
+ * results all show the same stem text/image above the same roman children.
+ */
+export function stemParentIndex<T extends Codeable>(questions: T[], index: number): number | null {
+  const cfg = readConfig(questions[index]?.config);
+  if (cfg.groupKind !== 'subsub') return null;
+  const groupId = cfg.groupId;
+  let i = index;
+  while (i > 0 && readConfig(questions[i].config).groupId === groupId) i--;
+  return readConfig(questions[i]?.config).groupKind === 'sub' ? i : null;
 }
 
 /** Lowercase roman numerals, 1-indexed — exam sub-parts never run past (v) or (vi). */

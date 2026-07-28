@@ -2,7 +2,7 @@ import { getSupabaseAdmin } from "./supabase";
 import type { TablesUpdate } from "./database.types";
 import { UserFacingError } from "./apiResponse";
 import { notify } from "./entities/notifications";
-import { computeCodes, type QuestionConfig } from "./questionGrouping";
+import { computeCodes, isStemParent, type QuestionConfig } from "./questionGrouping";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -483,14 +483,28 @@ export async function getQuestions(assessmentId: string): Promise<Question[]> {
 function validateQuestions(questions: Omit<Question, "id" | "position" | "code">[], codes: string[]): void {
   questions.forEach((q, i) => {
     const label = codes[i];
-    const options = (q.questionType === "true_false" ? TRUE_FALSE_OPTIONS : q.options ?? [])
-      .map((o) => o.trim())
-      .filter(Boolean);
-    const answer = q.correctAnswer?.trim() ?? "";
 
     if (!q.questionText?.trim()) {
       throw new UserFacingError(`${label}: the question text is empty.`);
     }
+
+    // A lettered part immediately followed by its roman-numeral children is
+    // a stem/prompt only ("Identify the parts labelled:") — the children
+    // carry the actual type, options, answer, and marks, so none of that
+    // applies to this row itself. See isStemParent in questionGrouping.ts.
+    if (isStemParent(questions, i)) {
+      if (q.maxScore !== 0) {
+        throw new UserFacingError(
+          `${label}: this is a stem for the parts below it, not its own question — it can't carry marks.`
+        );
+      }
+      return;
+    }
+
+    const options = (q.questionType === "true_false" ? TRUE_FALSE_OPTIONS : q.options ?? [])
+      .map((o) => o.trim())
+      .filter(Boolean);
+    const answer = q.correctAnswer?.trim() ?? "";
 
     if (["mcq", "checkbox", "true_false"].includes(q.questionType) && options.length === 0) {
       throw new UserFacingError(`${label}: add at least one choice.`);

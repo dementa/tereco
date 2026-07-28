@@ -18,6 +18,8 @@ import {
   computeCodes,
   groupQuestions,
   formatQuestionLabel,
+  isStemParent,
+  scanSubRun,
   type QuestionConfig,
 } from '@/lib/questionGrouping';
 
@@ -341,7 +343,9 @@ export default function AssessmentDetailPage() {
    * "22 becomes 22a, 22b, 22c" — the whole run consumes one paper number.
    * A later click on any member of an existing run appends the new sibling
    * at the run's END, so a third click always adds the next letter
-   * regardless of which member's button was pressed.
+   * regardless of which member's button was pressed — including past any
+   * roman-numeral run nested under an earlier letter (scanSubRun skips over
+   * it rather than stopping there; see lib/questionGrouping.ts).
    */
   function addSubQuestion(index: number) {
     const target = questions[index];
@@ -350,8 +354,7 @@ export default function AssessmentDetailPage() {
     const updated = questions.map((q, i) =>
       i === index ? { ...q, config: { ...q.config, groupId, groupKind: 'sub' as const, section } } : q
     );
-    let insertAt = index + 1;
-    while (insertAt < updated.length && updated[insertAt].config?.groupId === groupId) insertAt++;
+    const { end: insertAt } = scanSubRun(updated, groupId, index);
     const newQuestion = blankQuestion(0, { groupId, groupKind: 'sub', section });
     const next = [...updated.slice(0, insertAt), newQuestion, ...updated.slice(insertAt)]
       .map((q, i) => ({ ...q, position: i + 1 }));
@@ -361,22 +364,27 @@ export default function AssessmentDetailPage() {
   }
 
   /**
-   * "(b) becomes (b) (i), (b) (ii)" — only offered on a lettered part's LAST
-   * sibling, and always appends at the nested run's own end. Nesting must
-   * stay the tail of its outer run — computeCodes (lib/questionGrouping.ts)
-   * reads the parent's code by array position, one slot back, not by a
-   * stored pointer, so a lettered sibling can never be added after this.
+   * "(b) becomes (b) (i), (b) (ii)" — offered on any lettered part, and
+   * always appends at the nested run's own end (so a second click adds the
+   * next roman numeral rather than splitting the run). The lettered part
+   * becomes a stem/prompt only the moment it gains its first child — its own
+   * type/marks/answer stop applying (isStemParent, lib/questionGrouping.ts),
+   * so its maxScore is zeroed here rather than leaving a stale value that
+   * validateQuestions would then reject with no field left to fix it from.
    */
   function addSubSubQuestion(index: number) {
     const target = questions[index];
     const next1 = questions[index + 1];
-    const groupId =
-      next1?.config?.groupKind === 'subsub' ? next1.config.groupId! : crypto.randomUUID();
+    const alreadyHasChildren = next1?.config?.groupKind === 'subsub';
+    const groupId = alreadyHasChildren ? next1.config!.groupId! : crypto.randomUUID();
     const section = target.config?.section;
+    const base = alreadyHasChildren
+      ? questions
+      : questions.map((q, i) => (i === index ? { ...q, maxScore: 0 } : q));
     let insertAt = index + 1;
-    while (insertAt < questions.length && questions[insertAt].config?.groupId === groupId) insertAt++;
+    while (insertAt < base.length && base[insertAt].config?.groupId === groupId) insertAt++;
     const newQuestion = blankQuestion(0, { groupId, groupKind: 'subsub', section });
-    const next = [...questions.slice(0, insertAt), newQuestion, ...questions.slice(insertAt)]
+    const next = [...base.slice(0, insertAt), newQuestion, ...base.slice(insertAt)]
       .map((q, i) => ({ ...q, position: i + 1 }));
     setQuestions(next);
     setNewlyAddedIndex(insertAt);
@@ -944,8 +952,6 @@ export default function AssessmentDetailPage() {
 
           {visibleGroups.map((group) => {
             const anchor = group.members[0];
-            const lastMember = group.members[group.members.length - 1];
-            const hasNestedRun = questions[lastMember.globalIndex + 1]?.config?.groupKind === 'subsub';
             return (
               <div key={anchor.id} className="space-y-2">
                 <div className="rounded-xl border-2 border-[#E8EFF3] p-3 space-y-3">
@@ -979,6 +985,7 @@ export default function AssessmentDetailPage() {
 
                   {group.members.map((q, mi) => {
                     const isOpen = expanded.has(q.id!);
+                    const stem = isStemParent(questions, q.globalIndex);
                     return (
                     <div
                       key={q.id}
@@ -1019,7 +1026,9 @@ export default function AssessmentDetailPage() {
                               )}
                             </span>
                             <span className="shrink-0 text-[10px] text-text-muted">
-                              {TYPE_SHORT_LABEL[q.questionType]} · {q.maxScore} mark{q.maxScore === 1 ? '' : 's'}
+                              {stem
+                                ? 'Stem — scored on the parts below'
+                                : `${TYPE_SHORT_LABEL[q.questionType]} · ${q.maxScore} mark${q.maxScore === 1 ? '' : 's'}`}
                             </span>
                           </button>
                         )}
@@ -1038,6 +1047,12 @@ export default function AssessmentDetailPage() {
                       {isOpen && (
                       <>
 
+                      {stem ? (
+                        <p className="text-xs text-text-muted">
+                          This is the shared prompt for the roman-numeral parts below it — it has
+                          no type, marks, or answer of its own.
+                        </p>
+                      ) : (
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                         <Select
                           label="Type"
@@ -1090,8 +1105,9 @@ export default function AssessmentDetailPage() {
                           />
                         )}
                       </div>
+                      )}
 
-                      {NEEDS_OPTIONS.includes(q.questionType) && (
+                      {!stem && NEEDS_OPTIONS.includes(q.questionType) && (
                         <div className="space-y-1.5">
                           <span className="text-xs font-medium text-[#5A7D8A]">
                             Choices
@@ -1189,7 +1205,7 @@ export default function AssessmentDetailPage() {
                       {/* Without this the answer key is blank for exactly the questions
                           a human marker needs help with. Optional, so a paper can still
                           be written quickly. */}
-                      {HAND_MARKED.includes(q.questionType) && (
+                      {!stem && HAND_MARKED.includes(q.questionType) && (
                         <div className="space-y-1.5">
                           <label
                             htmlFor={`model-${q.globalIndex}`}
@@ -1220,7 +1236,7 @@ export default function AssessmentDetailPage() {
                               + Related question
                             </button>
                           )}
-                          {q.config?.groupKind !== 'relative' && q.config?.groupKind !== 'subsub' && !hasNestedRun && (
+                          {q.config?.groupKind !== 'relative' && q.config?.groupKind !== 'subsub' && (
                             <button
                               type="button"
                               onClick={() => addSubQuestion(q.globalIndex)}
@@ -1229,7 +1245,7 @@ export default function AssessmentDetailPage() {
                               + Sub-part
                             </button>
                           )}
-                          {q.config?.groupKind === 'sub' && mi === group.members.length - 1 && (
+                          {q.config?.groupKind === 'sub' && (
                             <button
                               type="button"
                               onClick={() => addSubSubQuestion(q.globalIndex)}

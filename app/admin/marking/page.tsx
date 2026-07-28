@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { ArrowLeft, Check, CheckSquare, Download, FileText, Minus, Plus, X } from 'lucide-react';
-import { groupQuestions, formatQuestionLabel, type QuestionConfig } from '@/lib/questionGrouping';
+import { groupQuestions, formatQuestionLabel, isStemParent, type QuestionConfig } from '@/lib/questionGrouping';
 import { MarkingGuidance } from '@/components/MarkingGuidance';
 
 interface AssessmentOption {
@@ -433,7 +433,9 @@ export default function MarkingPage() {
           )}
 
           <div className="space-y-3">
-            {groupQuestions(openScript.answers).map((group, gi) => (
+            {groupQuestions(openScript.answers).map((group, gi) => {
+              const flatAnswers = openScript.answers;
+              return (
               <div key={gi} className="space-y-3">
                 {group.sectionChanged && group.section && (
                   <p className="text-xs font-bold uppercase tracking-wider text-[#02465B] pt-2">
@@ -461,6 +463,31 @@ export default function MarkingPage() {
                   // it again per-member (it lives only on the anchor's row) would
                   // duplicate it under every question in the group.
                   const showOwnImage = a.imageUrl && a.imageUrl !== group.groupImageUrl;
+
+                  // A lettered part with roman-numeral children is a stem/prompt
+                  // only — never scored itself, and groupQuestions splits it into
+                  // its own group boundary right after this member, so the full
+                  // scoring card would show a "Correct/Partial/Wrong" row with
+                  // nothing behind it. See isStemParent, lib/questionGrouping.ts.
+                  const globalIdx = flatAnswers.findIndex((x) => x.questionId === a.questionId);
+                  if (isStemParent(flatAnswers, globalIdx)) {
+                    return (
+                      <div key={a.questionId} className="rounded-xl border border-[#E8EFF3] p-3 bg-[#F8FBFC]">
+                        <p className="text-sm font-medium text-[#12333F]">
+                          {formatQuestionLabel(a.code, mi === 0)} {a.questionText}
+                        </p>
+                        {showOwnImage && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={a.imageUrl}
+                            alt=""
+                            className="mt-2 max-h-28 rounded object-contain bg-[#F1F6F8]"
+                          />
+                        )}
+                        <p className="text-xs text-[#9BB3BD] italic mt-1">Scored on the parts below.</p>
+                      </div>
+                    );
+                  }
                   return (
                     <div key={a.questionId} className="rounded-xl border border-[#E8EFF3] p-3">
                       <div className="flex items-start justify-between gap-3">
@@ -587,7 +614,8 @@ export default function MarkingPage() {
                   );
                 })}
               </div>
-            ))}
+              );
+            })}
           </div>
         </Card>
       ) : (

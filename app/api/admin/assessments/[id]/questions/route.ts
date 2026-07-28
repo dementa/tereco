@@ -31,7 +31,7 @@ const QuestionSchema = z.object({
   modelAnswer: z.string().optional(),
   imageUrl: z.string().url().optional(),
   imagePublicId: z.string().optional(),
-  maxScore: z.number().positive().default(1),
+  maxScore: z.number().nonnegative().default(1),
   config: QuestionConfigSchema,
 });
 

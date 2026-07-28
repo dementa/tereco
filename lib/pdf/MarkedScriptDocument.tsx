@@ -1,7 +1,7 @@
 import React from 'react';
 import { Document, Image, Page, StyleSheet, Text, View } from '@react-pdf/renderer';
 import type { MarkedScript } from '@/lib/assessments';
-import { groupQuestions, formatQuestionLabel } from '@/lib/questionGrouping';
+import { groupQuestions, formatQuestionLabel, isStemParent } from '@/lib/questionGrouping';
 import { PdfMarkingGuidance } from './MarkingGuidance';
 
 /**
@@ -137,7 +137,10 @@ function ScriptPages({ script }: { script: MarkedScript }) {
             <Text style={styles.scoreLabel}>QUESTIONS CORRECT</Text>
             <Text style={styles.scoreValue}>
               {script.answers.filter((a) => a.verdict === 'correct').length} of{' '}
-              {script.answers.length}
+              {/* A stem row (isStemParent) is never itself a scored question —
+                  counting it in the denominator would understate the result
+                  (e.g. "3 of 5" when only 4 rows were ever answerable). */}
+              {script.answers.filter((a, i) => !isStemParent(script.answers, i)).length}
             </Text>
           </View>
         </View>
@@ -158,6 +161,22 @@ function ScriptPages({ script }: { script: MarkedScript }) {
             {group.members.map((a, mi) => {
               const given = formatAnswer(a.givenAnswer, a.questionType);
               const objective = a.correctAnswer !== undefined && a.correctAnswer !== '';
+              // A lettered part with roman-numeral children is a stem/prompt
+              // only — never answered or scored itself; its roman children
+              // print those. See isStemParent, lib/questionGrouping.ts.
+              const stem = isStemParent(
+                script.answers,
+                script.answers.findIndex((x) => x.questionId === a.questionId)
+              );
+              if (stem) {
+                return (
+                  <View key={a.questionId} style={styles.q} wrap={false}>
+                    <Text style={styles.qText}>
+                      {formatQuestionLabel(a.code, mi === 0)} {a.questionText}
+                    </Text>
+                  </View>
+                );
+              }
               return (
                 <View key={a.questionId} style={styles.q} wrap={false}>
                   <View style={styles.qHead}>
