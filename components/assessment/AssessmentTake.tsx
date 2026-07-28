@@ -379,23 +379,29 @@ export function AssessmentTake() {
 
           {currentGroup?.groupImageUrl && (
             <>
+              {/* The composed heading reads "Use the diagram below to answer
+                  question(s)..." — it has to print above the image it refers
+                  to, not after it. */}
+              {currentGroup.groupHeading && (
+                <p className="text-sm italic text-[#5A7D8A] mt-2">{currentGroup.groupHeading}</p>
+              )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={currentGroup.groupImageUrl}
                 alt=""
                 className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
               />
-              {currentGroup.groupHeading && (
-                <p className="text-sm italic text-[#5A7D8A] mt-2">{currentGroup.groupHeading}</p>
-              )}
             </>
           )}
 
           {/* Roman-numeral parts repeat their stem's own text (and image, if
               any) here — the stem itself is never its own screen the
-              learner answers, so its context has to travel with each part. */}
+              learner answers, so its context has to travel with each part.
+              Text first ("Identify the parts labelled below") since it
+              introduces the diagram, not the other way round. */}
           {stemQuestion && (
             <>
+              <p className="text-lg font-medium text-primary-900 mt-2">{stemQuestion.questionText}</p>
               {stemQuestion.imageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -404,7 +410,6 @@ export function AssessmentTake() {
                   className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
                 />
               )}
-              <p className="text-lg font-medium text-primary-900 mt-2">{stemQuestion.questionText}</p>
             </>
           )}
 
@@ -415,19 +420,20 @@ export function AssessmentTake() {
 
           {q.imageUrl && q.imageUrl !== currentGroup?.groupImageUrl && (
             <>
+              {/* A true shared stimulus already printed its caption above,
+                  next to the group's own image — this is the standalone
+                  case, where the description belongs with the picture it's
+                  actually describing. Printed above the image, same as the
+                  shared-stimulus case: the text reads "diagram below". */}
+              {!currentGroup?.groupImageUrl && currentGroup?.groupHeading && (
+                <p className="text-sm italic text-[#5A7D8A] mt-2">{currentGroup.groupHeading}</p>
+              )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={q.imageUrl}
                 alt=""
                 className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
               />
-              {/* A true shared stimulus already printed its caption above,
-                  next to the group's own image — this is the standalone
-                  case, where the description belongs with the picture it's
-                  actually describing. */}
-              {!currentGroup?.groupImageUrl && currentGroup?.groupHeading && (
-                <p className="text-sm italic text-[#5A7D8A] mt-2">{currentGroup.groupHeading}</p>
-              )}
             </>
           )}
         </div>

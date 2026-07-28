@@ -177,10 +177,12 @@ export function QuestionPaperDocument({
               // page, separated from the heading that introduces it. The
               // image must print whenever it exists — an author who never
               // typed the optional caption still uploaded a diagram the
-              // paper needs.
+              // paper needs. Heading prints first — it reads "Use the
+              // diagram below...", so the diagram has to follow it, not
+              // precede it.
               <View wrap={false}>
-                <Image style={styles.groupImage} src={group.groupImageUrl} />
                 {group.groupHeading && <Text style={styles.groupHeading}>{group.groupHeading}</Text>}
+                <Image style={styles.groupImage} src={group.groupImageUrl} />
               </View>
             )}
 
@@ -212,14 +214,15 @@ export function QuestionPaperDocument({
                     )}
                   </View>
 
-                  {showOwnImage && <Image style={styles.questionImage} src={q.imageUrl} />}
                   {/* A true shared stimulus already printed its caption above,
                       next to the group's own image — this is the standalone
                       case, where the description belongs with the picture it's
-                      actually describing. */}
+                      actually describing. Printed before the image, same as
+                      the shared-stimulus case: the text reads "diagram below". */}
                   {showOwnImage && !group.groupImageUrl && group.groupHeading && (
                     <Text style={styles.groupHeading}>{group.groupHeading}</Text>
                   )}
+                  {showOwnImage && <Image style={styles.questionImage} src={q.imageUrl} />}
 
                   {!stem && (
                     <>

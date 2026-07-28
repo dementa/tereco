@@ -152,9 +152,11 @@ function ScriptPages({ script }: { script: MarkedScript }) {
             )}
 
             {(group.groupImageUrl || group.groupHeading) && (
+              // The heading reads "Use the diagram below..." — it prints
+              // above the image it refers to, not after it.
               <View wrap={false}>
-                {group.groupImageUrl && <Image style={styles.groupImage} src={group.groupImageUrl} />}
                 {group.groupHeading && <Text style={styles.groupHeading}>{group.groupHeading}</Text>}
+                {group.groupImageUrl && <Image style={styles.groupImage} src={group.groupImageUrl} />}
               </View>
             )}
 

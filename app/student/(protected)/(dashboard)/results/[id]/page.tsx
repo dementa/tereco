@@ -218,7 +218,12 @@ export default function StudentResultPage() {
             </p>
           )}
           {(group.groupImageUrl || group.groupHeading) && (
+            // The heading reads "Use the diagram below..." — it prints
+            // above the image it refers to, not after it.
             <Card className="space-y-2">
+              {group.groupHeading && (
+                <p className="text-sm italic text-[#5A7D8A]">{group.groupHeading}</p>
+              )}
               {group.groupImageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -226,9 +231,6 @@ export default function StudentResultPage() {
                   alt=""
                   className="max-h-40 rounded-lg object-contain bg-[#F1F6F8]"
                 />
-              )}
-              {group.groupHeading && (
-                <p className="text-sm italic text-[#5A7D8A]">{group.groupHeading}</p>
               )}
             </Card>
           )}

@@ -443,7 +443,12 @@ export default function MarkingPage() {
                   </p>
                 )}
                 {(group.groupImageUrl || group.groupHeading) && (
+                  // The heading reads "Use the diagram below..." — it
+                  // prints above the image it refers to, not after it.
                   <div className="space-y-1">
+                    {group.groupHeading && (
+                      <p className="text-xs italic text-[#5A7D8A]">{group.groupHeading}</p>
+                    )}
                     {group.groupImageUrl && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -451,9 +456,6 @@ export default function MarkingPage() {
                         alt=""
                         className="max-h-28 rounded object-contain bg-[#F1F6F8]"
                       />
-                    )}
-                    {group.groupHeading && (
-                      <p className="text-xs italic text-[#5A7D8A]">{group.groupHeading}</p>
                     )}
                   </div>
                 )}
