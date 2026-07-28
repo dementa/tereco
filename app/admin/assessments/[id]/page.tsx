@@ -57,6 +57,14 @@ const TYPE_SHORT_LABEL: Record<QuestionType, string> = {
   long: 'Long answer',
 };
 
+/** ISO timestamp → local `datetime-local` input value ("" when unset). */
+function toLocalInput(iso?: string | null) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 interface Question {
   id?: string;
   position: number;
@@ -77,6 +85,7 @@ interface AssessmentTarget {
   schoolId: string | null;
   level: number | null;
   classId: string | null;
+  studentId: string | null;
 }
 
 interface Assessment {
@@ -174,6 +183,11 @@ export default function AssessmentDetailPage() {
   const [collaborators, setCollaborators] = useState<Collaborator[]>([]);
   const [collaboratorIdentifier, setCollaboratorIdentifier] = useState('');
   const [addingCollaborator, setAddingCollaborator] = useState(false);
+  const [studentIdentifier, setStudentIdentifier] = useState('');
+  const [addingStudentTarget, setAddingStudentTarget] = useState(false);
+  // Targets only carry a student id — this is that id's display name, filled
+  // in on load (existing targets) and as each new one is added.
+  const [studentTargetNames, setStudentTargetNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [release, setRelease] = useState<{ fullyMarked: boolean; releasedAt: string | null }>({
@@ -183,6 +197,13 @@ export default function AssessmentDetailPage() {
   const [releasing, setReleasing] = useState(false);
   const [emailOnRelease, setEmailOnRelease] = useState(true);
   const [instructions, setInstructions] = useState('');
+  // Editable copy of the metadata captured at creation time, so a
+  // mis-entered title/time limit/date doesn't have to be lived with forever.
+  const [metaTitle, setMetaTitle] = useState('');
+  const [metaDescription, setMetaDescription] = useState('');
+  const [metaTimeLimit, setMetaTimeLimit] = useState(0);
+  const [metaOpensAt, setMetaOpensAt] = useState('');
+  const [metaClosesAt, setMetaClosesAt] = useState('');
   // A closed paper whose closing time has already passed needs a new one
   // before reopening does anything — assessments_for_student still hides it
   // otherwise. Only asked for when that's actually the case.
@@ -210,10 +231,34 @@ export default function AssessmentDetailPage() {
         const loadedQuestions: Question[] = detail.data.questions ?? [];
         setQuestions(loadedQuestions);
         setInstructions(detail.data.instructions ?? '');
+        setMetaTitle(detail.data.title ?? '');
+        setMetaDescription(detail.data.description ?? '');
+        setMetaTimeLimit(detail.data.timeLimit ?? 0);
+        setMetaOpensAt(toLocalInput(detail.data.opensAt));
+        setMetaClosesAt(toLocalInput(detail.data.closesAt));
         // Land on whichever section the paper already ends with, so the
         // very first "Add question" continues it instead of silently
         // starting a fresh "No section" block underneath it.
         setActiveSection(loadedQuestions[loadedQuestions.length - 1]?.config?.section ?? '');
+
+        const studentIds: string[] = (detail.data.targets ?? [])
+          .map((t: AssessmentTarget) => t.studentId)
+          .filter((id: string | null): id is string => id !== null);
+        if (studentIds.length > 0) {
+          const namesRes = await fetch(
+            `/api/admin/assessments/students?ids=${studentIds.join(',')}`
+          ).then((r) => r.json());
+          if (namesRes.success) {
+            setStudentTargetNames(
+              Object.fromEntries(
+                namesRes.data.map((s: { id: string; name: string; systemId: string }) => [
+                  s.id,
+                  `${s.name} · ${s.systemId}`,
+                ])
+              )
+            );
+          }
+        }
       } else {
         toast.error(detail.message ?? 'Failed to load assessment.');
       }
@@ -536,15 +581,34 @@ export default function AssessmentDetailPage() {
     }
   }
 
-  async function addTarget(target: { schoolId?: string; level?: number }) {
+  async function saveDetails() {
+    await patchAssessment(
+      {
+        title: metaTitle,
+        description: metaDescription,
+        timeLimit: metaTimeLimit,
+        opensAt: metaOpensAt ? new Date(metaOpensAt).toISOString() : null,
+        closesAt: metaClosesAt ? new Date(metaClosesAt).toISOString() : null,
+      },
+      'Details saved.'
+    );
+  }
+
+  async function addTarget(target: { schoolId?: string; level?: number; studentId?: string }) {
     if (!assessment) return;
     const next = [
       ...assessment.targets.map((t) => ({
         schoolId: t.schoolId,
         level: t.level,
         classId: t.classId,
+        studentId: t.studentId,
       })),
-      { schoolId: target.schoolId ?? null, level: target.level ?? null, classId: null },
+      {
+        schoolId: target.schoolId ?? null,
+        level: target.level ?? null,
+        classId: null,
+        studentId: target.studentId ?? null,
+      },
     ];
     await patchAssessment({ targets: next }, 'Audience updated.');
   }
@@ -553,8 +617,34 @@ export default function AssessmentDetailPage() {
     if (!assessment) return;
     const next = assessment.targets
       .filter((t) => t.id !== targetId)
-      .map((t) => ({ schoolId: t.schoolId, level: t.level, classId: t.classId }));
+      .map((t) => ({ schoolId: t.schoolId, level: t.level, classId: t.classId, studentId: t.studentId }));
     await patchAssessment({ targets: next }, 'Audience updated.');
+  }
+
+  async function addStudentTarget() {
+    const identifier = studentIdentifier.trim();
+    if (!identifier) return;
+    setAddingStudentTarget(true);
+    try {
+      const res = await fetch(
+        `/api/admin/assessments/students?identifier=${encodeURIComponent(identifier)}`
+      );
+      const data = await res.json();
+      if (!data.success) {
+        toast.error(data.message ?? 'Student not found.');
+        return;
+      }
+      setStudentTargetNames((prev) => ({
+        ...prev,
+        [data.data.id]: `${data.data.name} · ${data.data.systemId}`,
+      }));
+      await addTarget({ studentId: data.data.id });
+      setStudentIdentifier('');
+    } catch {
+      toast.error('Network error.');
+    } finally {
+      setAddingStudentTarget(false);
+    }
   }
 
   async function reopenAssessment() {
@@ -690,6 +780,7 @@ export default function AssessmentDetailPage() {
   if (!assessment) return <p className="text-error">Assessment not found.</p>;
 
   const targetLabel = (t: AssessmentTarget) => {
+    if (t.studentId) return studentTargetNames[t.studentId] ?? 'Student';
     const parts = [
       t.schoolId ? (schools.find((s) => s.id === t.schoolId)?.name ?? 'Unknown school') : null,
       t.level !== null ? (levels.find((l) => l.level === t.level)?.code ?? `Level ${t.level}`) : null,
@@ -784,6 +875,58 @@ export default function AssessmentDetailPage() {
         </div>
       </div>
 
+      {/* ── Details ──────────────────────────────────────────── */}
+      <Card>
+        <h2 className="font-semibold text-primary-900 mb-1">Details</h2>
+        <p className="text-xs text-text-muted mb-3">
+          Fix anything mis-entered when this assessment was created.
+        </p>
+        <div className="space-y-4">
+          <Input
+            label="Title"
+            value={metaTitle}
+            onChange={(e) => setMetaTitle(e.target.value)}
+            required
+          />
+          <Input
+            label="Description"
+            value={metaDescription}
+            onChange={(e) => setMetaDescription(e.target.value)}
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <Input
+              label="Time limit (minutes)"
+              type="number"
+              min={1}
+              value={metaTimeLimit}
+              onChange={(e) => setMetaTimeLimit(Number(e.target.value))}
+              required
+            />
+            <Input
+              label="Opens at (optional)"
+              type="datetime-local"
+              value={metaOpensAt}
+              onChange={(e) => setMetaOpensAt(e.target.value)}
+            />
+            <Input
+              label="Closes at (optional)"
+              type="datetime-local"
+              value={metaClosesAt}
+              onChange={(e) => setMetaClosesAt(e.target.value)}
+            />
+          </div>
+        </div>
+        <div className="mt-3">
+          <Button
+            variant="outline"
+            onClick={() => void saveDetails()}
+            disabled={!metaTitle.trim() || metaTimeLimit < 1}
+          >
+            Save details
+          </Button>
+        </div>
+      </Card>
+
       {/* ── Collaborators ────────────────────────────────────── */}
       <Card>
         <h2 className="font-semibold text-primary-900 mb-1">Collaborators</h2>
@@ -840,8 +983,8 @@ export default function AssessmentDetailPage() {
       <Card>
         <h2 className="font-semibold text-primary-900 mb-1">Audience</h2>
         <p className="text-xs text-text-muted mb-3">
-          With no targets, every student may sit this. Add a target to narrow it by school or grade
-          level — a student matching any target qualifies.
+          With no targets, every student may sit this. Add a target to narrow it by school, grade
+          level or one specific student — a student matching any target qualifies.
         </p>
 
         <div className="flex flex-wrap gap-2 mb-3">
@@ -887,6 +1030,26 @@ export default function AssessmentDetailPage() {
             onChange={(e) => e.target.value && void addTarget({ level: Number(e.target.value) })}
           />
         </div>
+
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void addStudentTarget();
+          }}
+          className="mt-2 flex flex-wrap items-end gap-2"
+        >
+          <div className="flex-1 min-w-[220px]">
+            <Input
+              label="Add: specific student (System ID or email)"
+              value={studentIdentifier}
+              onChange={(e) => setStudentIdentifier(e.target.value)}
+              placeholder="e.g. TST-2026-0004"
+            />
+          </div>
+          <Button type="submit" variant="outline" isLoading={addingStudentTarget}>
+            Add
+          </Button>
+        </form>
       </Card>
 
       {/* ── Paper ────────────────────────────────────────────── */}

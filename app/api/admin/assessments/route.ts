@@ -42,15 +42,18 @@ const TargetSchema = z
     schoolId: z.string().uuid().nullable().optional(),
     level: z.number().int().min(1).max(7).nullable().optional(),
     classId: z.string().uuid().nullable().optional(),
+    studentId: z.string().uuid().nullable().optional(),
   })
   .transform((t) => ({
     schoolId: t.schoolId ?? null,
     level: t.level ?? null,
     classId: t.classId ?? null,
+    studentId: t.studentId ?? null,
   }))
-  .refine((t) => t.schoolId !== null || t.level !== null || t.classId !== null, {
-    message: 'A target must narrow by school, grade level or class',
-  });
+  .refine(
+    (t) => t.schoolId !== null || t.level !== null || t.classId !== null || t.studentId !== null,
+    { message: 'A target must narrow by school, grade level, class or student' }
+  );
 
 const QuestionConfigSchema = z
   .object({

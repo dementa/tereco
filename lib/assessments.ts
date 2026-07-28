@@ -41,6 +41,7 @@ export interface AssessmentTarget {
   schoolId: string | null;
   level: number | null;
   classId: string | null;
+  studentId: string | null;
 }
 
 export type QuestionType =
@@ -122,14 +123,22 @@ interface AssessmentRow {
   created_by: string | null;
   instructions: string;
   results_released_at: string | null;
-  targets: { id: string; school_id: string | null; level: number | null; class_id: string | null }[] | null;
+  targets:
+    | {
+        id: string;
+        school_id: string | null;
+        level: number | null;
+        class_id: string | null;
+        student_id: string | null;
+      }[]
+    | null;
   collaborators: { staff_id: string }[] | null;
 }
 
 // Single string literal — concatenation would widen it to `string` and silently
 // disable the client's column checking.
 const ASSESSMENT_COLUMNS =
-  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, targets:assessment_targets(id, school_id, level, class_id), collaborators:assessment_collaborators(staff_id)";
+  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, targets:assessment_targets(id, school_id, level, class_id, student_id), collaborators:assessment_collaborators(staff_id)";
 
 const QUESTION_COLUMNS =
   "id, position, code, question_text, type, options, correct_answer, model_answer, image_url, image_public_id, max_score, config";
@@ -154,6 +163,7 @@ function rowToAssessment(row: AssessmentRow): Assessment {
       schoolId: t.school_id,
       level: t.level,
       classId: t.class_id,
+      studentId: t.student_id,
     })),
     collaboratorIds: (row.collaborators ?? []).map((c) => c.staff_id),
   };
@@ -301,12 +311,13 @@ async function replaceTargets(
   // An all-null row would mean "everyone" and defeat every sibling target, so
   // it is dropped here as well as rejected by the table's check constraint.
   const rows = targets
-    .filter((t) => t.schoolId !== null || t.level !== null || t.classId !== null)
+    .filter((t) => t.schoolId !== null || t.level !== null || t.classId !== null || t.studentId !== null)
     .map((t) => ({
       assessment_id: assessmentId,
       school_id: t.schoolId,
       level: t.level,
       class_id: t.classId,
+      student_id: t.studentId,
     }));
   if (rows.length === 0) return;
 

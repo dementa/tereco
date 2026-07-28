@@ -230,6 +230,7 @@ export type Database = {
           id: string
           level: number | null
           school_id: string | null
+          student_id: string | null
         }
         Insert: {
           assessment_id: string
@@ -238,6 +239,7 @@ export type Database = {
           id?: string
           level?: number | null
           school_id?: string | null
+          student_id?: string | null
         }
         Update: {
           assessment_id?: string
@@ -246,6 +248,7 @@ export type Database = {
           id?: string
           level?: number | null
           school_id?: string | null
+          student_id?: string | null
         }
         Relationships: [
           {
@@ -274,6 +277,13 @@ export type Database = {
             columns: ["school_id"]
             isOneToOne: false
             referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assessment_targets_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
