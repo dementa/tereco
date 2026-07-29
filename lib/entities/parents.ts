@@ -64,6 +64,21 @@ interface LinkRow {
 const LINK_COLUMNS =
   "student_id, relationship, is_primary, student:profiles!parent_students_student_id_fkey(id, system_id, first_name, middle_name, last_name)";
 
+/**
+ * Every parent-portal route needs this before touching a child's data — the
+ * one authorization check standing in for the RLS layer this app doesn't have.
+ */
+export async function isLinkedToParent(parentId: string, studentId: string): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const { count, error } = await supabase
+    .from("parent_students")
+    .select("parent_id", { count: "exact", head: true })
+    .eq("parent_id", parentId)
+    .eq("student_id", studentId);
+  if (error) throw new Error(error.message);
+  return !!count;
+}
+
 export async function getLinkedStudents(parentId: string): Promise<LinkedStudent[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase

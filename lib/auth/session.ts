@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerSupabaseClient } from "./supabase-server";
 import { getSupabaseAdmin } from "@/lib/supabase";
 
-export type Role = "super_admin" | "admin" | "staff" | "student" | "parent";
+export type Role = "super_admin" | "admin" | "staff" | "student" | "parent" | "school_admin";
 
 export interface SessionProfile {
   id: string;
@@ -117,4 +117,15 @@ export async function requireRole(
 
 export function requireSuperAdmin(request: NextRequest): Promise<NextResponse | null> {
   return requireRole(request, ["super_admin"]);
+}
+
+/**
+ * Gate for the school-admin portal. Only checks the role — every route still
+ * calls getCurrentProfile itself to get `schoolId` and scope its own school's
+ * data. Sub-resource routes (a specific class/stream/account id) additionally
+ * fetch that resource's own school_id and compare it to the caller's — there
+ * is no RLS layer to fall back on, so that check has to happen in the route.
+ */
+export function requireSchoolAdmin(request: NextRequest): Promise<NextResponse | null> {
+  return requireRole(request, ["school_admin"]);
 }

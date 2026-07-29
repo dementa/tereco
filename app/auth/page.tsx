@@ -42,7 +42,7 @@ function AuthPageContent() {
 
   if (isAuthenticated && user) {
     // mustChangePassword or a known destination both redirect above — this
-    // only renders for a role with no portal (e.g. parent).
+    // only renders for a role with no portal entry in PORTAL_FOR_ROLE.
     if (mustChangePassword || destinationFor(user)) return null;
 
     return (

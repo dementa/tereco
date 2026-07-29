@@ -21,6 +21,8 @@ export interface School {
    */
   contactProfileId: string | null;
   contactName: string | null;
+  /** The school's own login (see createSchoolAdminLogin), if one has been generated yet. */
+  schoolAdminAccountId: string | null;
 }
 
 interface SchoolRow {
@@ -37,7 +39,7 @@ interface SchoolRow {
   contact: { first_name: string; last_name: string } | null;
 }
 
-function rowToSchool(row: SchoolRow): School {
+function rowToSchool(row: SchoolRow, schoolAdminAccountId: string | null): School {
   const contact = row.contact;
   return {
     id: row.id,
@@ -51,7 +53,23 @@ function rowToSchool(row: SchoolRow): School {
     isActive: row.is_active,
     contactProfileId: row.contact_profile_id,
     contactName: contact ? `${contact.first_name} ${contact.last_name}`.trim() : null,
+    schoolAdminAccountId,
   };
+}
+
+/** One profiles lookup, batched across every school id — not a query per row. */
+async function schoolAdminAccountIds(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  schoolIds: string[]
+): Promise<Map<string, string>> {
+  if (schoolIds.length === 0) return new Map();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, school_id")
+    .eq("role", "school_admin")
+    .in("school_id", schoolIds);
+  if (error) throw new Error(error.message);
+  return new Map((data ?? []).map((r) => [r.school_id as string, r.id]));
 }
 
 // Must stay a single string literal, not a concatenation — the Supabase client
@@ -67,7 +85,10 @@ export async function listSchools(): Promise<School[]> {
     .select(SCHOOL_COLUMNS)
     .order("name", { ascending: true });
   if (error) throw new Error(error.message);
-  return (data ?? []).map(rowToSchool);
+
+  const rows = data ?? [];
+  const logins = await schoolAdminAccountIds(supabase, rows.map((r) => r.id));
+  return rows.map((row) => rowToSchool(row, logins.get(row.id) ?? null));
 }
 
 export async function getSchool(schoolId: string): Promise<School | null> {
@@ -78,7 +99,10 @@ export async function getSchool(schoolId: string): Promise<School | null> {
     .eq("id", schoolId)
     .maybeSingle();
   if (error) throw new Error(error.message);
-  return data ? rowToSchool(data) : null;
+  if (!data) return null;
+
+  const logins = await schoolAdminAccountIds(supabase, [schoolId]);
+  return rowToSchool(data, logins.get(schoolId) ?? null);
 }
 
 export async function createSchool(input: {
@@ -105,7 +129,8 @@ export async function createSchool(input: {
     .select(SCHOOL_COLUMNS)
     .single();
   if (error) throw new Error(error.message);
-  return rowToSchool(data);
+  // A school this new cannot have a login yet — see createSchoolAdminLogin.
+  return rowToSchool(data, null);
 }
 
 export async function updateSchool(

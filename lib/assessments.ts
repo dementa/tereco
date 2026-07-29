@@ -257,6 +257,18 @@ export async function getMarkableAssessments(
 }
 
 /**
+ * Every assessment targeting one school (or open to every school), for the
+ * school-admin oversight page — a read-only superset of what any one of that
+ * school's teachers could mark, since it isn't limited to a single staffId.
+ */
+export async function getAssessmentsForSchool(schoolId: string): Promise<Assessment[]> {
+  const all = await getAssessments();
+  return all.filter(
+    (a) => a.targets.length === 0 || a.targets.some((t) => t.schoolId === schoolId)
+  );
+}
+
+/**
  * The assessments a student may currently sit.
  *
  * Targeting, publication status and the open/close window are all evaluated by

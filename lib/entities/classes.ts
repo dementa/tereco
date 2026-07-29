@@ -143,6 +143,34 @@ export async function createClass(input: {
   return rowToClass(data as unknown as ClassRow);
 }
 
+/**
+ * Which school a class belongs to — the ownership check every school-admin
+ * route needs before it's allowed to touch someone else's class, since there
+ * is no RLS layer underneath to catch a cross-school id.
+ */
+export async function getClassSchoolId(classId: string): Promise<string | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("classes")
+    .select("school_id")
+    .eq("id", classId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.school_id ?? null;
+}
+
+/** Same as getClassSchoolId, one hop further: stream -> class -> school. */
+export async function getStreamSchoolId(streamId: string): Promise<string | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("streams")
+    .select("class:classes(school_id)")
+    .eq("id", streamId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data?.class as unknown as { school_id: string } | null)?.school_id ?? null;
+}
+
 export async function updateClass(
   classId: string,
   updates: { level?: number | null; alias?: string | null; hasStreams?: boolean; isActive?: boolean }

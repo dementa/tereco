@@ -48,21 +48,11 @@ const SESSION_COLUMNS =
   "id, session_date, period, taken_at, lesson_report_id, school:schools(name), class:classes(level, alias, grade_level:grade_levels(code)), stream:streams(name), lesson_report:lesson_reports(reference)";
 
 /** The current teacher's own attendance sessions, newest first — for the /staff/attendance history page. */
-export async function getAttendanceSessions(filters: {
-  staffId: string;
-  limit?: number;
-}): Promise<AttendanceSessionRecord[]> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("attendance_sessions")
-    .select(SESSION_COLUMNS)
-    .eq("staff_id", filters.staffId)
-    .order("session_date", { ascending: false })
-    .order("taken_at", { ascending: false })
-    .limit(filters.limit ?? 200);
-  if (error) throw new Error(error.message);
-
-  const rows = data as unknown as SessionRow[];
+/** Attaches present/absent counts to each session row, keyed off its own attendance rows. */
+async function sessionsWithCounts(
+  supabase: ReturnType<typeof getSupabaseAdmin>,
+  rows: SessionRow[]
+): Promise<AttendanceSessionRecord[]> {
   if (rows.length === 0) return [];
 
   const { data: attendanceRows, error: attendanceError } = await supabase
@@ -97,6 +87,93 @@ export async function getAttendanceSessions(filters: {
       lessonReportReference: row.lesson_report?.reference ?? null,
     };
   });
+}
+
+export async function getAttendanceSessions(filters: {
+  staffId: string;
+  limit?: number;
+}): Promise<AttendanceSessionRecord[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("attendance_sessions")
+    .select(SESSION_COLUMNS)
+    .eq("staff_id", filters.staffId)
+    .order("session_date", { ascending: false })
+    .order("taken_at", { ascending: false })
+    .limit(filters.limit ?? 200);
+  if (error) throw new Error(error.message);
+
+  return sessionsWithCounts(supabase, data as unknown as SessionRow[]);
+}
+
+export interface StudentAttendanceRecord {
+  id: string;
+  sessionDate: string;
+  period: number;
+  className: string;
+  streamName: string;
+  present: boolean;
+}
+
+interface StudentAttendanceRow {
+  id: string;
+  is_present: boolean;
+  session: {
+    session_date: string;
+    period: number;
+    class: { alias: string | null; grade_level: { code: string } | null } | null;
+    stream: { name: string } | null;
+  } | null;
+}
+
+/** One child's own attendance history, newest first — for the parent portal. */
+export async function getAttendanceForStudent(
+  studentId: string,
+  limit = 200
+): Promise<StudentAttendanceRecord[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("lesson_attendance")
+    .select(
+      "id, is_present, session:attendance_sessions(session_date, period, class:classes(alias, grade_level:grade_levels(code)), stream:streams(name))"
+    )
+    .eq("student_id", studentId)
+    .not("attendance_session_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(limit);
+  if (error) throw new Error(error.message);
+
+  return (data as unknown as StudentAttendanceRow[])
+    .filter((row) => row.session !== null)
+    .map((row) => {
+      const session = row.session!;
+      return {
+        id: row.id,
+        sessionDate: session.session_date,
+        period: session.period,
+        className: session.class?.alias ?? session.class?.grade_level?.code ?? "",
+        streamName: session.stream?.name ?? "",
+        present: row.is_present,
+      };
+    });
+}
+
+/** Every class's sessions at one school, newest first — for the school-admin oversight page. */
+export async function getSchoolAttendanceSessions(
+  schoolId: string,
+  limit?: number
+): Promise<AttendanceSessionRecord[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("attendance_sessions")
+    .select(SESSION_COLUMNS)
+    .eq("school_id", schoolId)
+    .order("session_date", { ascending: false })
+    .order("taken_at", { ascending: false })
+    .limit(limit ?? 200);
+  if (error) throw new Error(error.message);
+
+  return sessionsWithCounts(supabase, data as unknown as SessionRow[]);
 }
 
 export interface AvailableAttendanceSession {

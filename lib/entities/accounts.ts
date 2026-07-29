@@ -5,7 +5,7 @@ import { sendCredentialsEmail } from "@/lib/email";
 import { UserFacingError } from "@/lib/apiResponse";
 import type { TablesUpdate } from "@/lib/database.types";
 
-export type AccountRole = "super_admin" | "admin" | "staff" | "student" | "parent";
+export type AccountRole = "super_admin" | "admin" | "staff" | "student" | "parent" | "school_admin";
 
 /** Matches the profiles.gender check constraint. */
 export type Gender = "male" | "female";
@@ -65,6 +65,9 @@ export interface CreateAccountInput {
   dateOfBirth?: string | null; // ISO date, student
   gender?: Gender | null;
   createdBy: string; // profiles.id of the super admin creating this account
+  // school_admin only: the login id is the school's own system_id, not a
+  // freshly generated one — see createSchoolAdminLogin.
+  systemIdOverride?: string;
 }
 
 export interface CreatedAccount {
@@ -152,7 +155,9 @@ export async function createAccount(input: CreateAccountInput): Promise<CreatedA
     input.role === "student" && input.classId ? await currentAcademicYearId() : null;
 
   const systemId =
-    input.role === "super_admin" ? null : await generateSystemId(input.role as SystemIdEntity);
+    input.role === "super_admin"
+      ? null
+      : input.systemIdOverride ?? (await generateSystemId(input.role as SystemIdEntity));
   const temporaryPassword = generateTemporaryPassword();
   const realEmail = input.email?.trim() || null;
   const authEmail =
@@ -436,6 +441,74 @@ function chunk<T>(items: T[], size: number): T[][] {
   const chunks: T[][] = [];
   for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
   return chunks;
+}
+
+/**
+ * Creates the one login a school gets — its own system_id (TSCH-####) doubles
+ * as the sign-in id, so "log in with your School ID" is literally true rather
+ * than a separate account a super admin had to remember to hand out.
+ * Refuses if this school already has one (active or deactivated): reset its
+ * password instead of minting a second login with a duplicate system_id.
+ */
+export async function createSchoolAdminLogin(
+  schoolId: string,
+  createdBy: string
+): Promise<CreatedAccount> {
+  const supabase = getSupabaseAdmin();
+
+  const { data: school, error } = await supabase
+    .from("schools")
+    .select("system_id, name, email")
+    .eq("id", schoolId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!school) throw new UserFacingError("School not found.");
+
+  const { count, error: countError } = await supabase
+    .from("profiles")
+    .select("id", { count: "exact", head: true })
+    .eq("role", "school_admin")
+    .eq("school_id", schoolId);
+  if (countError) throw new Error(countError.message);
+  if (count) {
+    throw new UserFacingError("This school already has a login — reset its password instead.");
+  }
+
+  return createAccount({
+    role: "school_admin",
+    name: school.name,
+    email: school.email ?? undefined,
+    schoolId,
+    systemIdOverride: school.system_id,
+    createdBy,
+  });
+}
+
+/**
+ * Which school an account belongs to — for staff/parent/school_admin this is
+ * profiles.school_id directly; a student's placement lives on their current
+ * enrolment instead (profiles_school_scope_ck forces their school_id null).
+ * Used by the school-admin routes to check "is this account mine" before
+ * allowing a mutation — there is no RLS layer to catch a cross-school id.
+ */
+export async function getAccountSchoolId(profileId: string): Promise<string | null> {
+  const supabase = getSupabaseAdmin();
+  const { data: profile, error } = await supabase
+    .from("profiles")
+    .select("role, school_id")
+    .eq("id", profileId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!profile) return null;
+  if (profile.role !== "student") return profile.school_id;
+
+  const { data: enrollment, error: enrollError } = await supabase
+    .from("current_enrollments")
+    .select("school_id")
+    .eq("student_id", profileId)
+    .maybeSingle();
+  if (enrollError) throw new Error(enrollError.message);
+  return enrollment?.school_id ?? null;
 }
 
 export async function listAccounts(role: AccountRole | AccountRole[]): Promise<AccountRow[]> {

@@ -7,8 +7,9 @@ import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { ImageUpload } from '@/components/ui/ImageUpload';
+import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
-import { Layers, Pencil, Plus, Power, PowerOff, Trash2, X } from 'lucide-react';
+import { KeyRound, Layers, Pencil, Plus, Power, PowerOff, Trash2, X } from 'lucide-react';
 
 interface School {
   id: string;
@@ -21,6 +22,16 @@ interface School {
   joinedOn: string | null;
   isActive: boolean;
   contactName: string | null;
+  schoolAdminAccountId: string | null;
+}
+
+interface NewCredentials {
+  name: string;
+  systemId: string;
+  temporaryPassword: string;
+  emailSent: boolean;
+  emailError?: string;
+  hasEmail: boolean;
 }
 
 interface Stream {
@@ -72,6 +83,8 @@ export default function SystemSchoolsPage() {
   const [streamName, setStreamName] = useState('');
   const [addingStreamFor, setAddingStreamFor] = useState<string | null>(null);
   const [customClass, setCustomClass] = useState({ alias: '', hasStreams: false });
+  const [newCredentials, setNewCredentials] = useState<NewCredentials | null>(null);
+  const [loginBusyId, setLoginBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -246,6 +259,51 @@ export default function SystemSchoolsPage() {
     }
   }
 
+  async function generateLogin(school: School) {
+    setLoginBusyId(school.id);
+    try {
+      const res = await fetch(`/api/admin/system/schools/${school.id}/login`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        setNewCredentials({ name: school.name, ...data.data });
+        toast.success(`Login generated for ${school.name}.`);
+        await load();
+      } else {
+        toast.error(data.message ?? 'Failed to generate login.');
+      }
+    } catch {
+      toast.error('Network error.');
+    } finally {
+      setLoginBusyId(null);
+    }
+  }
+
+  async function resetLoginPassword(school: School) {
+    if (!school.schoolAdminAccountId) return;
+    if (!confirm(`Reset ${school.name}'s login password?`)) return;
+    setLoginBusyId(school.id);
+    try {
+      const res = await fetch(`/api/admin/system/accounts/${school.schoolAdminAccountId}/reset-password`, {
+        method: 'POST',
+      });
+      const data = await res.json();
+      if (data.success) {
+        setNewCredentials({
+          name: school.name,
+          systemId: school.systemId,
+          temporaryPassword: data.data.temporaryPassword,
+          emailSent: false,
+          hasEmail: !!school.email,
+        });
+        toast.success(`Login password reset for ${school.name}.`);
+      } else {
+        toast.error(data.message ?? 'Reset failed.');
+      }
+    } finally {
+      setLoginBusyId(null);
+    }
+  }
+
   async function addClass(body: Record<string, unknown>) {
     if (!managing) return;
     const res = await fetch(`/api/admin/system/schools/${managing.id}/classes`, {
@@ -372,6 +430,15 @@ export default function SystemSchoolsPage() {
           <div className="flex justify-end items-center gap-1">
             <button
               type="button"
+              onClick={() => (s.schoolAdminAccountId ? void resetLoginPassword(s) : void generateLogin(s))}
+              disabled={loginBusyId === s.id}
+              title={s.schoolAdminAccountId ? `Reset ${s.name}'s login password` : `Generate a login for ${s.name}`}
+              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8] disabled:opacity-40"
+            >
+              <KeyRound className="w-4 h-4" aria-hidden />
+            </button>
+            <button
+              type="button"
               onClick={() => openManage(s)}
               title={`Classes and streams for ${s.name}`}
               className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8]"
@@ -411,7 +478,7 @@ export default function SystemSchoolsPage() {
       },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [openManage]
+    [openManage, loginBusyId]
   );
 
   return (
@@ -424,6 +491,10 @@ export default function SystemSchoolsPage() {
           the same.
         </p>
       </div>
+
+      {newCredentials && (
+        <CredentialsCard {...newCredentials} onDismiss={() => setNewCredentials(null)} />
+      )}
 
       {showForm && (
         <Card>
