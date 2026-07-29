@@ -86,7 +86,7 @@ export function AttendanceAttachPanel({ classId, streamId, date, period, isMisse
     return (
       <div className="rounded-xl border border-[#C4952A]/30 bg-[#FCF3DE] px-4 py-3.5">
         <p className="text-sm text-[#8A6A16] mb-2">
-          No attendance record found yet for this class, stream, date and period. Fill the Attendance
+          No attendance record found yet for this class, stream, date and session. Fill the Attendance
           form first, then come back to file this report.
         </p>
         <Link

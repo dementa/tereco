@@ -81,7 +81,7 @@ export default function StaffAttendancePage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-primary-900 truncate">
-                    {s.className}{s.streamName ? ` ${s.streamName}` : ''} • Period {s.period}
+                    {s.className}{s.streamName ? ` ${s.streamName}` : ''} • Session {s.period}
                   </p>
                   <p className="text-xs text-text-muted truncate">
                     {s.school} • {s.sessionDate}

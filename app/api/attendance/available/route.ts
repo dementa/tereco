@@ -24,11 +24,11 @@ export async function GET(request: NextRequest) {
     const streamId = params.get("streamId");
 
     if (!classId || !date || !periodRaw) {
-      return errorResponse("classId, date and period are required.", 400);
+      return errorResponse("classId, date and session are required.", 400);
     }
     const period = parseInt(periodRaw.replace(/\D+/g, ""), 10);
-    if (!Number.isInteger(period) || period < 1 || period > 8) {
-      return errorResponse("period must be a number between 1 and 8.", 400);
+    if (!Number.isInteger(period) || period < 1 || period > 30) {
+      return errorResponse("session must be a number between 1 and 30.", 400);
     }
 
     const data = await getAvailableAttendanceSessions({

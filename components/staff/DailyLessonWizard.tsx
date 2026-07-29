@@ -105,7 +105,7 @@ const SKILLS: Record<string, string[]> = {
 
 const APPROACHES = ['Theory', 'Practical', 'Demonstration', 'Pair work', 'Group work', 'Individual practice', 'Discussion', 'Project-based', 'Flipped classroom']
 const PROGRESS_LEVELS = ['Excellent', 'Good', 'Satisfactory', 'Needs improvement', 'Poor']
-const PERIODS = Array.from({ length: 8 }, (_, i) => `Period ${i + 1}`)
+const PERIODS = Array.from({ length: 30 }, (_, i) => `Session ${i + 1}`)
 const COMPUTER_ACCESS = ['Full access — 1 computer per learner', 'Shared — 2–3 learners per computer', 'Limited — 4+ per computer', 'No computer access']
 
 const STEPS = [
@@ -140,7 +140,7 @@ function validateStep(
     if (!data.className) err.className = 'Select a class'
     if (selectedClassHasStreams && !data.stream) err.stream = 'Select a stream'
     if (!data.date)      err.date = 'Enter the lesson date'
-    if (!data.period)    err.period = 'Select a period'
+    if (!data.period)    err.period = 'Select a session'
     if (!data.status)    err.status = 'Select lesson status'
     if (data.status === 'Missed') {
       if (!data.missedReason.trim()) err.missedReason = 'Provide a reason'
@@ -307,7 +307,7 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
             required
           />
           <FloatingSelect
-            label="Lesson period"
+            label="Lesson session"
             options={PERIODS}
             value={data.period}
             onChange={v => { set('period', v); clearErr('period') }}
@@ -620,7 +620,7 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
             <ReviewRow label="Class"   value={data.className}  onEdit={() => goToStep(0)} />
             <ReviewRow label="Stream"  value={data.stream}     onEdit={() => goToStep(0)} />
             <ReviewRow label="Date"    value={new Date(data.date).toLocaleDateString('en-GB', { dateStyle: 'long' })} />
-            <ReviewRow label="Period"  value={data.period}     />
+            <ReviewRow label="Session" value={data.period}     />
             <ReviewRow label="Status"  value={data.status}     />
             {isMissed && <ReviewRow label="Reason" value={data.missedReason} />}
           </div>

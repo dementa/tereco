@@ -31,11 +31,11 @@ const LessonSchema = z
     streamId: z.string().uuid().optional(),
 
     date: z.string().min(1, "Lesson date is required"),
-    // The wizard sends 'Period 3'; the column is the number it always was.
+    // The wizard sends 'Session 3'; the column is the number it always was.
     period: z.union([z.string(), z.number()]).transform((v, ctx) => {
       const n = typeof v === "number" ? v : parseInt(String(v).replace(/\D+/g, ""), 10);
-      if (!Number.isInteger(n) || n < 1 || n > 8) {
-        ctx.addIssue({ code: "custom", message: "Period must be between 1 and 8" });
+      if (!Number.isInteger(n) || n < 1 || n > 30) {
+        ctx.addIssue({ code: "custom", message: "Session must be between 1 and 30" });
         return z.NEVER;
       }
       return n;
@@ -146,7 +146,7 @@ export async function POST(request: NextRequest) {
           not_found: "That attendance record could not be found.",
           wrong_owner: "That attendance record belongs to another teacher.",
           already_attached: "That attendance record has already been attached to a different lesson report.",
-          slot_mismatch: "That attendance record doesn't match this class, stream, date or period.",
+          slot_mismatch: "That attendance record doesn't match this class, stream, date or session.",
         };
         const status = precheck.reason === "already_attached" ? 409 : precheck.reason === "wrong_owner" ? 403 : 400;
         return errorResponse(messages[precheck.reason], status);
@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
       // here, and saying so is more useful than a generic failure.
       if (error.code === "23505") {
         return errorResponse(
-          "A report for this class and period on this date has already been submitted.",
+          "A report for this class and session on this date has already been submitted.",
           409
         );
       }
@@ -249,7 +249,7 @@ export async function POST(request: NextRequest) {
       await notify({
         type: "lesson_filed",
         title: `Lesson report filed by ${profile.name}`,
-        body: `${school?.name ?? "A school"} — ${validated.learningArea}, period ${validated.period} on ${validated.date} (${validated.status}).`,
+        body: `${school?.name ?? "A school"} — ${validated.learningArea}, session ${validated.period} on ${validated.date} (${validated.status}).`,
         audience: { role },
         entityType: "lesson_reports",
         link: "/admin/lessons",

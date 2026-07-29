@@ -154,7 +154,7 @@ export default function AdminLessonsPage() {
                     <Detail label="Date" value={l.lessonDate} />
                     <Detail label="School" value={l.school} />
                     <Detail label="Class" value={l.className} />
-                    <Detail label="Period" value={l.period} />
+                    <Detail label="Session" value={l.period} />
                     <Detail label="Status" value={l.status} />
                     <Detail label="Learning area" value={l.learningArea} />
                     <Detail label="Specific skill" value={l.specificSkill} />

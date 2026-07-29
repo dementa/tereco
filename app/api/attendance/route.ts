@@ -17,11 +17,11 @@ const AttendanceSchema = z
 
     date: z.string().min(1, "Date is required"),
     // Same transform as LessonSchema.period in app/api/lesson/route.ts: the
-    // wizard sends 'Period 3', the column is the number it always was.
+    // wizard sends 'Session 3', the column is the number it always was.
     period: z.union([z.string(), z.number()]).transform((v, ctx) => {
       const n = typeof v === "number" ? v : parseInt(String(v).replace(/\D+/g, ""), 10);
-      if (!Number.isInteger(n) || n < 1 || n > 8) {
-        ctx.addIssue({ code: "custom", message: "Period must be between 1 and 8" });
+      if (!Number.isInteger(n) || n < 1 || n > 30) {
+        ctx.addIssue({ code: "custom", message: "Session must be between 1 and 30" });
         return z.NEVER;
       }
       return n;

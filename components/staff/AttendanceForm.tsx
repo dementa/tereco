@@ -52,7 +52,7 @@ interface DirectoryClass {
 }
 interface DirectorySchool { id: string; name: string; classes: DirectoryClass[] }
 
-const PERIODS = Array.from({ length: 8 }, (_, i) => `Period ${i + 1}`)
+const PERIODS = Array.from({ length: 30 }, (_, i) => `Session ${i + 1}`)
 
 const STEPS = [
   { id: 'details', label: 'Class details', icon: FileText },
@@ -70,7 +70,7 @@ function validateStep(step: number, data: FormData, selectedClassHasStreams: boo
     if (!data.className) err.className = 'Select a class'
     if (selectedClassHasStreams && !data.stream) err.stream = 'Select a stream'
     if (!data.date) err.date = 'Enter the date'
-    if (!data.period) err.period = 'Select a period'
+    if (!data.period) err.period = 'Select a session'
   }
   return err
 }
@@ -295,7 +295,7 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
             required
           />
           <FloatingSelect
-            label="Period"
+            label="Session"
             options={PERIODS}
             value={data.period}
             onChange={v => { set('period', v); clearErr('period') }}
