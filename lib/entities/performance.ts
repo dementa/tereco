@@ -237,7 +237,15 @@ export async function getStudentTermAverages(studentId: string, academicYearId?:
   return averages;
 }
 
-/** Most recently started term as of today for one school — terms have no app-side "current" flag, unlike academic years. */
+/**
+ * The term containing today for one school — terms have no app-side "current"
+ * flag, unlike academic years, so this mirrors the schema's own definition of
+ * "current" exactly: term_for_date() in scripts/schema/01-core.sql resolves a
+ * date to a term via `starts_on <= date <= ends_on`, a containment check, not
+ * "whichever term most recently started." Matching it keeps this function
+ * agreeing with the rest of the app (e.g. lesson_reports.term_id) about what
+ * "the current term" means.
+ */
 async function getCurrentTermId(schoolId: string): Promise<string | null> {
   const supabase = getSupabaseAdmin();
   const today = new Date().toISOString().slice(0, 10);
@@ -246,7 +254,7 @@ async function getCurrentTermId(schoolId: string): Promise<string | null> {
     .select("id")
     .eq("school_id", schoolId)
     .lte("starts_on", today)
-    .order("starts_on", { ascending: false })
+    .gte("ends_on", today)
     .limit(1);
   if (error) throw new Error(error.message);
   return data?.[0]?.id ?? null;

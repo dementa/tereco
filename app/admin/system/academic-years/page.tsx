@@ -6,8 +6,14 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { TermsManager } from '@/components/admin/TermsManager';
 import { useToast } from '@/components/ui/ToastProvider';
 import { CalendarDays, CheckCircle2, Pencil, Plus, Trash2, X } from 'lucide-react';
+
+interface School {
+  id: string;
+  name: string;
+}
 
 interface AcademicYear {
   id: string;
@@ -38,6 +44,18 @@ export default function AcademicYearsPage() {
   const [saving, setSaving] = useState(false);
   const [editing, setEditing] = useState<AcademicYear | null>(null);
 
+  const [schools, setSchools] = useState<School[]>([]);
+  const [termsSchoolId, setTermsSchoolId] = useState('');
+  const [termsYearId, setTermsYearId] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const res = await fetch('/api/admin/system/schools');
+      const data = await res.json();
+      if (data.success) setSchools(data.data);
+    })();
+  }, []);
+
   // No setState in the effect body itself: `loading` starts true and is only
   // cleared once the request settles. Flipping it on synchronously here would
   // schedule a render during the effect for no benefit.
@@ -62,6 +80,8 @@ export default function AcademicYearsPage() {
     })();
     return () => controller.abort();
   }, [load]);
+
+  const effectiveTermsYearId = termsYearId || years.find((y) => y.isCurrent)?.id || years[0]?.id || '';
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -347,6 +367,60 @@ export default function AcademicYearsPage() {
           </Button>
         }
       />
+
+      <Card>
+        <div className="mb-4">
+          <h2 className="font-semibold text-primary-900 mb-1">Terms</h2>
+          <p className="text-sm text-text-muted">
+            Each school defines its own term dates. Pick a school and academic year to manage them.
+          </p>
+        </div>
+
+        {schools.length === 0 || years.length === 0 ? (
+          <p className="text-sm text-text-muted">
+            {years.length === 0 ? 'Create an academic year first.' : 'No schools yet.'}
+          </p>
+        ) : (
+          <>
+            <div className="flex flex-wrap gap-3 mb-4">
+              <select
+                value={termsSchoolId}
+                onChange={(e) => setTermsSchoolId(e.target.value)}
+                className="border border-primary-100 rounded-lg px-3 py-2 text-sm"
+              >
+                <option value="">Select a school…</option>
+                {schools.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={effectiveTermsYearId}
+                onChange={(e) => setTermsYearId(e.target.value)}
+                className="border border-primary-100 rounded-lg px-3 py-2 text-sm"
+              >
+                {years.map((y) => (
+                  <option key={y.id} value={y.id}>
+                    {y.label}
+                    {y.isCurrent ? ' (current)' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {termsSchoolId && effectiveTermsYearId ? (
+              <TermsManager
+                key={`${termsSchoolId}:${effectiveTermsYearId}`}
+                apiBasePath={`/api/admin/system/schools/${termsSchoolId}/terms`}
+                academicYearId={effectiveTermsYearId}
+              />
+            ) : (
+              <p className="text-sm text-text-muted">Choose a school above to manage its terms.</p>
+            )}
+          </>
+        )}
+      </Card>
     </div>
   );
 }

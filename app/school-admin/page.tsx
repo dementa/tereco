@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Sparkline } from '@/components/ui/Sparkline';
+import { GenderDonutChart } from '@/components/ui/GenderDonutChart';
+import { PopulationBarChart } from '@/components/ui/PopulationBarChart';
+import { ActivityFeed } from '@/components/ui/ActivityFeed';
 import { Layers, UserCog, GraduationCap, ClipboardCheck, ClipboardList, TrendingUp } from 'lucide-react';
 
 interface Stats {
@@ -19,6 +22,28 @@ interface TrendPoint {
   value: number;
 }
 
+interface GenderBreakdownEntry {
+  gender: 'male' | 'female' | 'unspecified';
+  count: number;
+}
+
+interface PopulationEntry {
+  label: string;
+  count: number;
+}
+
+interface ActivityItem {
+  type: 'enrollment' | 'submission';
+  label: string;
+  timestamp: string;
+}
+
+interface Analytics {
+  gender: GenderBreakdownEntry[];
+  population: PopulationEntry[];
+  activity: ActivityItem[];
+}
+
 const CARDS = [
   { key: 'classes' as const, label: 'Classes & Streams', href: '/school-admin/classes', icon: Layers },
   { key: 'staff' as const, label: 'Staff', href: '/school-admin/staff', icon: UserCog },
@@ -31,6 +56,8 @@ export default function SchoolAdminDashboard() {
   const [stats, setStats] = useState<Stats>({ classes: 0, staff: 0, students: 0, attendance: 0, assessments: 0 });
   const [loading, setLoading] = useState(true);
   const [trend, setTrend] = useState<TrendPoint[]>([]);
+  const [analytics, setAnalytics] = useState<Analytics | null>(null);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
@@ -64,12 +91,24 @@ export default function SchoolAdminDashboard() {
     loadTrend();
   }, []);
 
+  useEffect(() => {
+    async function loadAnalytics() {
+      try {
+        const res = await fetch('/api/school-admin/analytics').then((r) => r.json());
+        if (res.success) setAnalytics(res.data);
+      } finally {
+        setAnalyticsLoading(false);
+      }
+    }
+    loadAnalytics();
+  }, []);
+
   return (
     <div className="max-w-5xl">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">Dashboard</h1>
       <p className="text-sm text-text-muted mb-6">Your school&apos;s classes, staff, students and activity.</p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
         {CARDS.map((c) => {
           const Icon = c.icon;
           return (
@@ -101,6 +140,35 @@ export default function SchoolAdminDashboard() {
             </div>
           </Card>
         </Link>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold text-primary-900 mb-3">Students by gender</h2>
+          {analyticsLoading ? (
+            <p className="text-sm text-text-muted">Loading…</p>
+          ) : (
+            <GenderDonutChart data={analytics?.gender ?? []} />
+          )}
+        </Card>
+
+        <Card className="p-5">
+          <h2 className="text-sm font-semibold text-primary-900 mb-3">Population by class</h2>
+          {analyticsLoading ? (
+            <p className="text-sm text-text-muted">Loading…</p>
+          ) : (
+            <PopulationBarChart data={analytics?.population ?? []} />
+          )}
+        </Card>
+
+        <Card className="p-5 lg:col-span-2">
+          <h2 className="text-sm font-semibold text-primary-900 mb-3">Recent activity</h2>
+          {analyticsLoading ? (
+            <p className="text-sm text-text-muted">Loading…</p>
+          ) : (
+            <ActivityFeed items={analytics?.activity ?? []} />
+          )}
+        </Card>
       </div>
     </div>
   );

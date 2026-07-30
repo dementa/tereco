@@ -1,11 +1,13 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createAcademicYear, listAcademicYears } from "@/lib/entities/academic-years";
-import { requireSuperAdmin } from "@/lib/auth/session";
+import { requireRole, requireSuperAdmin } from "@/lib/auth/session";
 import { handleApiError, successResponse } from "@/lib/apiResponse";
 
+// Read-only list is not sensitive, and school-admin needs it to populate a
+// year picker for their own terms — mutations below stay super-admin-only.
 export async function GET(request: NextRequest) {
-  const denied = await requireSuperAdmin(request);
+  const denied = await requireRole(request, ["super_admin", "school_admin"]);
   if (denied) return denied;
   try {
     return successResponse({ data: await listAcademicYears() });
