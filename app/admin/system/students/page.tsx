@@ -574,7 +574,7 @@ export default function SystemStudentsPage() {
     }
     setResetting(false);
     setResetResults(entries);
-    setResetDownloadName(`${resetForm.className}-${resetForm.streamName || 'all'}-passwords-${Date.now()}.csv`);
+    setResetDownloadName(`${resetForm.className}-${resetForm.streamName || 'all'}-passwords-${Date.now()}`);
     if (failed > 0) toast.warning(`${failed} password reset(s) failed.`);
     if (entries.length > 0) toast.success(`Reset ${entries.length} password(s) for ${place}.`);
     await load();
@@ -1267,7 +1267,7 @@ export default function SystemStudentsPage() {
             <CredentialSlips
               title={`${[resetForm.className, resetForm.streamName].filter(Boolean).join(' ')} — login credentials`}
               entries={resetResults}
-              downloadFileName={resetDownloadName}
+              fileBaseName={resetDownloadName}
             />
           )}
         </Modal>

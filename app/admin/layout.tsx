@@ -9,7 +9,7 @@ import { NotificationBell } from '@/components/ui/NotificationBell';
 import { MobileTabBar } from '@/components/ui/MobileTabBar';
 import {
   LayoutDashboard, FileText, GraduationCap, ClipboardList,
-  CheckSquare, LogOut, School, UserCog, Contact, CalendarDays, ShieldCheck,
+  CheckSquare, LogOut, School, UserCog, Contact, CalendarDays, ShieldCheck, TrendingUp,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -21,6 +21,7 @@ const NAV = [
   { href: '/admin/lessons', label: 'Lesson Submissions', short: 'Lessons', icon: FileText },
   { href: '/admin/assessments', label: 'Assessments', icon: ClipboardList },
   { href: '/admin/marking', label: 'Marking', icon: CheckSquare },
+  { href: '/admin/performance', label: 'Performance', icon: TrendingUp },
 ];
 
 // Super-admin-only account provisioning — separate from the day-to-day

@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
-import { Layers, UserCog, GraduationCap, ClipboardCheck, ClipboardList } from 'lucide-react';
+import { Sparkline } from '@/components/ui/Sparkline';
+import { Layers, UserCog, GraduationCap, ClipboardCheck, ClipboardList, TrendingUp } from 'lucide-react';
 
 interface Stats {
   classes: number;
@@ -11,6 +12,11 @@ interface Stats {
   students: number;
   attendance: number;
   assessments: number;
+}
+
+interface TrendPoint {
+  label: string;
+  value: number;
 }
 
 const CARDS = [
@@ -24,6 +30,7 @@ const CARDS = [
 export default function SchoolAdminDashboard() {
   const [stats, setStats] = useState<Stats>({ classes: 0, staff: 0, students: 0, attendance: 0, assessments: 0 });
   const [loading, setLoading] = useState(true);
+  const [trend, setTrend] = useState<TrendPoint[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -49,6 +56,14 @@ export default function SchoolAdminDashboard() {
     load();
   }, []);
 
+  useEffect(() => {
+    async function loadTrend() {
+      const res = await fetch('/api/school-admin/performance?trend=1').then((r) => r.json());
+      if (res.success) setTrend(res.data);
+    }
+    loadTrend();
+  }, []);
+
   return (
     <div className="max-w-5xl">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">Dashboard</h1>
@@ -71,6 +86,21 @@ export default function SchoolAdminDashboard() {
             </Link>
           );
         })}
+
+        <Link href="/school-admin/performance">
+          <Card hover className="p-5">
+            <div className="p-2.5 rounded-xl bg-accent-lighter w-fit mb-3">
+              <TrendingUp className="w-5 h-5 text-accent-dark" />
+            </div>
+            <p className="text-3xl font-bold text-primary-900">
+              {trend.length > 0 ? `${trend[trend.length - 1].value}%` : '—'}
+            </p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-sm text-text-muted">Performance</p>
+              <Sparkline points={trend.map((t) => t.value)} />
+            </div>
+          </Card>
+        </Link>
       </div>
     </div>
   );

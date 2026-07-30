@@ -7,7 +7,7 @@ import { useAuth } from '@/components/auth/AuthContext';
 import { PortalGate } from '@/components/auth/PortalGate';
 import { NotificationBell } from '@/components/ui/NotificationBell';
 import { MobileTabBar } from '@/components/ui/MobileTabBar';
-import { LayoutDashboard, FileText, ClipboardList, CheckSquare, LogOut } from 'lucide-react';
+import { LayoutDashboard, FileText, ClipboardList, CheckSquare, TrendingUp, LogOut } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
 const STAFF_ROLES: Role[] = ['staff'];
@@ -23,6 +23,7 @@ const NAV = [
   },
   { href: '/staff/assessments', label: 'My Assessments', short: 'Assess', icon: ClipboardList },
   { href: '/staff/marking', label: 'Marking', icon: CheckSquare },
+  { href: '/staff/performance', label: 'Performance', icon: TrendingUp },
 ];
 
 function StaffShell({ children }: { children: React.ReactNode }) {

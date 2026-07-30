@@ -3,13 +3,19 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
-import { Building2, Users, GraduationCap, UserRound } from 'lucide-react';
+import { Sparkline } from '@/components/ui/Sparkline';
+import { Building2, Users, GraduationCap, UserRound, TrendingUp } from 'lucide-react';
 
 interface Stats {
   schools?: number;
   staff?: number;
   students?: number;
   parents?: number;
+}
+
+interface TrendPoint {
+  label: string;
+  value: number;
 }
 
 const ADMIN_CARDS = [
@@ -22,6 +28,7 @@ const ADMIN_CARDS = [
 export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats>({});
   const [loading, setLoading] = useState(true);
+  const [trend, setTrend] = useState<TrendPoint[]>([]);
 
   useEffect(() => {
     async function load() {
@@ -35,6 +42,14 @@ export default function AdminDashboard() {
       }
     }
     load();
+  }, []);
+
+  useEffect(() => {
+    async function loadTrend() {
+      const res = await fetch('/api/admin/system/performance?trend=1').then((r) => r.json());
+      if (res.success) setTrend(res.data);
+    }
+    loadTrend();
   }, []);
 
   return (
@@ -59,6 +74,21 @@ export default function AdminDashboard() {
             </Link>
           );
         })}
+
+        <Link href="/admin/performance">
+          <Card hover className="p-5">
+            <div className="p-2.5 rounded-xl bg-accent-lighter w-fit mb-3">
+              <TrendingUp className="w-5 h-5 text-accent-dark" />
+            </div>
+            <p className="text-3xl font-bold text-primary-900">
+              {trend.length > 0 ? `${trend[trend.length - 1].value}%` : '—'}
+            </p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-sm text-text-muted">Performance</p>
+              <Sparkline points={trend.map((t) => t.value)} />
+            </div>
+          </Card>
+        </Link>
       </div>
     </div>
   );

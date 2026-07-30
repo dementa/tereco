@@ -1,7 +1,9 @@
 'use client';
 
+import { useState } from 'react';
 import { Button } from '@/components/ui/Button';
-import { Download, Printer } from 'lucide-react';
+import { exportToCsv, exportToPdf } from '@/lib/tableExport';
+import { AlertCircle, Download, FileText, Printer } from 'lucide-react';
 
 export interface CredentialSlipEntry {
   name: string;
@@ -13,40 +15,57 @@ interface CredentialSlipsProps {
   /** Printed as the page heading, e.g. "P.4 Bright — login credentials". */
   title: string;
   entries: CredentialSlipEntry[];
-  downloadFileName: string;
+  /** No extension — CSV and PDF each append their own. */
+  fileBaseName: string;
 }
+
+const HEADERS = ['Name', 'System ID', 'Temporary password'];
 
 /**
  * Name + System ID + password for a batch of accounts, ready to print as
  * slips or read out — the only distribution channel that works for
  * students too young to receive a credential over email.
  */
-export function CredentialSlips({ title, entries, downloadFileName }: CredentialSlipsProps) {
+export function CredentialSlips({ title, entries, fileBaseName }: CredentialSlipsProps) {
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [pdfError, setPdfError] = useState('');
+
+  const rows = entries.map((e) => [e.name, e.systemId ?? '', e.temporaryPassword]);
+
   function downloadCsv() {
-    const header = 'name,system_id,temporary_password';
-    const lines = entries.map((e) =>
-      [`"${e.name.replace(/"/g, '""')}"`, e.systemId ?? '', e.temporaryPassword].join(',')
-    );
-    const csv = [header, ...lines].join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = downloadFileName;
-    a.click();
-    URL.revokeObjectURL(url);
+    exportToCsv(fileBaseName, HEADERS, rows);
+  }
+
+  async function downloadPdf() {
+    setPdfError('');
+    setExportingPdf(true);
+    try {
+      await exportToPdf(fileBaseName, title, HEADERS, rows);
+    } catch {
+      setPdfError('PDF export failed. Please try again.');
+    } finally {
+      setExportingPdf(false);
+    }
   }
 
   return (
     <div>
-      <div className="flex gap-2 print:hidden mb-4">
+      <div className="flex flex-wrap gap-2 print:hidden mb-2">
         <Button type="button" variant="outline" onClick={() => window.print()}>
           <Printer className="w-4 h-4 mr-1.5" aria-hidden /> Print credential slips
         </Button>
         <Button type="button" variant="outline" onClick={downloadCsv}>
           <Download className="w-4 h-4 mr-1.5" aria-hidden /> Download CSV
         </Button>
+        <Button type="button" variant="outline" onClick={() => void downloadPdf()} isLoading={exportingPdf}>
+          <FileText className="w-4 h-4 mr-1.5" aria-hidden /> Download PDF
+        </Button>
       </div>
+      {pdfError && (
+        <p role="alert" className="flex items-center gap-1.5 text-xs text-[#C0392B] mb-2 print:hidden">
+          <AlertCircle className="w-3.5 h-3.5" aria-hidden /> {pdfError}
+        </p>
+      )}
 
       {/* Printable slips — hidden on screen, shown only by the print stylesheet. */}
       <div className="hidden print:block">

@@ -16,6 +16,7 @@ import {
   ClipboardList,
   School,
   LogOut,
+  TrendingUp,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -28,6 +29,7 @@ const NAV = [
   { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
   { href: '/school-admin/attendance', label: 'Attendance', icon: ClipboardCheck },
   { href: '/school-admin/assessments', label: 'Assessments', icon: ClipboardList },
+  { href: '/school-admin/performance', label: 'Performance', icon: TrendingUp },
   { href: '/school-admin/school', label: 'My School', short: 'School', icon: School },
 ];
 

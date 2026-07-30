@@ -1,11 +1,19 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { TopPerformersCard } from '@/components/ui/TopPerformersCard';
 import { useAuth } from '@/components/auth/AuthContext';
 import { useParentChildren } from '@/components/parent/ParentChildrenContext';
 import { Award, ClipboardCheck, BookOpen, Bell } from 'lucide-react';
+
+interface TopPerformersResult {
+  topPerformers: { studentId: string; studentName: string; rank: number }[];
+  isFeatured: boolean;
+  message: string | null;
+}
 
 const TILES = [
   { href: '/parent/results', label: 'Results', description: "See your child's assessment results.", icon: Award },
@@ -18,6 +26,29 @@ export default function ParentDashboardPage() {
   const { user } = useAuth();
   const { children, loading, selectedId } = useParentChildren();
   const selected = children.find((c) => c.id === selectedId);
+
+  const [topPerformers, setTopPerformers] = useState<TopPerformersResult | null>(null);
+  const [topPerformersLoading, setTopPerformersLoading] = useState(false);
+
+  const loadTopPerformers = useCallback(async (studentId: string) => {
+    setTopPerformersLoading(true);
+    try {
+      const res = await fetch(`/api/parent/performance?studentId=${studentId}`);
+      const data = await res.json();
+      if (data.success) setTopPerformers(data.data);
+    } finally {
+      setTopPerformersLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    const controller = new AbortController();
+    void (async () => {
+      if (!controller.signal.aborted) await loadTopPerformers(selectedId);
+    })();
+    return () => controller.abort();
+  }, [selectedId, loadTopPerformers]);
 
   return (
     <div className="max-w-5xl">
@@ -42,6 +73,12 @@ export default function ParentDashboardPage() {
             {selected.className && <Badge variant="muted">{selected.className}</Badge>}
           </p>
         </Card>
+      )}
+
+      {selectedId && (
+        <div className="mb-6">
+          <TopPerformersCard data={topPerformers} loading={topPerformersLoading} />
+        </div>
       )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
