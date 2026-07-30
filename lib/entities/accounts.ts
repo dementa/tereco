@@ -4,6 +4,7 @@ import { generateTemporaryPassword } from "@/lib/auth/password";
 import { sendCredentialsEmail } from "@/lib/email";
 import { UserFacingError } from "@/lib/apiResponse";
 import type { TablesUpdate } from "@/lib/database.types";
+import { chunk } from "@/lib/chunk";
 
 export type AccountRole = "super_admin" | "admin" | "staff" | "student" | "parent" | "school_admin";
 
@@ -84,6 +85,9 @@ export interface AccountRow {
   systemId: string | null;
   role: string;
   name: string;
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
   contactEmail: string | null;
   schoolId: string | null;
   schoolName: string | null;
@@ -91,6 +95,9 @@ export interface AccountRow {
   className: string | null;
   streamName: string | null;
   photoUrl: string | null;
+  dateOfBirth: string | null;
+  phonePrimary: string | null;
+  phoneSecondary: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
   createdAt: string;
@@ -352,6 +359,7 @@ export interface UpdateAccountInput {
   gender?: Gender | null;
   dateOfBirth?: string | null;
   phonePrimary?: string | null;
+  phoneSecondary?: string | null;
   schoolId?: string | null;
   isActive?: boolean;
 }
@@ -385,6 +393,7 @@ export async function updateAccount(
   if (updates.gender !== undefined) patch.gender = updates.gender;
   if (updates.dateOfBirth !== undefined) patch.date_of_birth = updates.dateOfBirth || null;
   if (updates.phonePrimary !== undefined) patch.phone_primary = updates.phonePrimary || null;
+  if (updates.phoneSecondary !== undefined) patch.phone_secondary = updates.phoneSecondary || null;
   if (updates.isActive !== undefined) patch.is_active = updates.isActive;
 
   // profiles_school_scope_ck forbids a school on admins and students; a student's
@@ -436,12 +445,6 @@ export async function deleteAccount(profileId: string): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-/** Splits an array into fixed-size chunks, preserving order. */
-function chunk<T>(items: T[], size: number): T[][] {
-  const chunks: T[][] = [];
-  for (let i = 0; i < items.length; i += size) chunks.push(items.slice(i, i + size));
-  return chunks;
-}
 
 /**
  * Creates the one login a school gets — its own system_id (TSCH-####) doubles
@@ -524,6 +527,7 @@ export async function listAccounts(role: AccountRole | AccountRole[]): Promise<A
     id: string; system_id: string | null; role: string; first_name: string;
     middle_name: string | null; last_name: string; contact_email: string | null;
     school_id: string | null; gender: string | null; photo_url: string | null;
+    date_of_birth: string | null; phone_primary: string | null; phone_secondary: string | null;
     must_change_password: boolean; is_active: boolean; created_at: string;
     school: { name: string } | null;
   }[] = [];
@@ -531,7 +535,7 @@ export async function listAccounts(role: AccountRole | AccountRole[]): Promise<A
     const { data, error } = await supabase
       .from("profiles")
       .select(
-        "id, system_id, role, first_name, middle_name, last_name, contact_email, school_id, gender, photo_url, must_change_password, is_active, created_at, school:schools!profiles_school_id_fkey(name)"
+        "id, system_id, role, first_name, middle_name, last_name, contact_email, school_id, gender, photo_url, date_of_birth, phone_primary, phone_secondary, must_change_password, is_active, created_at, school:schools!profiles_school_id_fkey(name)"
       )
       .in("role", roles)
       .order("created_at", { ascending: false })
@@ -590,6 +594,9 @@ export async function listAccounts(role: AccountRole | AccountRole[]): Promise<A
       systemId: row.system_id,
       role: row.role,
       name: fullName(row),
+      firstName: row.first_name,
+      middleName: row.middle_name,
+      lastName: row.last_name,
       contactEmail: row.contact_email,
       gender: (row.gender as Gender | null) ?? null,
       // Students get both from their enrolment; everyone else from the profile.
@@ -598,6 +605,9 @@ export async function listAccounts(role: AccountRole | AccountRole[]): Promise<A
       className: placement?.className ?? null,
       streamName: placement?.streamName ?? null,
       photoUrl: row.photo_url,
+      dateOfBirth: row.date_of_birth,
+      phonePrimary: row.phone_primary,
+      phoneSecondary: row.phone_secondary,
       mustChangePassword: row.must_change_password,
       isActive: row.is_active,
       createdAt: row.created_at,

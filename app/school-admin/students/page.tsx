@@ -8,8 +8,10 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { ImageUpload } from '@/components/ui/ImageUpload';
+import { Modal } from '@/components/ui/Modal';
 import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
+import { chunk } from '@/lib/chunk';
 import { Eye, KeyRound, Pencil, Power, PowerOff, Trash2, UserPlus, X } from 'lucide-react';
 
 interface Stream {
@@ -28,11 +30,17 @@ interface StudentAccount {
   id: string;
   systemId: string | null;
   name: string;
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
   contactEmail: string | null;
   gender: 'male' | 'female' | null;
   className: string | null;
   streamName: string | null;
   photoUrl: string | null;
+  dateOfBirth: string | null;
+  phonePrimary: string | null;
+  phoneSecondary: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
   createdAt: string;
@@ -60,9 +68,13 @@ const emptyForm = {
 
 const VIEW_FIELDS: [string, (a: StudentAccount) => string][] = [
   ['Student ID', (a) => a.systemId ?? ''],
-  ['Class', (a) => [a.className, a.streamName].filter(Boolean).join(' ')],
+  ['Class', (a) => a.className ?? ''],
+  ['Stream', (a) => a.streamName ?? ''],
   ['Email', (a) => a.contactEmail ?? ''],
   ['Gender', (a) => a.gender ?? ''],
+  ['Date of birth', (a) => (a.dateOfBirth ? new Date(a.dateOfBirth).toLocaleDateString() : '')],
+  ['Phone', (a) => a.phonePrimary ?? ''],
+  ['Alternate phone', (a) => a.phoneSecondary ?? ''],
   ['Status', (a) => (a.isActive ? 'Active' : 'Deactivated')],
   ['Created', (a) => new Date(a.createdAt).toLocaleDateString()],
 ];
@@ -185,22 +197,25 @@ export default function SchoolAdminStudentsPage() {
     if (!editing) return;
     setSavingEdit(true);
     try {
-      const [firstName, ...rest] = editing.name.trim().split(/\s+/);
       const res = await fetch(`/api/school-admin/accounts/${editing.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firstName,
-          lastName: rest.join(' '),
+          firstName: editing.firstName,
+          middleName: editing.middleName,
+          lastName: editing.lastName,
           contactEmail: editing.contactEmail ?? '',
           gender: editing.gender,
+          dateOfBirth: editing.dateOfBirth || null,
+          phonePrimary: editing.phonePrimary,
+          phoneSecondary: editing.phoneSecondary,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setAccounts((current) => current.map((a) => (a.id === editing.id ? editing : a)));
         setEditing(null);
         toast.success('Account updated.');
+        await load();
       } else {
         toast.error(data.message ?? 'Failed to update account.');
       }
@@ -241,6 +256,43 @@ export default function SchoolAdminStudentsPage() {
     }
   }
 
+  // Real passwords are never stored anywhere retrievable, so the only way to
+  // put one in an export is to reset it right here and capture the fresh
+  // value. Resetting a student's password does not force a change screen, so
+  // the new one works immediately.
+  async function fetchPasswordsForExport(
+    rows: StudentAccount[],
+    onProgress: (done: number, total: number) => void
+  ): Promise<Record<string, string>> {
+    const passwords: Record<string, string> = {};
+    let failed = 0;
+    let done = 0;
+    for (const batch of chunk(rows, 10)) {
+      const results = await Promise.all(
+        batch.map(async (a) => {
+          try {
+            const res = await fetch(`/api/school-admin/accounts/${a.id}/reset-password`, { method: 'POST' });
+            const data = await res.json();
+            return { id: a.id, password: data.success ? (data.data.temporaryPassword as string) : '' };
+          } catch {
+            return { id: a.id, password: '' };
+          }
+        })
+      );
+      for (const r of results) {
+        passwords[r.id] = r.password;
+        if (!r.password) failed += 1;
+      }
+      done += batch.length;
+      onProgress(done, rows.length);
+    }
+    if (failed > 0) {
+      toast.warning(`${failed} password reset(s) failed — those row(s) will be blank in the export.`);
+    }
+    await load();
+    return passwords;
+  }
+
   const columns: DataTableColumn<StudentAccount>[] = useMemo(
     () => [
       {
@@ -275,14 +327,13 @@ export default function SchoolAdminStudentsPage() {
       },
       { key: 'systemId', header: 'Student ID', value: (a) => a.systemId ?? '—' },
       {
-        key: 'placement',
+        key: 'className',
         header: 'Class',
-        value: (a) => [a.className, a.streamName].filter(Boolean).join(' ') || '',
-        render: (a) => {
-          const label = [a.className, a.streamName].filter(Boolean).join(' ');
-          return label ? label : <span className="text-[#9BB3BD]" title="No open enrolment">Not enrolled</span>;
-        },
+        value: (a) => a.className ?? '',
+        render: (a) =>
+          a.className ?? <span className="text-[#9BB3BD]" title="No open enrolment">Not enrolled</span>,
       },
+      { key: 'streamName', header: 'Stream', value: (a) => a.streamName ?? '', hideOnMobile: true },
       { key: 'contactEmail', header: 'Email', value: (a) => a.contactEmail ?? '—', hideOnMobile: true },
       {
         key: 'actions',
@@ -406,10 +457,16 @@ export default function SchoolAdminStudentsPage() {
         rowKey={(a) => a.id}
         loading={loading}
         initialSort={{ key: 'name', direction: 'asc' }}
-        searchPlaceholder="Search by name, student ID or class…"
+        searchPlaceholder="Search by name, student ID, class or stream…"
         emptyMessage="No student accounts yet."
         exportFileName="students"
         mobileTitle={(a) => a.name}
+        passwordColumn={{
+          label: 'Temporary password',
+          confirmMessage: (count) =>
+            `This resets the password for ${count} student account(s) and puts the new one in the export — their previous password stops working immediately. Continue?`,
+          fetchPasswords: fetchPasswordsForExport,
+        }}
         filters={[
           {
             key: 'class',
@@ -418,6 +475,14 @@ export default function SchoolAdminStudentsPage() {
               .sort()
               .map((c) => ({ value: c, label: c })),
             matches: (a, v) => a.className === v,
+          },
+          {
+            key: 'stream',
+            label: 'Stream',
+            options: Array.from(new Set(accounts.map((a) => a.streamName).filter((s): s is string => !!s)))
+              .sort()
+              .map((s) => ({ value: s, label: s })),
+            matches: (a, v) => a.streamName === v,
           },
           {
             key: 'status',
@@ -439,13 +504,7 @@ export default function SchoolAdminStudentsPage() {
       />
 
       {viewing && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-primary-900">{viewing.name}</h2>
-            <button type="button" onClick={() => setViewing(null)} aria-label="Close">
-              <X className="w-4 h-4 text-text-muted" aria-hidden />
-            </button>
-          </div>
+        <Modal open onClose={() => setViewing(null)} title={viewing.name}>
           <div className="flex flex-col sm:flex-row gap-5">
             {viewing.photoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -464,20 +523,32 @@ export default function SchoolAdminStudentsPage() {
               ))}
             </dl>
           </div>
-        </Card>
+        </Modal>
       )}
 
       {editing && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-primary-900">Edit — {editing.systemId}</h2>
-            <button type="button" onClick={() => setEditing(null)} aria-label="Close">
-              <X className="w-4 h-4 text-text-muted" aria-hidden />
-            </button>
-          </div>
+        <Modal open onClose={() => setEditing(null)} title={`Edit — ${editing.systemId}`}>
           <form onSubmit={saveEdit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input label="Full name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} required />
+              <Input
+                label="First name"
+                value={editing.firstName}
+                onChange={(e) => setEditing({ ...editing, firstName: e.target.value })}
+                required
+              />
+              <Input
+                label="Middle name"
+                value={editing.middleName ?? ''}
+                onChange={(e) => setEditing({ ...editing, middleName: e.target.value || null })}
+              />
+              <Input
+                label="Last name"
+                value={editing.lastName}
+                onChange={(e) => setEditing({ ...editing, lastName: e.target.value })}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Input label="Email" type="email" value={editing.contactEmail ?? ''} onChange={(e) => setEditing({ ...editing, contactEmail: e.target.value })} />
               <Select
                 label="Gender"
@@ -489,6 +560,24 @@ export default function SchoolAdminStudentsPage() {
                 value={editing.gender ?? ''}
                 onChange={(e) => setEditing({ ...editing, gender: (e.target.value || null) as 'male' | 'female' | null })}
               />
+              <Input
+                label="Date of birth"
+                type="date"
+                value={editing.dateOfBirth ?? ''}
+                onChange={(e) => setEditing({ ...editing, dateOfBirth: e.target.value || null })}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Phone"
+                value={editing.phonePrimary ?? ''}
+                onChange={(e) => setEditing({ ...editing, phonePrimary: e.target.value || null })}
+              />
+              <Input
+                label="Alternate phone"
+                value={editing.phoneSecondary ?? ''}
+                onChange={(e) => setEditing({ ...editing, phoneSecondary: e.target.value || null })}
+              />
             </div>
             <p className="text-xs text-text-muted">System ID cannot be changed — it is referenced by enrolments, submissions and audit records.</p>
             <div className="flex gap-2">
@@ -496,17 +585,11 @@ export default function SchoolAdminStudentsPage() {
               <Button type="button" variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
             </div>
           </form>
-        </Card>
+        </Modal>
       )}
 
       {photoFor && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-primary-900">Photo — {photoFor.name}</h2>
-            <button type="button" onClick={() => setPhotoFor(null)} aria-label="Close">
-              <X className="w-4 h-4 text-text-muted" aria-hidden />
-            </button>
-          </div>
+        <Modal open onClose={() => setPhotoFor(null)} title={`Photo — ${photoFor.name}`}>
           <ImageUpload
             kind="profile"
             entityId={photoFor.id}
@@ -517,7 +600,7 @@ export default function SchoolAdminStudentsPage() {
               setAccounts((current) => current.map((a) => (a.id === photoFor.id ? { ...a, photoUrl: url } : a)));
             }}
           />
-        </Card>
+        </Modal>
       )}
     </div>
   );

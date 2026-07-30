@@ -45,6 +45,22 @@ export interface DataTableFilter<T> {
   matches: (row: T, value: string) => boolean;
 }
 
+/**
+ * Opt-in "include passwords" export column. Real passwords are never stored
+ * anywhere retrievable, so the only honest way to put one in an export is to
+ * generate a fresh one right at export time — which is what `fetchPasswords`
+ * does. Enabling the checkbox this backs resets the password for every row
+ * being exported; there is no way to export a password without doing that.
+ */
+export interface DataTablePasswordColumn<T> {
+  /** Defaults to "Password". */
+  label?: string;
+  /** Confirmation copy shown before resetting; `count` is the rows about to be exported. */
+  confirmMessage?: (count: number) => string;
+  /** Resets passwords for the given (already filtered/sorted) rows and resolves rowKey -> new password. */
+  fetchPasswords: (rows: T[], onProgress: (done: number, total: number) => void) => Promise<Record<string, string>>;
+}
+
 interface DataTableProps<T> {
   rows: T[];
   columns: DataTableColumn<T>[];
@@ -66,6 +82,8 @@ interface DataTableProps<T> {
    * Exports cover every filtered/sorted row, not just the current page.
    */
   exportFileName?: string;
+  /** Adds an opt-in "include passwords" toggle to the export menu — see DataTablePasswordColumn. */
+  passwordColumn?: DataTablePasswordColumn<T>;
 }
 
 function defaultValue<T>(row: T, column: DataTableColumn<T>): string | number | null | undefined {
@@ -119,6 +137,7 @@ export function DataTable<T>({
   actions,
   mobileTitle,
   exportFileName = 'export',
+  passwordColumn,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState(initialSort ?? null);
@@ -132,6 +151,23 @@ export function DataTable<T>({
   const [exporting, setExporting] = useState<'csv' | 'excel' | 'pdf' | null>(null);
   const [exportError, setExportError] = useState('');
   const exportRef = useRef<HTMLDivElement>(null);
+
+  // The blank-header "actions" column is a UI-only affordance, never something
+  // worth exporting — everything else starts checked.
+  const exportableColumns = useMemo(() => columns.filter((c) => c.header !== ''), [columns]);
+  const [selectedCols, setSelectedCols] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(exportableColumns.map((c) => [c.key, true]))
+  );
+  const [includePasswords, setIncludePasswords] = useState(false);
+  const [passwordProgress, setPasswordProgress] = useState<{ done: number; total: number } | null>(null);
+
+  function toggleColumn(key: string) {
+    setSelectedCols((current) => ({ ...current, [key]: !(current[key] ?? true) }));
+  }
+
+  function setAllColumns(value: boolean) {
+    setSelectedCols(Object.fromEntries(exportableColumns.map((c) => [c.key, value])));
+  }
 
   // Keeps typing responsive on large lists: the input updates immediately while
   // the filtering work runs against the deferred value.
@@ -209,23 +245,67 @@ export function DataTable<T>({
   }, [exportOpen]);
 
   async function handleExport(format: 'csv' | 'excel' | 'pdf') {
-    setExportOpen(false);
-    setExportError('');
-    setExporting(format);
+    const chosenColumns = exportableColumns.filter((c) => selectedCols[c.key] !== false);
+    if (chosenColumns.length === 0 && !(passwordColumn && includePasswords)) {
+      setExportError('Select at least one column to export.');
+      return;
+    }
+
+    // Every filtered/sorted row, not just the current page — a person
+    // exporting wants the whole result set they've narrowed down to.
+    const exportRows = processed;
+
+    let passwords: Record<string, string> | null = null;
+    if (passwordColumn && includePasswords) {
+      const count = exportRows.length;
+      const message =
+        passwordColumn.confirmMessage?.(count) ??
+        `This resets the password for ${count} account(s) and generates new ones — their previous password will stop working. Continue?`;
+      if (!window.confirm(message)) return;
+
+      setExportOpen(false);
+      setExportError('');
+      setExporting(format);
+      setPasswordProgress({ done: 0, total: count });
+      try {
+        passwords = await passwordColumn.fetchPasswords(exportRows, (done, total) =>
+          setPasswordProgress({ done, total })
+        );
+      } catch {
+        setExportError('Failed to reset passwords — export cancelled.');
+        setExporting(null);
+        setPasswordProgress(null);
+        return;
+      }
+    } else {
+      setExportOpen(false);
+      setExportError('');
+      setExporting(format);
+    }
+
     try {
-      const headers = columns.map((c) => c.header);
-      // Every filtered/sorted row, not just the current page — a person
-      // exporting wants the whole result set they've narrowed down to.
-      const exportRows: ExportCell[][] = processed.map((row) =>
-        columns.map((c) => exportValueFor(row, c) ?? '')
+      const finalColumns: DataTableColumn<T>[] = passwords
+        ? [
+            ...chosenColumns,
+            {
+              key: '__password__',
+              header: passwordColumn?.label ?? 'Password',
+              value: (row: T) => passwords![rowKey(row)] ?? '',
+            },
+          ]
+        : chosenColumns;
+      const headers = finalColumns.map((c) => c.header);
+      const exportCells: ExportCell[][] = exportRows.map((row) =>
+        finalColumns.map((c) => exportValueFor(row, c) ?? '')
       );
-      if (format === 'csv') exportToCsv(exportFileName, headers, exportRows);
-      else if (format === 'excel') await exportToExcel(exportFileName, headers, exportRows);
-      else await exportToPdf(exportFileName, exportFileName, headers, exportRows);
+      if (format === 'csv') exportToCsv(exportFileName, headers, exportCells);
+      else if (format === 'excel') await exportToExcel(exportFileName, headers, exportCells);
+      else await exportToPdf(exportFileName, exportFileName, headers, exportCells);
     } catch {
       setExportError('Export failed. Please try again.');
     } finally {
       setExporting(null);
+      setPasswordProgress(null);
     }
   }
 
@@ -279,13 +359,59 @@ export function DataTable<T>({
                 className="inline-flex items-center gap-2 rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2.5 text-sm font-medium text-[#02465B] hover:border-[#02465B]/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Download className="w-4 h-4" aria-hidden />
-                {exporting ? 'Exporting…' : 'Export'}
+                {exporting
+                  ? passwordProgress
+                    ? `Resetting passwords… ${passwordProgress.done}/${passwordProgress.total}`
+                    : 'Exporting…'
+                  : 'Export'}
               </button>
               {exportOpen && (
                 <div
                   role="menu"
-                  className="absolute right-0 z-10 mt-1 w-40 overflow-hidden rounded-xl border border-[#E8EFF3] bg-white shadow-lg"
+                  className="absolute right-0 z-10 mt-1 w-72 overflow-hidden rounded-xl border border-[#E8EFF3] bg-white shadow-lg"
                 >
+                  <div className="p-3 border-b border-[#F1F6F8]">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-medium text-[#5A7D8A] tracking-wide">COLUMNS</p>
+                      <div className="flex gap-2 text-xs">
+                        <button type="button" onClick={() => setAllColumns(true)} className="text-[#02465B] hover:underline">
+                          All
+                        </button>
+                        <button type="button" onClick={() => setAllColumns(false)} className="text-[#02465B] hover:underline">
+                          None
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
+                      {exportableColumns.map((column) => (
+                        <label key={column.key} className="flex items-center gap-2 text-sm text-[#12333F]">
+                          <input
+                            type="checkbox"
+                            checked={selectedCols[column.key] !== false}
+                            onChange={() => toggleColumn(column.key)}
+                            className="rounded border-[#D1E0E8]"
+                          />
+                          {column.header}
+                        </label>
+                      ))}
+                    </div>
+                    {passwordColumn && (
+                      <label className="flex items-start gap-2 text-sm text-[#12333F] mt-3 pt-3 border-t border-[#F1F6F8]">
+                        <input
+                          type="checkbox"
+                          checked={includePasswords}
+                          onChange={(e) => setIncludePasswords(e.target.checked)}
+                          className="rounded border-[#D1E0E8] mt-0.5"
+                        />
+                        <span>
+                          Include {(passwordColumn.label ?? 'password').toLowerCase()}
+                          <span className="block text-xs text-text-muted">
+                            Resets it for every exported account — their old password stops working.
+                          </span>
+                        </span>
+                      </label>
+                    )}
+                  </div>
                   <button
                     type="button"
                     role="menuitem"

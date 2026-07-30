@@ -10,6 +10,7 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { ImageUpload } from '@/components/ui/ImageUpload';
 import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
+import { chunk } from '@/lib/chunk';
 import { Eye, KeyRound, Pencil, Power, PowerOff, Trash2, UserPlus, X } from 'lucide-react';
 
 interface School {
@@ -231,6 +232,43 @@ export default function SystemStaffPage() {
     }
   }
 
+  // Real passwords are never stored anywhere retrievable, so the only way to
+  // put one in an export is to reset it right here and capture the fresh
+  // value. Unlike students, staff/admins are forced to change it on next
+  // login (see resetAccountPassword) — the exported one is for that first sign-in only.
+  async function fetchPasswordsForExport(
+    rows: StaffAccount[],
+    onProgress: (done: number, total: number) => void
+  ): Promise<Record<string, string>> {
+    const passwords: Record<string, string> = {};
+    let failed = 0;
+    let done = 0;
+    for (const batch of chunk(rows, 10)) {
+      const results = await Promise.all(
+        batch.map(async (a) => {
+          try {
+            const res = await fetch(`/api/admin/system/accounts/${a.id}/reset-password`, { method: 'POST' });
+            const data = await res.json();
+            return { id: a.id, password: data.success ? (data.data.temporaryPassword as string) : '' };
+          } catch {
+            return { id: a.id, password: '' };
+          }
+        })
+      );
+      for (const r of results) {
+        passwords[r.id] = r.password;
+        if (!r.password) failed += 1;
+      }
+      done += batch.length;
+      onProgress(done, rows.length);
+    }
+    if (failed > 0) {
+      toast.warning(`${failed} password reset(s) failed — those row(s) will be blank in the export.`);
+    }
+    await load();
+    return passwords;
+  }
+
   const columns: DataTableColumn<StaffAccount>[] = useMemo(
     () => [
       {
@@ -425,6 +463,12 @@ export default function SystemStaffPage() {
         emptyMessage="No staff or admin accounts yet."
         exportFileName="staff-accounts"
         mobileTitle={(a) => a.name}
+        passwordColumn={{
+          label: 'Temporary password',
+          confirmMessage: (count) =>
+            `This resets the password for ${count} account(s) and puts the new one in the export — their previous password stops working, and they'll be asked to set a new one on next login. Continue?`,
+          fetchPasswords: fetchPasswordsForExport,
+        }}
         filters={[
           {
             key: 'role',

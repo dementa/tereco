@@ -9,8 +9,11 @@ import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { ImageUpload } from '@/components/ui/ImageUpload';
+import { Modal } from '@/components/ui/Modal';
 import { CredentialsCard } from '@/components/admin/CredentialsCard';
+import { CredentialSlips, type CredentialSlipEntry } from '@/components/admin/CredentialSlips';
 import { useToast } from '@/components/ui/ToastProvider';
+import { chunk } from '@/lib/chunk';
 import { ArrowRightLeft, Check, Eye, KeyRound, Pencil, Power, PowerOff, Trash2, Upload, UserPlus, X } from 'lucide-react';
 
 interface School {
@@ -55,12 +58,18 @@ interface StudentAccount {
   id: string;
   systemId: string | null;
   name: string;
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
   contactEmail: string | null;
   schoolName: string | null;
   gender: 'male' | 'female' | null;
   className: string | null;
   streamName: string | null;
   photoUrl: string | null;
+  dateOfBirth: string | null;
+  phonePrimary: string | null;
+  phoneSecondary: string | null;
   mustChangePassword: boolean;
   isActive: boolean;
   createdAt: string;
@@ -104,9 +113,13 @@ const emptyForm = {
 const VIEW_FIELDS: [string, (a: StudentAccount) => string][] = [
   ['Student ID', (a) => a.systemId ?? ''],
   ['School', (a) => a.schoolName ?? ''],
-  ['Class', (a) => [a.className, a.streamName].filter(Boolean).join(' ')],
+  ['Class', (a) => a.className ?? ''],
+  ['Stream', (a) => a.streamName ?? ''],
   ['Email', (a) => a.contactEmail ?? ''],
   ['Gender', (a) => a.gender ?? ''],
+  ['Date of birth', (a) => (a.dateOfBirth ? new Date(a.dateOfBirth).toLocaleDateString() : '')],
+  ['Phone', (a) => a.phonePrimary ?? ''],
+  ['Alternate phone', (a) => a.phoneSecondary ?? ''],
   ['Status', (a) => (a.isActive ? 'Active' : 'Deactivated')],
   ['Created', (a) => new Date(a.createdAt).toLocaleDateString()],
 ];
@@ -150,6 +163,13 @@ export default function SystemStudentsPage() {
     reason: '',
   });
   const [movingBusy, setMovingBusy] = useState(false);
+
+  const [resetByClassOpen, setResetByClassOpen] = useState(false);
+  const [resetForm, setResetForm] = useState({ schoolName: '', className: '', streamName: '' });
+  const [resetting, setResetting] = useState(false);
+  const [resetProgress, setResetProgress] = useState<{ done: number; total: number } | null>(null);
+  const [resetResults, setResetResults] = useState<CredentialSlipEntry[] | null>(null);
+  const [resetDownloadName, setResetDownloadName] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -305,24 +325,25 @@ export default function SystemStudentsPage() {
     if (!editing) return;
     setSavingEdit(true);
     try {
-      const [firstName, ...rest] = editing.name.trim().split(/\s+/);
       const res = await fetch(`/api/admin/system/accounts/${editing.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firstName,
-          lastName: rest.join(' '),
+          firstName: editing.firstName,
+          middleName: editing.middleName,
+          lastName: editing.lastName,
           contactEmail: editing.contactEmail ?? '',
           gender: editing.gender,
+          dateOfBirth: editing.dateOfBirth || null,
+          phonePrimary: editing.phonePrimary,
+          phoneSecondary: editing.phoneSecondary,
         }),
       });
       const data = await res.json();
       if (data.success) {
-        setAccounts((current) =>
-          current.map((a) => (a.id === editing.id ? editing : a))
-        );
         setEditing(null);
         toast.success('Account updated.');
+        await load();
       } else {
         toast.error(data.message ?? 'Failed to update account.');
       }
@@ -430,6 +451,135 @@ export default function SystemStudentsPage() {
     }
   }
 
+  // Real passwords are never stored anywhere retrievable, so the only way to
+  // put one in an export is to reset it right here and capture the fresh
+  // value. Resetting a student's password does not force a change screen —
+  // see resetAccountPassword — so the new one works immediately.
+  async function fetchPasswordsForExport(
+    rows: StudentAccount[],
+    onProgress: (done: number, total: number) => void
+  ): Promise<Record<string, string>> {
+    const passwords: Record<string, string> = {};
+    let failed = 0;
+    let done = 0;
+    for (const batch of chunk(rows, 10)) {
+      const results = await Promise.all(
+        batch.map(async (a) => {
+          try {
+            const res = await fetch(`/api/admin/system/accounts/${a.id}/reset-password`, { method: 'POST' });
+            const data = await res.json();
+            return { id: a.id, password: data.success ? (data.data.temporaryPassword as string) : '' };
+          } catch {
+            return { id: a.id, password: '' };
+          }
+        })
+      );
+      for (const r of results) {
+        passwords[r.id] = r.password;
+        if (!r.password) failed += 1;
+      }
+      done += batch.length;
+      onProgress(done, rows.length);
+    }
+    if (failed > 0) {
+      toast.warning(`${failed} password reset(s) failed — those row(s) will be blank in the export.`);
+    }
+    await load();
+    return passwords;
+  }
+
+  // Options narrow progressively — school first, since the same class/stream
+  // name can exist at more than one school.
+  const resetSchoolOptions = useMemo(
+    () =>
+      Array.from(new Set(accounts.map((a) => a.schoolName).filter((s): s is string => !!s))).sort(),
+    [accounts]
+  );
+  const resetClassOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          accounts
+            .filter((a) => a.schoolName === resetForm.schoolName)
+            .map((a) => a.className)
+            .filter((c): c is string => !!c)
+        )
+      ).sort(),
+    [accounts, resetForm.schoolName]
+  );
+  const resetStreamOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          accounts
+            .filter((a) => a.schoolName === resetForm.schoolName && a.className === resetForm.className)
+            .map((a) => a.streamName)
+            .filter((s): s is string => !!s)
+        )
+      ).sort(),
+    [accounts, resetForm.schoolName, resetForm.className]
+  );
+  const resetMatches = useMemo(
+    () =>
+      accounts.filter(
+        (a) =>
+          a.isActive &&
+          a.schoolName === resetForm.schoolName &&
+          a.className === resetForm.className &&
+          (!resetForm.streamName || a.streamName === resetForm.streamName)
+      ),
+    [accounts, resetForm]
+  );
+
+  function closeResetByClass() {
+    setResetByClassOpen(false);
+    setResetForm({ schoolName: '', className: '', streamName: '' });
+    setResetResults(null);
+    setResetDownloadName('');
+  }
+
+  async function performClassReset() {
+    const place = [resetForm.className, resetForm.streamName].filter(Boolean).join(' ');
+    if (
+      !confirm(
+        `Reset the password for ${resetMatches.length} active student(s) in ${place} at ${resetForm.schoolName}? Their previous password stops working immediately.`
+      )
+    )
+      return;
+    setResetting(true);
+    setResetResults(null);
+    setResetProgress({ done: 0, total: resetMatches.length });
+    const entries: CredentialSlipEntry[] = [];
+    let failed = 0;
+    for (const batch of chunk(resetMatches, 10)) {
+      const results = await Promise.all(
+        batch.map(async (a) => {
+          try {
+            const res = await fetch(`/api/admin/system/accounts/${a.id}/reset-password`, { method: 'POST' });
+            const data = await res.json();
+            if (data.success) {
+              return { name: a.name, systemId: a.systemId, temporaryPassword: data.data.temporaryPassword as string };
+            }
+            return null;
+          } catch {
+            return null;
+          }
+        })
+      );
+      for (const r of results) {
+        if (r) entries.push(r);
+        else failed += 1;
+      }
+      setResetProgress((p) => ({ done: (p?.done ?? 0) + batch.length, total: resetMatches.length }));
+    }
+    setResetting(false);
+    setResetResults(entries);
+    setResetDownloadName(`${resetForm.className}-${resetForm.streamName || 'all'}-passwords-${Date.now()}.csv`);
+    if (failed > 0) toast.warning(`${failed} password reset(s) failed.`);
+    if (entries.length > 0) toast.success(`Reset ${entries.length} password(s) for ${place}.`);
+    await load();
+  }
+
   const columns: DataTableColumn<StudentAccount>[] = useMemo(
     () => [
       {
@@ -465,21 +615,23 @@ export default function SystemStudentsPage() {
       { key: 'systemId', header: 'Student ID', value: (a) => a.systemId ?? '—' },
       { key: 'schoolName', header: 'School', value: (a) => a.schoolName ?? '—' },
       {
-        key: 'placement',
+        key: 'className',
         header: 'Class',
         // Placement comes from the open enrolment, so a student between
         // enrolments legitimately has none.
-        value: (a) => [a.className, a.streamName].filter(Boolean).join(' ') || '',
-        render: (a) => {
-          const label = [a.className, a.streamName].filter(Boolean).join(' ');
-          return label ? (
-            label
-          ) : (
+        value: (a) => a.className ?? '',
+        render: (a) =>
+          a.className ?? (
             <span className="text-[#9BB3BD]" title="No open enrolment">
               Not enrolled
             </span>
-          );
-        },
+          ),
+      },
+      {
+        key: 'streamName',
+        header: 'Stream',
+        value: (a) => a.streamName ?? '',
+        hideOnMobile: true,
       },
       {
         key: 'gender',
@@ -743,10 +895,16 @@ export default function SystemStudentsPage() {
         rowKey={(a) => a.id}
         loading={loading}
         initialSort={{ key: 'name', direction: 'asc' }}
-        searchPlaceholder="Search by name, student ID, school or class…"
+        searchPlaceholder="Search by name, student ID, school, class or stream…"
         emptyMessage="No student accounts yet. Add one, or use bulk import."
         exportFileName="students"
         mobileTitle={(a) => a.name}
+        passwordColumn={{
+          label: 'Temporary password',
+          confirmMessage: (count) =>
+            `This resets the password for ${count} student account(s) and puts the new one in the export — their previous password stops working immediately. Continue?`,
+          fetchPasswords: fetchPasswordsForExport,
+        }}
         filters={[
           {
             key: 'school',
@@ -763,6 +921,16 @@ export default function SystemStudentsPage() {
               .sort()
               .map((c) => ({ value: c, label: c })),
             matches: (a, v) => a.className === v,
+          },
+          {
+            key: 'stream',
+            label: 'Stream',
+            options: Array.from(
+              new Set(accounts.map((a) => a.streamName).filter((s): s is string => !!s))
+            )
+              .sort()
+              .map((s) => ({ value: s, label: s })),
+            matches: (a, v) => a.streamName === v,
           },
           {
             key: 'status',
@@ -784,6 +952,10 @@ export default function SystemStudentsPage() {
                 Import
               </Button>
             </Link>
+            <Button variant="outline" onClick={() => setResetByClassOpen(true)}>
+              <KeyRound className="w-4 h-4 mr-1.5" aria-hidden />
+              Reset by class
+            </Button>
             <Button onClick={() => setShowForm((v) => !v)}>
               <UserPlus className="w-4 h-4 mr-1.5" aria-hidden />
               New student
@@ -793,13 +965,7 @@ export default function SystemStudentsPage() {
       />
 
       {viewing && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-primary-900">{viewing.name}</h2>
-            <button type="button" onClick={() => setViewing(null)} aria-label="Close">
-              <X className="w-4 h-4 text-text-muted" aria-hidden />
-            </button>
-          </div>
+        <Modal open onClose={() => setViewing(null)} title={viewing.name}>
           <div className="flex flex-col sm:flex-row gap-5">
             {viewing.photoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -822,25 +988,32 @@ export default function SystemStudentsPage() {
               ))}
             </dl>
           </div>
-        </Card>
+        </Modal>
       )}
 
       {editing && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-primary-900">Edit — {editing.systemId}</h2>
-            <button type="button" onClick={() => setEditing(null)} aria-label="Close">
-              <X className="w-4 h-4 text-text-muted" aria-hidden />
-            </button>
-          </div>
+        <Modal open onClose={() => setEditing(null)} title={`Edit — ${editing.systemId}`}>
           <form onSubmit={saveEdit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Input
-                label="Full name"
-                value={editing.name}
-                onChange={(e) => setEditing({ ...editing, name: e.target.value })}
+                label="First name"
+                value={editing.firstName}
+                onChange={(e) => setEditing({ ...editing, firstName: e.target.value })}
                 required
               />
+              <Input
+                label="Middle name"
+                value={editing.middleName ?? ''}
+                onChange={(e) => setEditing({ ...editing, middleName: e.target.value || null })}
+              />
+              <Input
+                label="Last name"
+                value={editing.lastName}
+                onChange={(e) => setEditing({ ...editing, lastName: e.target.value })}
+                required
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <Input
                 label="Email"
                 type="email"
@@ -859,10 +1032,29 @@ export default function SystemStudentsPage() {
                   setEditing({ ...editing, gender: (e.target.value || null) as 'male' | 'female' | null })
                 }
               />
+              <Input
+                label="Date of birth"
+                type="date"
+                value={editing.dateOfBirth ?? ''}
+                onChange={(e) => setEditing({ ...editing, dateOfBirth: e.target.value || null })}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input
+                label="Phone"
+                value={editing.phonePrimary ?? ''}
+                onChange={(e) => setEditing({ ...editing, phonePrimary: e.target.value || null })}
+              />
+              <Input
+                label="Alternate phone"
+                value={editing.phoneSecondary ?? ''}
+                onChange={(e) => setEditing({ ...editing, phoneSecondary: e.target.value || null })}
+              />
             </div>
             <p className="text-xs text-text-muted">
               Role and System ID cannot be changed: the ID encodes the role and is referenced by
-              enrolments, submissions and audit records.
+              enrolments, submissions and audit records. Use &ldquo;Move&rdquo; to change their school, class
+              or stream — placement is a dated record, not a plain edit.
             </p>
             <div className="flex gap-2">
               <Button type="submit" isLoading={savingEdit}>
@@ -873,23 +1065,22 @@ export default function SystemStudentsPage() {
               </Button>
             </div>
           </form>
-        </Card>
+        </Modal>
       )}
 
       {moving && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-primary-900">
+        <Modal
+          open
+          onClose={() => setMoving(null)}
+          title={
+            <>
               Move — {moving.name}
               <span className="block text-xs font-normal text-text-muted">
                 Currently {[moving.className, moving.streamName].filter(Boolean).join(' ') || 'not enrolled'}
               </span>
-            </h2>
-            <button type="button" onClick={() => setMoving(null)} aria-label="Close">
-              <X className="w-4 h-4 text-text-muted" aria-hidden />
-            </button>
-          </div>
-
+            </>
+          }
+        >
           <form onSubmit={submitMove} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Select
@@ -992,17 +1183,11 @@ export default function SystemStudentsPage() {
               </div>
             </div>
           )}
-        </Card>
+        </Modal>
       )}
 
       {photoFor && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-primary-900">Photo — {photoFor.name}</h2>
-            <button type="button" onClick={() => setPhotoFor(null)} aria-label="Close">
-              <X className="w-4 h-4 text-text-muted" aria-hidden />
-            </button>
-          </div>
+        <Modal open onClose={() => setPhotoFor(null)} title={`Photo — ${photoFor.name}`}>
           <ImageUpload
             kind="profile"
             entityId={photoFor.id}
@@ -1015,7 +1200,77 @@ export default function SystemStudentsPage() {
               );
             }}
           />
-        </Card>
+        </Modal>
+      )}
+
+      {resetByClassOpen && (
+        <Modal open onClose={closeResetByClass} title="Reset passwords by class" size="lg">
+          {!resetResults ? (
+            <div className="space-y-4">
+              <p className="text-sm text-text-muted">
+                Pick a school, class and (optionally) a stream — every active student currently
+                enrolled there gets a freshly generated password, ready to print or read out.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <Select
+                  label="School"
+                  options={[
+                    { value: '', label: 'Select a school' },
+                    ...resetSchoolOptions.map((s) => ({ value: s, label: s })),
+                  ]}
+                  value={resetForm.schoolName}
+                  onChange={(e) => setResetForm({ schoolName: e.target.value, className: '', streamName: '' })}
+                />
+                <Select
+                  label="Class"
+                  options={[
+                    { value: '', label: resetForm.schoolName ? 'Select a class' : 'Choose a school first' },
+                    ...resetClassOptions.map((c) => ({ value: c, label: c })),
+                  ]}
+                  value={resetForm.className}
+                  disabled={!resetForm.schoolName}
+                  onChange={(e) => setResetForm({ ...resetForm, className: e.target.value, streamName: '' })}
+                />
+                <Select
+                  label="Stream (optional)"
+                  options={[
+                    { value: '', label: 'All streams' },
+                    ...resetStreamOptions.map((s) => ({ value: s, label: s })),
+                  ]}
+                  value={resetForm.streamName}
+                  disabled={!resetForm.className}
+                  onChange={(e) => setResetForm({ ...resetForm, streamName: e.target.value })}
+                />
+              </div>
+              {resetForm.className && (
+                <p className="text-sm text-[#12333F]">
+                  {resetMatches.length} active student{resetMatches.length === 1 ? '' : 's'} match this selection.
+                </p>
+              )}
+              <div className="flex gap-2">
+                <Button
+                  type="button"
+                  onClick={() => void performClassReset()}
+                  disabled={!resetForm.schoolName || !resetForm.className || resetMatches.length === 0 || resetting}
+                  isLoading={resetting}
+                >
+                  {resetting && resetProgress
+                    ? `Resetting… ${resetProgress.done}/${resetProgress.total}`
+                    : 'Reset & show credentials'}
+                </Button>
+                <Button type="button" variant="outline" onClick={closeResetByClass}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <CredentialSlips
+              title={`${[resetForm.className, resetForm.streamName].filter(Boolean).join(' ')} — login credentials`}
+              entries={resetResults}
+              downloadFileName={resetDownloadName}
+            />
+          )}
+        </Modal>
       )}
       </div>
     </div>

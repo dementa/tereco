@@ -19,6 +19,7 @@ const UpdateSchema = z.object({
   gender: z.enum(["male", "female"]).nullable().optional(),
   dateOfBirth: z.string().nullable().optional(),
   phonePrimary: z.string().nullable().optional(),
+  phoneSecondary: z.string().nullable().optional(),
   isActive: z.boolean().optional(),
 });
 
