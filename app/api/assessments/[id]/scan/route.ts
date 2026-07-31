@@ -91,7 +91,7 @@ export async function POST(
     return successResponse({
       data: {
         submissionId,
-        upload: createSignedUpload("script", submissionId, pageNumber),
+        upload: createSignedUpload("script", submissionId, { slot: pageNumber }),
       },
     });
   } catch (error) {

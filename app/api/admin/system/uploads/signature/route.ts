@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
   if (denied) return denied;
   try {
     const { kind, entityId, slot } = SignSchema.parse(body);
-    return successResponse({ data: createSignedUpload(kind, entityId, slot) });
+    return successResponse({ data: createSignedUpload(kind, entityId, { slot }) });
   } catch (error) {
     return handleApiError(error, "Could not prepare the upload");
   }

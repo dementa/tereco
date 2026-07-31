@@ -9,7 +9,7 @@ import { NotificationBell } from '@/components/ui/NotificationBell';
 import { MobileTabBar } from '@/components/ui/MobileTabBar';
 import { Select } from '@/components/ui/Select';
 import { ParentChildrenProvider, useParentChildren } from '@/components/parent/ParentChildrenContext';
-import { LayoutDashboard, Award, ClipboardCheck, BookOpen, Bell, LogOut } from 'lucide-react';
+import { LayoutDashboard, Award, ClipboardCheck, BookOpen, Library, Bell, LogOut } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
 const PARENT_ROLES: Role[] = ['parent'];
@@ -19,6 +19,7 @@ const NAV = [
   { href: '/parent/results', label: 'Results', icon: Award },
   { href: '/parent/attendance', label: 'Attendance', icon: ClipboardCheck },
   { href: '/parent/lessons', label: 'Lessons', icon: BookOpen },
+  { href: '/parent/library', label: 'Library', icon: Library },
   { href: '/parent/notifications', label: 'Notifications', icon: Bell },
 ];
 

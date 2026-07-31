@@ -902,6 +902,198 @@ export type Database = {
           },
         ]
       }
+      library_content: {
+        Row: {
+          archived_at: string | null
+          cloudinary_public_id: string
+          cloudinary_resource_type: string
+          content_type: string
+          created_at: string
+          created_by: string
+          description: string
+          downloadable: boolean
+          file_bytes: number | null
+          file_format: string | null
+          id: string
+          learning_area: string | null
+          review_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          submitted_at: string | null
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          archived_at?: string | null
+          cloudinary_public_id: string
+          cloudinary_resource_type: string
+          content_type: string
+          created_at?: string
+          created_by: string
+          description?: string
+          downloadable?: boolean
+          file_bytes?: number | null
+          file_format?: string | null
+          id?: string
+          learning_area?: string | null
+          review_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          submitted_at?: string | null
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          archived_at?: string | null
+          cloudinary_public_id?: string
+          cloudinary_resource_type?: string
+          content_type?: string
+          created_at?: string
+          created_by?: string
+          description?: string
+          downloadable?: boolean
+          file_bytes?: number | null
+          file_format?: string | null
+          id?: string
+          learning_area?: string | null
+          review_reason?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          submitted_at?: string | null
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "library_content_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "library_content_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      library_content_targets: {
+        Row: {
+          class_id: string | null
+          content_id: string
+          created_at: string
+          id: string
+          level: number | null
+          school_id: string | null
+          student_id: string | null
+        }
+        Insert: {
+          class_id?: string | null
+          content_id: string
+          created_at?: string
+          id?: string
+          level?: number | null
+          school_id?: string | null
+          student_id?: string | null
+        }
+        Update: {
+          class_id?: string | null
+          content_id?: string
+          created_at?: string
+          id?: string
+          level?: number | null
+          school_id?: string | null
+          student_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "library_content_targets_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "library_content_targets_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "library_content"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "library_content_targets_level_fkey"
+            columns: ["level"]
+            isOneToOne: false
+            referencedRelation: "grade_levels"
+            referencedColumns: ["level"]
+          },
+          {
+            foreignKeyName: "library_content_targets_school_id_fkey"
+            columns: ["school_id"]
+            isOneToOne: false
+            referencedRelation: "schools"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "library_content_targets_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      library_feedback: {
+        Row: {
+          comment: string | null
+          content_id: string
+          created_at: string
+          id: string
+          rating: number | null
+          submitted_by: string
+          updated_at: string
+        }
+        Insert: {
+          comment?: string | null
+          content_id: string
+          created_at?: string
+          id?: string
+          rating?: number | null
+          submitted_by: string
+          updated_at?: string
+        }
+        Update: {
+          comment?: string | null
+          content_id?: string
+          created_at?: string
+          id?: string
+          rating?: number | null
+          submitted_by?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "library_feedback_content_id_fkey"
+            columns: ["content_id"]
+            isOneToOne: false
+            referencedRelation: "library_content"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "library_feedback_submitted_by_fkey"
+            columns: ["submitted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_reads: {
         Row: {
           notification_id: number
@@ -1729,6 +1921,36 @@ export type Database = {
         Returns: boolean
       }
       generate_system_id: { Args: { p_entity_type: string }; Returns: string }
+      library_content_for_profile: {
+        Args: { p_profile_id: string }
+        Returns: {
+          archived_at: string | null
+          cloudinary_public_id: string
+          cloudinary_resource_type: string
+          content_type: string
+          created_at: string
+          created_by: string
+          description: string
+          downloadable: boolean
+          file_bytes: number | null
+          file_format: string | null
+          id: string
+          learning_area: string | null
+          review_reason: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          submitted_at: string | null
+          title: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "library_content"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       notifications_for_profile: {
         Args: { p_profile: string }
         Returns: {

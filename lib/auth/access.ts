@@ -1,5 +1,6 @@
 import type { SessionProfile } from "@/lib/auth/session";
 import type { Assessment } from "@/lib/assessments";
+import type { LibraryContent } from "@/lib/entities/library-content";
 
 /**
  * The assessment's true owner: whoever can delete it or release its
@@ -53,4 +54,46 @@ export function canMarkAssessment(profile: SessionProfile, assessment: Assessmen
     assessment.targets.length === 0 ||
     assessment.targets.some((t) => t.schoolId === profile.schoolId)
   );
+}
+
+/**
+ * Who may edit a Library item's own fields (title/description/etc) or
+ * delete it — the creator, or admin/super_admin unscoped, mirroring
+ * isAssessmentOwner. Note this is narrower than who may APPROVE it
+ * (canApproveLibraryContent below): a school-admin managing their own
+ * upload still cannot approve it.
+ */
+export function canManageLibraryContent(profile: SessionProfile, content: LibraryContent): boolean {
+  if (profile.role === "admin" || profile.role === "super_admin") return true;
+  return content.createdBy === profile.id;
+}
+
+/**
+ * Approval is strictly super_admin — not admin, not school_admin, not the
+ * item's own creator — per epic #11's explicit, repeated product direction.
+ * Deliberately not folded into canManageLibraryContent, which DOES include
+ * admin: managing (editing) and approving are different powers here.
+ */
+export function canApproveLibraryContent(profile: SessionProfile): boolean {
+  return profile.role === "super_admin";
+}
+
+/**
+ * Who may replace an item's audience-target rows — this is also how "make
+ * public" (delete the whole-school row) and "restrict to school" (re-add
+ * it) happen, so it stays open to admin/super_admin even after approval,
+ * not just to the original creator while still in draft/pending.
+ */
+export function canEditLibraryContentTargets(profile: SessionProfile, content: LibraryContent): boolean {
+  if (profile.role === "admin" || profile.role === "super_admin") return true;
+  return (
+    content.createdBy === profile.id &&
+    (content.status === "draft" || content.status === "pending_approval")
+  );
+}
+
+/** Private feedback is visible only to the content's own creator and to admin/super_admin — never other viewers. */
+export function canViewLibraryFeedback(profile: SessionProfile, content: LibraryContent): boolean {
+  if (profile.role === "admin" || profile.role === "super_admin") return true;
+  return content.createdBy === profile.id;
 }

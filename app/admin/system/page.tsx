@@ -3,13 +3,14 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
-import { School, UserCog, GraduationCap, Contact } from 'lucide-react';
+import { School, UserCog, GraduationCap, Contact, Library } from 'lucide-react';
 
 interface Stats {
   schools: number;
   staff: number;
   students: number;
   parents: number;
+  libraryPending: number;
 }
 
 const CARDS = [
@@ -17,26 +18,29 @@ const CARDS = [
   { key: 'staff' as const, label: 'Staff & Admins', href: '/admin/system/staff', icon: UserCog },
   { key: 'students' as const, label: 'Student Accounts', href: '/admin/system/students', icon: GraduationCap },
   { key: 'parents' as const, label: 'Parents', href: '/admin/system/parents', icon: Contact },
+  { key: 'libraryPending' as const, label: 'Library approvals pending', href: '/admin/system/library', icon: Library },
 ];
 
 export default function SystemDashboard() {
-  const [stats, setStats] = useState<Stats>({ schools: 0, staff: 0, students: 0, parents: 0 });
+  const [stats, setStats] = useState<Stats>({ schools: 0, staff: 0, students: 0, parents: 0, libraryPending: 0 });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
       try {
-        const [schools, staff, students, parents] = await Promise.all([
+        const [schools, staff, students, parents, library] = await Promise.all([
           fetch('/api/admin/system/schools').then((r) => r.json()),
           fetch('/api/admin/system/staff').then((r) => r.json()),
           fetch('/api/admin/system/students').then((r) => r.json()),
           fetch('/api/admin/system/parents').then((r) => r.json()),
+          fetch('/api/library/content?scope=pending').then((r) => r.json()),
         ]);
         setStats({
           schools: schools.data?.length ?? 0,
           staff: staff.data?.length ?? 0,
           students: students.data?.length ?? 0,
           parents: parents.data?.length ?? 0,
+          libraryPending: library.data?.length ?? 0,
         });
       } finally {
         setLoading(false);
