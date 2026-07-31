@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { buildPublicId, verifyAsset } from "@/lib/cloudinary";
-import { CONTENT_TYPE_LIMITS, createDraftLibraryContent } from "@/lib/entities/library-content";
+import { createDraftLibraryContent, resourceTypeForFormat } from "@/lib/entities/library-content";
 import { getCurrentProfile, requireRole } from "@/lib/auth/session";
 import { errorResponse, handleApiError, successResponse } from "@/lib/apiResponse";
 
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     if (!profile) return errorResponse("Unauthorized", 401);
 
     const body = AttachSchema.parse(await request.json());
-    const { resourceType } = CONTENT_TYPE_LIMITS[body.contentType];
+    const resourceType = resourceTypeForFormat(body.contentType, body.format);
     const signedPublicId = buildPublicId("library", body.id);
 
     // Confirmed live (2026-07-31): Cloudinary bakes the extension into the
@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
       cloudinaryResourceType: resourceType,
       fileBytes: asset.bytes,
       fileFormat: body.format,
+      pageCount: resourceType === "image" ? asset.pages ?? undefined : undefined,
       learningArea: body.learningArea,
       targets: body.targets?.map((t) => ({ schoolId: t.schoolId, level: t.level, classId: t.classId, studentId: t.studentId })),
     });

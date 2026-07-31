@@ -2,7 +2,13 @@ import { getSupabaseAdmin } from "@/lib/supabase";
 import type { TablesUpdate } from "@/lib/database.types";
 import { UserFacingError } from "@/lib/apiResponse";
 import type { SessionProfile } from "@/lib/auth/session";
-import type { CloudinaryResourceType } from "@/lib/cloudinary";
+import {
+  libraryDeliveryUrl,
+  libraryPdfPageImageUrl,
+  libraryPdfThumbnailUrl,
+  libraryVideoThumbnailUrl,
+  type CloudinaryResourceType,
+} from "@/lib/cloudinary";
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -34,6 +40,8 @@ export interface LibraryContent {
   cloudinaryResourceType: CloudinaryResourceType;
   fileBytes: number | null;
   fileFormat: string | null;
+  /** Only meaningful when cloudinaryResourceType is "image" (a PDF rendered as page-images) — see resourceTypeForFormat. */
+  pageCount: number | null;
   downloadable: boolean;
   learningArea: string | null;
   createdBy: string;
@@ -51,18 +59,42 @@ export interface LibraryContent {
  * match against — these are product defaults, not derived from anything, and
  * were called out for sign-off when the epic was scoped (issue #12/#13).
  */
-export const CONTENT_TYPE_LIMITS: Record<
-  LibraryContentType,
-  { formats: string[]; maxBytes: number; resourceType: CloudinaryResourceType }
-> = {
-  video: { formats: ["mp4", "webm"], maxBytes: 500 * 1024 * 1024, resourceType: "video" },
-  document: { formats: ["pdf", "doc", "docx"], maxBytes: 50 * 1024 * 1024, resourceType: "raw" },
-  notes: { formats: ["pdf", "doc", "docx"], maxBytes: 20 * 1024 * 1024, resourceType: "raw" },
-  support_file: { formats: ["pdf", "doc", "docx", "xls", "xlsx", "zip"], maxBytes: 50 * 1024 * 1024, resourceType: "raw" },
-  audiobook: { formats: ["mp3", "m4a"], maxBytes: 300 * 1024 * 1024, resourceType: "video" }, // Cloudinary treats audio as "video" resource_type
-  past_paper: { formats: ["pdf"], maxBytes: 30 * 1024 * 1024, resourceType: "raw" },
-  presentation: { formats: ["pdf", "ppt", "pptx"], maxBytes: 100 * 1024 * 1024, resourceType: "raw" },
+export const CONTENT_TYPE_LIMITS: Record<LibraryContentType, { formats: string[]; maxBytes: number }> = {
+  video: { formats: ["mp4", "webm"], maxBytes: 500 * 1024 * 1024 },
+  document: { formats: ["pdf", "doc", "docx"], maxBytes: 50 * 1024 * 1024 },
+  notes: { formats: ["pdf", "doc", "docx"], maxBytes: 20 * 1024 * 1024 },
+  support_file: { formats: ["pdf", "doc", "docx", "xls", "xlsx", "zip"], maxBytes: 50 * 1024 * 1024 },
+  audiobook: { formats: ["mp3", "m4a"], maxBytes: 300 * 1024 * 1024 },
+  past_paper: { formats: ["pdf"], maxBytes: 30 * 1024 * 1024 },
+  presentation: { formats: ["pdf", "ppt", "pptx"], maxBytes: 100 * 1024 * 1024 },
 };
+
+/**
+ * Which Cloudinary resource type a given upload should use. Not a fixed
+ * per-content-type mapping — it depends on the actual file format, because
+ * `document`/`notes`/`support_file`/`past_paper`/`presentation` each accept
+ * several formats that need different handling:
+ *
+ *   pdf              -> "image": this Cloudinary account blocks serving raw
+ *                       PDF bytes outright (confirmed live, 2026-07-31 —
+ *                       401 "deny or ACL failure" even from an authenticated
+ *                       server-side fetch, so no proxy can route around it).
+ *                       Uploading as `image` instead lets Cloudinary convert
+ *                       pages to JPGs on delivery (`pg_N,f_jpg`), which the
+ *                       SAME restriction does not block — verified live.
+ *                       Trade-off: past_paper's download needs the actual
+ *                       PDF bytes, which this account still can't serve —
+ *                       see downloadAvailable in the API layer.
+ *   doc/docx/xls/xlsx/zip/ppt/pptx -> "raw": not affected by the PDF/ZIP
+ *                       restriction the same way (doc/docx/xls/xlsx render
+ *                       via the Office-online embed; zip has no preview at
+ *                       all, viewer or not).
+ *   mp4/webm/mp3/m4a -> "video": Cloudinary's resource type for audio too.
+ */
+export function resourceTypeForFormat(contentType: LibraryContentType, format: string): CloudinaryResourceType {
+  if (contentType === "video" || contentType === "audiobook") return "video";
+  return format.toLowerCase().replace(/^\./, "") === "pdf" ? "image" : "raw";
+}
 
 /** Throws with a specific, actionable message — checked before a Cloudinary signature is ever issued. */
 export function validateUpload(contentType: LibraryContentType, format: string, bytes?: number): void {
@@ -89,6 +121,7 @@ interface Row {
   cloudinary_resource_type: string;
   file_bytes: number | null;
   file_format: string | null;
+  page_count: number | null;
   downloadable: boolean;
   learning_area: string | null;
   created_by: string;
@@ -103,7 +136,7 @@ interface Row {
 
 const SELECT =
   "id, title, description, content_type, cloudinary_public_id, cloudinary_resource_type, " +
-  "file_bytes, file_format, downloadable, learning_area, created_by, status, " +
+  "file_bytes, file_format, page_count, downloadable, learning_area, created_by, status, " +
   "reviewed_by, review_reason, reviewed_at, submitted_at, created_at, updated_at";
 
 function rowToLibraryContent(row: Row): LibraryContent {
@@ -116,6 +149,7 @@ function rowToLibraryContent(row: Row): LibraryContent {
     cloudinaryResourceType: row.cloudinary_resource_type as CloudinaryResourceType,
     fileBytes: row.file_bytes,
     fileFormat: row.file_format,
+    pageCount: row.page_count,
     downloadable: row.downloadable,
     learningArea: row.learning_area,
     createdBy: row.created_by,
@@ -199,6 +233,8 @@ export interface CreateDraftInput {
   cloudinaryResourceType: CloudinaryResourceType;
   fileBytes?: number;
   fileFormat?: string;
+  /** Only set when cloudinaryResourceType is "image" (a PDF rendered as page-images). */
+  pageCount?: number;
   learningArea?: string;
   /** Only meaningful for admin/super_admin — everyone else gets the auto-inserted whole-school row instead. */
   targets?: Omit<LibraryContentTarget, "id">[];
@@ -230,6 +266,7 @@ export async function createDraftLibraryContent(
       cloudinary_resource_type: input.cloudinaryResourceType,
       file_bytes: input.fileBytes ?? null,
       file_format: input.fileFormat ?? null,
+      page_count: input.pageCount ?? null,
       learning_area: input.learningArea?.trim() || null,
       created_by: actingProfile.id,
       status: "draft",
@@ -288,21 +325,43 @@ export async function updateLibraryContent(id: string, updates: UpdateLibraryCon
 
 export async function getLibraryContentById(id: string): Promise<LibraryContent | null> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase.from("library_content").select(SELECT).eq("id", id).maybeSingle();
+  const { data, error } = await supabase
+    .from("library_content")
+    .select(SELECT)
+    .eq("id", id)
+    .is("archived_at", null)
+    .maybeSingle();
   if (error) throw new Error(error.message);
   return data ? rowToLibraryContent(data as unknown as Row) : null;
 }
 
-/** Everything one creator has authored, every status — the "my uploads" screen. */
+/** Everything one creator has authored, every status — the "my uploads" screen. Deleted (archived) items are gone, not just hidden-with-a-note. */
 export async function getMyLibraryContent(createdBy: string): Promise<LibraryContent[]> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("library_content")
     .select(SELECT)
     .eq("created_by", createdBy)
+    .is("archived_at", null)
     .order("created_at", { ascending: false });
   if (error) throw new Error(error.message);
   return (data as unknown as Row[]).map(rowToLibraryContent);
+}
+
+/**
+ * Soft-delete: sets archived_at rather than removing the row. Keeps the
+ * Cloudinary asset and DB record intact (undo-able in principle) while
+ * making the item disappear from every list — mirrors how assessments use
+ * deleted_at (03-collection.sql) rather than a hard DELETE.
+ */
+export async function archiveLibraryContent(id: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("library_content")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", id)
+    .is("archived_at", null);
+  if (error) throw new Error(error.message);
 }
 
 export async function submitLibraryContent(id: string): Promise<void> {
@@ -346,6 +405,7 @@ export async function getPendingLibraryContent(): Promise<PendingLibraryContent[
     .from("library_content")
     .select(PENDING_SELECT)
     .eq("status", "pending_approval")
+    .is("archived_at", null)
     .order("submitted_at", { ascending: true });
   if (error) throw new Error(error.message);
 
@@ -448,4 +508,64 @@ export async function canProfileViewLibraryContent(profileId: string, contentId:
     .maybeSingle();
   if (error) throw new Error(error.message);
   return data !== null;
+}
+
+// ─── Playback ───────────────────────────────────────────────
+
+export interface LibraryPlaybackInfo {
+  /** Set for video/audiobook/raw-document content — a normal single-URL delivery. Null for pdf-as-image content, which uses pageImageUrls instead. */
+  streamUrl: string | null;
+  /** Set only for content stored as a Cloudinary `image` resource (a PDF rendered as page-images) — one JPG URL per page, in order. */
+  pageImageUrls: string[] | null;
+  /**
+   * True only when this content is BOTH flagged downloadable (content_type
+   * = 'past_paper') AND actually backed by a raw asset Cloudinary will
+   * serve. Every past_paper today is PDF-format, which is stored as an
+   * `image` resource (see resourceTypeForFormat) precisely because this
+   * Cloudinary account refuses to serve raw PDF bytes — so this is
+   * currently always false for past_paper, on every account with that
+   * restriction still enabled. Surfaced as its own flag rather than a
+   * silently-401ing link, so the UI can show "download unavailable" instead
+   * of a broken button.
+   */
+  downloadAvailable: boolean;
+  downloadUrl: string | null;
+  /**
+   * A small preview image for card grids — page 1 of a PDF, or a video
+   * frame at 0s. Null for audiobook (no visual frame to extract) and raw
+   * doc/docx/xls/xlsx/zip (no Cloudinary transform generates a preview for
+   * those); the UI falls back to a plain content-type icon in that case.
+   */
+  thumbnailUrl: string | null;
+}
+
+export function getLibraryPlaybackInfo(item: {
+  contentType: LibraryContentType;
+  cloudinaryPublicId: string;
+  cloudinaryResourceType: CloudinaryResourceType;
+  fileFormat: string | null;
+  pageCount: number | null;
+  downloadable: boolean;
+}): LibraryPlaybackInfo {
+  if (item.cloudinaryResourceType === "image") {
+    const pages = item.pageCount ?? 1;
+    return {
+      streamUrl: null,
+      pageImageUrls: Array.from({ length: pages }, (_, i) => libraryPdfPageImageUrl(item.cloudinaryPublicId, i + 1)),
+      downloadAvailable: false,
+      downloadUrl: null,
+      thumbnailUrl: libraryPdfThumbnailUrl(item.cloudinaryPublicId),
+    };
+  }
+
+  const downloadAvailable = item.downloadable && item.cloudinaryResourceType === "raw";
+  return {
+    streamUrl: libraryDeliveryUrl(item.cloudinaryPublicId, item.cloudinaryResourceType, item.fileFormat ?? undefined),
+    pageImageUrls: null,
+    downloadAvailable,
+    downloadUrl: downloadAvailable
+      ? libraryDeliveryUrl(item.cloudinaryPublicId, item.cloudinaryResourceType, item.fileFormat ?? undefined, { download: true })
+      : null,
+    thumbnailUrl: item.contentType === "video" ? libraryVideoThumbnailUrl(item.cloudinaryPublicId) : null,
+  };
 }

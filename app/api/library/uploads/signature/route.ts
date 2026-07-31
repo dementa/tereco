@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { z } from "zod";
 import { createSignedUpload } from "@/lib/cloudinary";
-import { CONTENT_TYPE_LIMITS, validateUpload } from "@/lib/entities/library-content";
+import { resourceTypeForFormat, validateUpload } from "@/lib/entities/library-content";
 import { requireRole } from "@/lib/auth/session";
 import { handleApiError, successResponse } from "@/lib/apiResponse";
 
@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     const { id, contentType, format, bytes } = SignSchema.parse(await request.json());
     validateUpload(contentType, format, bytes);
 
-    const { resourceType } = CONTENT_TYPE_LIMITS[contentType];
+    const resourceType = resourceTypeForFormat(contentType, format);
     const upload = createSignedUpload("library", id, { resourceType });
     return successResponse({ data: upload });
   } catch (error) {

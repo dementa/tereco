@@ -5,21 +5,20 @@ import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
-import { Button } from '@/components/ui/Button';
-import { Modal } from '@/components/ui/Modal';
-import { LibraryItemViewer } from '@/components/library/LibraryItemViewer';
-import { FeedbackForm } from '@/components/library/FeedbackForm';
-import { FileText, Video, Headphones, Presentation, Download } from 'lucide-react';
+import { LibraryThumbnail, type LibraryThumbnailItem } from '@/components/library/LibraryThumbnail';
+import { LibraryFullScreenViewer } from '@/components/library/LibraryFullScreenViewer';
+import { Download } from 'lucide-react';
 
-interface LibraryItem {
+interface LibraryItem extends LibraryThumbnailItem {
   id: string;
   title: string;
   description: string;
-  contentType: 'video' | 'document' | 'notes' | 'support_file' | 'audiobook' | 'past_paper' | 'presentation';
   fileFormat: string | null;
   downloadable: boolean;
   learningArea: string | null;
-  streamUrl: string;
+  streamUrl: string | null;
+  pageImageUrls: string[] | null;
+  downloadAvailable: boolean;
   downloadUrl: string | null;
 }
 
@@ -33,16 +32,6 @@ const CONTENT_TYPE_OPTIONS = [
   { value: 'past_paper', label: 'Past paper' },
   { value: 'presentation', label: 'Presentation' },
 ];
-
-const TYPE_ICON: Record<LibraryItem['contentType'], React.ElementType> = {
-  video: Video,
-  document: FileText,
-  notes: FileText,
-  support_file: FileText,
-  audiobook: Headphones,
-  past_paper: FileText,
-  presentation: Presentation,
-};
 
 /** Shared browse/consume view — used by students, parents, and teachers browsing (not authoring). */
 export function LibraryBrowse() {
@@ -98,46 +87,26 @@ export function LibraryBrowse() {
         </Card>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filtered.map((item) => {
-            const Icon = TYPE_ICON[item.contentType];
-            return (
-              <button key={item.id} type="button" onClick={() => setActive(item)} className="text-left">
-                <Card hover className="cursor-pointer h-full">
-                  <div className="p-2.5 rounded-xl bg-bg-muted w-fit mb-3">
-                    <Icon className="w-5 h-5 text-primary-700" />
-                  </div>
+          {filtered.map((item) => (
+            <button key={item.id} type="button" onClick={() => setActive(item)} className="text-left">
+              <Card hover className="cursor-pointer h-full !p-0 overflow-hidden">
+                <LibraryThumbnail item={item} />
+                <div className="p-4">
                   <p className="font-medium text-primary-900 truncate">{item.title}</p>
                   {item.learningArea && <p className="text-xs text-text-muted mt-0.5">{item.learningArea}</p>}
-                  {item.downloadable && (
+                  {item.downloadAvailable && (
                     <Badge variant="accent" className="mt-2 inline-flex items-center gap-1">
                       <Download className="w-3 h-3" /> Downloadable
                     </Badge>
                   )}
-                </Card>
-              </button>
-            );
-          })}
+                </div>
+              </Card>
+            </button>
+          ))}
         </div>
       )}
 
-      <Modal open={active !== null} onClose={() => setActive(null)} title={active?.title} size="lg">
-        {active && (
-          <div className="space-y-4">
-            {active.description && <p className="text-sm text-text-secondary">{active.description}</p>}
-            <LibraryItemViewer item={active} />
-            {active.downloadable && active.downloadUrl && (
-              <a href={active.downloadUrl} download>
-                <Button variant="secondary">
-                  <Download className="w-4 h-4" /> Download
-                </Button>
-              </a>
-            )}
-            <div className="pt-2 border-t border-primary-100">
-              <FeedbackForm contentId={active.id} />
-            </div>
-          </div>
-        )}
-      </Modal>
+      {active && <LibraryFullScreenViewer item={active} onClose={() => setActive(null)} />}
     </div>
   );
 }

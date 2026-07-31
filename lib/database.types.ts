@@ -916,6 +916,7 @@ export type Database = {
           file_format: string | null
           id: string
           learning_area: string | null
+          page_count: number | null
           review_reason: string | null
           reviewed_at: string | null
           reviewed_by: string | null
@@ -937,6 +938,7 @@ export type Database = {
           file_format?: string | null
           id?: string
           learning_area?: string | null
+          page_count?: number | null
           review_reason?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -958,6 +960,7 @@ export type Database = {
           file_format?: string | null
           id?: string
           learning_area?: string | null
+          page_count?: number | null
           review_reason?: string | null
           reviewed_at?: string | null
           reviewed_by?: string | null
@@ -1936,6 +1939,7 @@ export type Database = {
           file_format: string | null
           id: string
           learning_area: string | null
+          page_count: number | null
           review_reason: string | null
           reviewed_at: string | null
           reviewed_by: string | null

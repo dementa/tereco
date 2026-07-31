@@ -150,12 +150,16 @@ export async function verifyAsset(
   publicId: string,
   resourceType: CloudinaryResourceType = "image",
   deliveryType: CloudinaryDeliveryType = "upload"
-): Promise<{ url: string; bytes: number; format: string } | null> {
+): Promise<{ url: string; bytes: number; format: string; pages: number | null } | null> {
   const { cloudName, apiKey, apiSecret } = getCloudinaryConfig();
 
   // The Admin API takes HTTP Basic auth (key:secret) rather than a signature.
+  // `pages=true` is opt-in — confirmed live that without it, the response
+  // omits `pages` entirely even for a genuinely multi-page PDF (the upload
+  // response includes it unprompted, but that's client-reported and this
+  // function exists specifically to not trust that).
   const res = await fetch(
-    `https://api.cloudinary.com/v1_1/${cloudName}/resources/${resourceType}/${deliveryType}/${encodeURIComponent(publicId)}`,
+    `https://api.cloudinary.com/v1_1/${cloudName}/resources/${resourceType}/${deliveryType}/${encodeURIComponent(publicId)}?pages=true`,
     {
       headers: {
         Authorization: `Basic ${Buffer.from(`${apiKey}:${apiSecret}`).toString("base64")}`,
@@ -177,9 +181,9 @@ export async function verifyAsset(
     );
     return null;
   }
-  const data = (await res.json()) as { secure_url?: string; bytes?: number; format?: string };
+  const data = (await res.json()) as { secure_url?: string; bytes?: number; format?: string; pages?: number };
   return data.secure_url
-    ? { url: data.secure_url, bytes: data.bytes ?? 0, format: data.format ?? "" }
+    ? { url: data.secure_url, bytes: data.bytes ?? 0, format: data.format ?? "", pages: data.pages ?? null }
     : null;
 }
 
@@ -238,6 +242,42 @@ export function libraryDeliveryUrl(
   const path = resourceType !== "raw" && format ? `${publicId}.${format}` : publicId;
   const transform = options.download ? "fl_attachment/" : "";
   return `https://res.cloudinary.com/${cloudName}/${resourceType}/upload/${transform}${path}`;
+}
+
+/**
+ * One page of a PDF, delivered as a JPG — NOT libraryDeliveryUrl, because
+ * PDF-format Library uploads are stored as Cloudinary `image` resources
+ * specifically so the `pg_N,f_jpg` transformation applies. Requesting the
+ * original (untransformed) format from the same resource still 401s —
+ * confirmed live, 2026-07-31 — so this function only ever asks for a JPG
+ * conversion, never the source bytes.
+ */
+export function libraryPdfPageImageUrl(publicId: string, page: number): string {
+  const { cloudName } = getCloudinaryConfig();
+  return `https://res.cloudinary.com/${cloudName}/image/upload/pg_${page},f_jpg,q_auto/${publicId}`;
+}
+
+const THUMBNAIL_TRANSFORM = "w_320,h_220,c_fill,q_auto";
+
+/** Page 1 of a PDF-as-image asset, cropped to a small thumbnail size for card grids. */
+export function libraryPdfThumbnailUrl(publicId: string): string {
+  const { cloudName } = getCloudinaryConfig();
+  return `https://res.cloudinary.com/${cloudName}/image/upload/pg_1,f_jpg,${THUMBNAIL_TRANSFORM}/${publicId}`;
+}
+
+/**
+ * A frame from a video, as a small JPG thumbnail (`so_0` = the frame at 0
+ * seconds). Standard Cloudinary video functionality — one of their most
+ * basic transformations, unlike the PDF-as-image workaround and the
+ * authenticated-delivery dead end earlier in this file, both of which
+ * turned out to need live verification before shipping. NOT verified live
+ * in this environment (no way to synthesize a real video file here without
+ * ffmpeg) — if thumbnails don't render for video uploads, this is the first
+ * place to check.
+ */
+export function libraryVideoThumbnailUrl(publicId: string): string {
+  const { cloudName } = getCloudinaryConfig();
+  return `https://res.cloudinary.com/${cloudName}/video/upload/so_0,f_jpg,${THUMBNAIL_TRANSFORM}/${publicId}`;
 }
 
 /**

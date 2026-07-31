@@ -2,25 +2,26 @@ import { NextRequest } from "next/server";
 import { getCurrentProfile, requireRole } from "@/lib/auth/session";
 import {
   getLibraryContentForProfile,
+  getLibraryPlaybackInfo,
   getMyLibraryContent,
   getPendingLibraryContent,
   type LibraryContentType,
 } from "@/lib/entities/library-content";
-import { libraryDeliveryUrl } from "@/lib/cloudinary";
 import { errorResponse, handleApiError, successResponse } from "@/lib/apiResponse";
 
 const CONTENT_TYPES = ["video", "document", "notes", "support_file", "audiobook", "past_paper", "presentation"];
 
-function withDeliveryUrls<T extends { cloudinaryPublicId: string; cloudinaryResourceType: "image" | "video" | "raw"; fileFormat: string | null; downloadable: boolean }>(
-  item: T
-) {
-  return {
-    ...item,
-    streamUrl: libraryDeliveryUrl(item.cloudinaryPublicId, item.cloudinaryResourceType, item.fileFormat ?? undefined),
-    downloadUrl: item.downloadable
-      ? libraryDeliveryUrl(item.cloudinaryPublicId, item.cloudinaryResourceType, item.fileFormat ?? undefined, { download: true })
-      : null,
-  };
+function withDeliveryUrls<
+  T extends {
+    contentType: LibraryContentType;
+    cloudinaryPublicId: string;
+    cloudinaryResourceType: "image" | "video" | "raw";
+    fileFormat: string | null;
+    pageCount: number | null;
+    downloadable: boolean;
+  },
+>(item: T) {
+  return { ...item, ...getLibraryPlaybackInfo(item) };
 }
 
 /**
@@ -49,7 +50,8 @@ export async function GET(request: NextRequest) {
     }
 
     if (scope === "mine") {
-      return successResponse({ data: await getMyLibraryContent(profile.id) });
+      const mine = await getMyLibraryContent(profile.id);
+      return successResponse({ data: mine.map(withDeliveryUrls) });
     }
 
     const contentTypeParam = searchParams.get("contentType");
