@@ -14,10 +14,10 @@ const SignSchema = z.object({
 
 /**
  * Issues a short-lived signature for a direct browser upload of Library
- * content. Every Library asset is signed for `type=authenticated` delivery
- * — even past_paper, which is downloadable but still only ever served
- * through our own gated route (see content/[id]/stream), never a bare
- * public Cloudinary URL.
+ * content, `type=upload` (the default) — `type=authenticated` was tried and
+ * confirmed non-functional live: it needs Cloudinary's separate Auth Token
+ * account feature, which this app doesn't configure. Access control lives
+ * at our own API layer (canViewLibraryContent), not a Cloudinary-side lock.
  */
 export async function POST(request: NextRequest) {
   const denied = await requireRole(request, ["staff", "school_admin", "admin", "super_admin"]);
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     validateUpload(contentType, format, bytes);
 
     const { resourceType } = CONTENT_TYPE_LIMITS[contentType];
-    const upload = createSignedUpload("library", id, { resourceType, deliveryType: "authenticated" });
+    const upload = createSignedUpload("library", id, { resourceType });
     return successResponse({ data: upload });
   } catch (error) {
     return handleApiError(error, "Could not prepare the upload");

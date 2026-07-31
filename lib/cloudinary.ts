@@ -164,7 +164,19 @@ export async function verifyAsset(
     }
   );
 
-  if (!res.ok) return null;
+  if (!res.ok) {
+    // Cloudinary's error body (e.g. "Resource not found", "Invalid
+    // signature") is the one piece of evidence that actually tells us why
+    // verification failed — swallowing it here is why this failure mode was
+    // undiagnosable from the outside. Logged, never thrown: a failed verify
+    // is a normal "the upload didn't take" outcome for the caller, not a
+    // server error.
+    const body = await res.text().catch(() => "");
+    console.error(
+      `Cloudinary verifyAsset failed: ${res.status} ${res.statusText} — GET /resources/${resourceType}/${deliveryType}/${publicId} — ${body}`
+    );
+    return null;
+  }
   const data = (await res.json()) as { secure_url?: string; bytes?: number; format?: string };
   return data.secure_url
     ? { url: data.secure_url, bytes: data.bytes ?? 0, format: data.format ?? "" }
@@ -197,54 +209,35 @@ export async function destroyAsset(
 }
 
 /**
- * A delivery URL for an `authenticated`-type asset, signed so Cloudinary
- * will actually serve it — an authenticated asset with an unsigned URL
- * returns 401 regardless of who's asking, which is the real access-control
- * property "view-only" depends on: nobody downloads via a bare guessable
- * link, only via a route that has just checked canViewLibraryContent.
+ * A Library delivery URL. Verified live against a real Cloudinary account
+ * (2026-07-31) that `type=authenticated` cannot be served at all without
+ * Cloudinary's separate "Auth Token" account feature (its own signing key
+ * configured in the console, not api_secret) — even Cloudinary's OWN
+ * returned `secure_url` for an authenticated asset 401'd on fetch. So
+ * Library uses plain `type=upload`, the same delivery type profile/school
+ * photos already use — the real access-control property is that this URL
+ * is only ever handed out by our own API route after it re-checks
+ * canViewLibraryContent/canProfileViewLibraryContent, not a Cloudinary-side
+ * lock. Anyone who already has the exact URL (a random UUID-keyed path) can
+ * fetch it directly; that is the same guarantee this app's existing
+ * profile-photo delivery already relies on.
  *
- * This does NOT carry a Cloudinary-side time expiry — that needs the
- * separate "Auth Token" account feature (its own signing key configured in
- * the Cloudinary console, not the api_secret used here), which this
- * environment has no credentials to set up or verify. What this gives
- * instead: the URL is only ever handed out by our own API route, which
- * re-checks the caller's permission on every request — so access dies the
- * moment a session or permission is revoked, rather than on a fixed timer.
- * Enabling Auth Token later would add a true expiring signature on top of
- * this without changing the caller-facing shape.
- *
- * NOT verified against a live Cloudinary account (none is configured in
- * this environment) — confirm against a real sandbox cloud before relying
- * on it, in particular whether a transformation flag (fl_attachment, in
- * authenticatedDownloadUrl below) needs to be folded into the signed string
- * as well as the path.
+ * `format` is only appended for image/video: raw resources bake the
+ * extension into the stored public_id itself (confirmed live — signing
+ * "…/<uuid>" for a raw upload comes back stored as "…/<uuid>.pdf"), so
+ * `cloudinary_public_id` for a raw item already includes it and appending
+ * again would double it ("…pdf.pdf", a confirmed 401).
  */
-export function authenticatedDeliveryUrl(
+export function libraryDeliveryUrl(
   publicId: string,
   resourceType: CloudinaryResourceType,
-  format?: string
+  format?: string,
+  options: { download?: boolean } = {}
 ): string {
-  const { cloudName, apiSecret } = getCloudinaryConfig();
-  const toSign: Record<string, string | number> = { public_id: publicId };
-  const signature = sign(toSign, apiSecret).slice(0, 32);
-  const path = format ? `${publicId}.${format}` : publicId;
-  return `https://res.cloudinary.com/${cloudName}/${resourceType}/authenticated/s--${signature}--/${path}`;
-}
-
-/**
- * Forces a browser download instead of inline rendering — the one place
- * Library content is allowed a real download link (past_paper only).
- */
-export function authenticatedDownloadUrl(
-  publicId: string,
-  resourceType: CloudinaryResourceType,
-  format?: string
-): string {
-  const { cloudName, apiSecret } = getCloudinaryConfig();
-  const toSign: Record<string, string | number> = { public_id: publicId };
-  const signature = sign(toSign, apiSecret).slice(0, 32);
-  const path = format ? `${publicId}.${format}` : publicId;
-  return `https://res.cloudinary.com/${cloudName}/${resourceType}/authenticated/fl_attachment/s--${signature}--/${path}`;
+  const { cloudName } = getCloudinaryConfig();
+  const path = resourceType !== "raw" && format ? `${publicId}.${format}` : publicId;
+  const transform = options.download ? "fl_attachment/" : "";
+  return `https://res.cloudinary.com/${cloudName}/${resourceType}/upload/${transform}${path}`;
 }
 
 /**

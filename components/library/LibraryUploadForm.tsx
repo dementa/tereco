@@ -118,7 +118,7 @@ export function LibraryUploadForm({ myUploadsHref }: { myUploadsHref: string }) 
       const attachRes = await fetch('/api/library/uploads/attach', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id, title, description, contentType, learningArea: learningArea || undefined }),
+        body: JSON.stringify({ id, title, description, contentType, format, learningArea: learningArea || undefined }),
       }).then((r) => r.json());
       if (!attachRes.success) throw new Error(attachRes.message);
 

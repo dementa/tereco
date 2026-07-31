@@ -6,7 +6,7 @@ import {
   getPendingLibraryContent,
   type LibraryContentType,
 } from "@/lib/entities/library-content";
-import { authenticatedDeliveryUrl, authenticatedDownloadUrl } from "@/lib/cloudinary";
+import { libraryDeliveryUrl } from "@/lib/cloudinary";
 import { errorResponse, handleApiError, successResponse } from "@/lib/apiResponse";
 
 const CONTENT_TYPES = ["video", "document", "notes", "support_file", "audiobook", "past_paper", "presentation"];
@@ -16,9 +16,9 @@ function withDeliveryUrls<T extends { cloudinaryPublicId: string; cloudinaryReso
 ) {
   return {
     ...item,
-    streamUrl: authenticatedDeliveryUrl(item.cloudinaryPublicId, item.cloudinaryResourceType, item.fileFormat ?? undefined),
+    streamUrl: libraryDeliveryUrl(item.cloudinaryPublicId, item.cloudinaryResourceType, item.fileFormat ?? undefined),
     downloadUrl: item.downloadable
-      ? authenticatedDownloadUrl(item.cloudinaryPublicId, item.cloudinaryResourceType, item.fileFormat ?? undefined)
+      ? libraryDeliveryUrl(item.cloudinaryPublicId, item.cloudinaryResourceType, item.fileFormat ?? undefined, { download: true })
       : null,
   };
 }

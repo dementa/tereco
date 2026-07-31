@@ -9,7 +9,7 @@ import { NotificationBell } from '@/components/ui/NotificationBell';
 import { MobileTabBar } from '@/components/ui/MobileTabBar';
 import {
   LayoutDashboard, FileText, GraduationCap, ClipboardList,
-  CheckSquare, LogOut, School, UserCog, Contact, CalendarDays, ShieldCheck, TrendingUp,
+  CheckSquare, LogOut, School, UserCog, Contact, CalendarDays, ShieldCheck, TrendingUp, Library,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -21,6 +21,11 @@ const NAV = [
   { href: '/admin/lessons', label: 'Lesson Submissions', short: 'Lessons', icon: FileText },
   { href: '/admin/assessments', label: 'Assessments', icon: ClipboardList },
   { href: '/admin/marking', label: 'Marking', icon: CheckSquare },
+  // Both admin and super_admin may author Library content with full
+  // audience control (lib/auth/access.ts canManageLibraryContent) — only
+  // approving someone else's submission is super_admin-only, which is why
+  // that lives under System below instead of here.
+  { href: '/admin/library', label: 'Library', icon: Library },
   { href: '/admin/performance', label: 'Performance', icon: TrendingUp },
 ];
 
@@ -34,6 +39,7 @@ const SYSTEM_NAV = [
   { href: '/admin/system/students', label: 'Student Accounts', icon: GraduationCap },
   { href: '/admin/system/parents', label: 'Parents', icon: Contact },
   { href: '/admin/system/super-admins', label: 'Super Admins', icon: ShieldCheck },
+  { href: '/admin/system/library', label: 'Library Approvals', icon: Library },
 ];
 
 const ADMIN_ROLES: Role[] = ['admin', 'super_admin'];

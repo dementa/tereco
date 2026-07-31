@@ -3,7 +3,7 @@ import { z } from "zod";
 import { getCurrentProfile, requireRole } from "@/lib/auth/session";
 import { canManageLibraryContent } from "@/lib/auth/access";
 import { getLibraryContentById, updateLibraryContent } from "@/lib/entities/library-content";
-import { authenticatedDeliveryUrl, authenticatedDownloadUrl } from "@/lib/cloudinary";
+import { libraryDeliveryUrl } from "@/lib/cloudinary";
 import { errorResponse, handleApiError, successResponse } from "@/lib/apiResponse";
 
 const PatchSchema = z.object({
@@ -31,9 +31,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return successResponse({
       data: {
         ...content,
-        streamUrl: authenticatedDeliveryUrl(content.cloudinaryPublicId, content.cloudinaryResourceType, content.fileFormat ?? undefined),
+        streamUrl: libraryDeliveryUrl(content.cloudinaryPublicId, content.cloudinaryResourceType, content.fileFormat ?? undefined),
         downloadUrl: content.downloadable
-          ? authenticatedDownloadUrl(content.cloudinaryPublicId, content.cloudinaryResourceType, content.fileFormat ?? undefined)
+          ? libraryDeliveryUrl(content.cloudinaryPublicId, content.cloudinaryResourceType, content.fileFormat ?? undefined, { download: true })
           : null,
       },
     });

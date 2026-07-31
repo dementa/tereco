@@ -5,7 +5,8 @@
  * still technically visible in devtools (a real browser limitation, not
  * something this component can close), but there is no click-to-download
  * affordance anywhere in this UI. See lib/cloudinary.ts's
- * authenticatedDeliveryUrl for the access-control side of "view-only."
+ * libraryDeliveryUrl for the access-control side of "view-only" — the URL
+ * is only ever handed out by our own permission-checked API route.
  */
 export function VideoViewer({ src }: { src: string }) {
   return (

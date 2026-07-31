@@ -17,6 +17,8 @@ const AttachSchema = z.object({
   title: z.string().min(1),
   description: z.string().optional(),
   contentType: z.enum(["video", "document", "notes", "support_file", "audiobook", "past_paper", "presentation"]),
+  /** The uploaded file's extension — needed here because raw resources store it as part of the public_id (see below). */
+  format: z.string().min(1),
   learningArea: z.string().optional(),
   /** Only honoured for admin/super_admin — everyone else gets the auto-inserted whole-school row instead. */
   targets: z.array(TargetSchema).optional(),
@@ -37,9 +39,16 @@ export async function POST(request: NextRequest) {
 
     const body = AttachSchema.parse(await request.json());
     const { resourceType } = CONTENT_TYPE_LIMITS[body.contentType];
-    const publicId = buildPublicId("library", body.id);
+    const signedPublicId = buildPublicId("library", body.id);
 
-    const asset = await verifyAsset(publicId, resourceType, "authenticated");
+    // Confirmed live (2026-07-31): Cloudinary bakes the extension into the
+    // stored public_id for `raw` resources — a `raw` upload signed as
+    // "…/<uuid>" comes back stored as "…/<uuid>.pdf". image/video keep the
+    // public_id clean. Look up (and persist) whichever one Cloudinary
+    // actually used, or the very first verification 404s forever.
+    const storedPublicId = resourceType === "raw" ? `${signedPublicId}.${body.format}` : signedPublicId;
+
+    const asset = await verifyAsset(storedPublicId, resourceType);
     if (!asset) return errorResponse("The upload could not be verified with Cloudinary.", 400);
 
     const content = await createDraftLibraryContent(profile, {
@@ -47,10 +56,10 @@ export async function POST(request: NextRequest) {
       title: body.title,
       description: body.description,
       contentType: body.contentType,
-      cloudinaryPublicId: publicId,
+      cloudinaryPublicId: storedPublicId,
       cloudinaryResourceType: resourceType,
       fileBytes: asset.bytes,
-      fileFormat: asset.format,
+      fileFormat: body.format,
       learningArea: body.learningArea,
       targets: body.targets?.map((t) => ({ schoolId: t.schoolId, level: t.level, classId: t.classId, studentId: t.studentId })),
     });
