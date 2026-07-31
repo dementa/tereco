@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
 
     return successResponse({ data: items.map(withDeliveryUrls) });
   } catch (error) {
+    console.error("GET /api/library/content failed:", error);
     return handleApiError(error, "Could not load the library");
   }
 }

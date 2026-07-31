@@ -331,7 +331,13 @@ interface PendingRow extends Row {
   uploader: { first_name: string; last_name: string; school: { name: string } | null } | null;
 }
 
-const PENDING_SELECT = `${SELECT}, uploader:profiles!library_content_created_by_fkey(first_name, last_name, school:schools(name))`;
+// schools!profiles_school_id_fkey is load-bearing, not decoration: profiles
+// and schools have three FK relationships between them (a profile's own
+// school, a school's contact person, a school's creator), so an unqualified
+// `school:schools(...)` is ambiguous and PostgREST refuses the query rather
+// than guessing which one was meant (confirmed live against a local
+// Postgres+PostgREST stack — PGRST201).
+const PENDING_SELECT = `${SELECT}, uploader:profiles!library_content_created_by_fkey(first_name, last_name, school:schools!profiles_school_id_fkey(name))`;
 
 /** Every pending submission, across every school, oldest first — one unified super-admin queue. */
 export async function getPendingLibraryContent(): Promise<PendingLibraryContent[]> {
