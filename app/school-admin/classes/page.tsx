@@ -140,19 +140,19 @@ export default function SchoolAdminClassesPage() {
             )}
 
             {classes.map((cls) => (
-              <div key={cls.id} className="rounded-xl border border-[#E8EFF3] p-3">
+              <div key={cls.id} className="rounded-xl border border-[#EAEAEA] p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-[#12333F]">{cls.displayName}</span>
                   {cls.level !== null && cls.alias && <Badge variant="muted">Level {cls.level}</Badge>}
                   {cls.level === null && <Badge variant="accent">Off-ladder</Badge>}
 
                   <div className="ml-auto flex items-center gap-3">
-                    <label className="flex items-center gap-1.5 text-xs text-[#5A7D8A]">
+                    <label className="flex items-center gap-1.5 text-xs text-[#666666]">
                       <input
                         type="checkbox"
                         checked={cls.hasStreams}
                         onChange={() => void patchClass(cls, { hasStreams: !cls.hasStreams })}
-                        className="rounded border-[#D1E0E8]"
+                        className="rounded border-[#E5E5E5]"
                       />
                       Streams
                     </label>
@@ -172,14 +172,14 @@ export default function SchoolAdminClassesPage() {
                     {cls.streams.map((stream) => (
                       <span
                         key={stream.id}
-                        className="inline-flex items-center gap-1 rounded-lg bg-[#F1F6F8] px-2 py-1 text-xs text-[#12333F]"
+                        className="inline-flex items-center gap-1 rounded-lg bg-[#FAFAFA] px-2 py-1 text-xs text-[#12333F]"
                       >
                         {stream.name}
                         <button
                           type="button"
                           onClick={() => void deleteStream(cls, stream)}
                           aria-label={`Remove stream ${stream.name}`}
-                          className="text-[#5A7D8A] hover:text-[#C26565]"
+                          className="text-[#666666] hover:text-[#C26565]"
                         >
                           <X className="w-3 h-3" aria-hidden />
                         </button>
@@ -194,7 +194,7 @@ export default function SchoolAdminClassesPage() {
                           onChange={(e) => setStreamName(e.target.value)}
                           placeholder="Stream name"
                           aria-label="Stream name"
-                          className="rounded-lg border-2 border-[#D1E0E8] px-2 py-1 text-xs focus:border-[#02465B] focus:outline-none"
+                          className="rounded-lg border-2 border-[#E5E5E5] px-2 py-1 text-xs focus:border-[#02465B] focus:outline-none"
                         />
                         <button
                           type="button"
@@ -221,9 +221,9 @@ export default function SchoolAdminClassesPage() {
               </div>
             ))}
 
-            <div className="pt-3 border-t border-[#F1F6F8] flex flex-col sm:flex-row gap-2 sm:items-end">
+            <div className="pt-3 border-t border-[#FAFAFA] flex flex-col sm:flex-row gap-2 sm:items-end">
               <div className="flex-1">
-                <label htmlFor="customClass" className="text-xs font-medium text-[#5A7D8A] tracking-wide">
+                <label htmlFor="customClass" className="text-xs font-medium text-[#666666] tracking-wide">
                   Add an off-ladder class (e.g. ELITE)
                 </label>
                 <input
@@ -232,7 +232,7 @@ export default function SchoolAdminClassesPage() {
                   value={customClass.alias}
                   onChange={(e) => setCustomClass({ ...customClass, alias: e.target.value })}
                   placeholder="Class name"
-                  className="mt-1.5 w-full rounded-xl border-2 border-[#D1E0E8] px-3 py-2 text-sm focus:border-[#02465B] focus:outline-none"
+                  className="mt-1.5 w-full rounded-xl border-2 border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#02465B] focus:outline-none"
                 />
               </div>
               <Button

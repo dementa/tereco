@@ -315,7 +315,7 @@ export function DataTable<T>({
       <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
         <div className="relative flex-1">
           <Search
-            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#5A7D8A] pointer-events-none"
+            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#666666] pointer-events-none"
             aria-hidden
           />
           <input
@@ -327,7 +327,7 @@ export function DataTable<T>({
             }}
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
-            className="w-full rounded-xl border-2 border-[#D1E0E8] bg-white pl-9 pr-3 py-2.5 text-sm transition-all duration-200 focus:border-[#02465B] focus:outline-none focus:ring-2 focus:ring-[#02465B]/10"
+            className="w-full rounded-xl border-2 border-[#E5E5E5] bg-white pl-9 pr-3 py-2.5 text-sm transition-all duration-200 focus:border-[#02465B] focus:outline-none focus:ring-2 focus:ring-[#02465B]/10"
           />
         </div>
 
@@ -337,7 +337,7 @@ export function DataTable<T>({
               type="button"
               onClick={() => setFiltersOpen((v) => !v)}
               aria-expanded={filtersOpen}
-              className="inline-flex items-center gap-2 rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2.5 text-sm font-medium text-[#02465B] hover:border-[#02465B]/40 transition-colors"
+              className="inline-flex items-center gap-2 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2.5 text-sm font-medium text-[#02465B] hover:border-[#02465B]/40 transition-colors"
             >
               <SlidersHorizontal className="w-4 h-4" aria-hidden />
               Filters
@@ -356,7 +356,7 @@ export function DataTable<T>({
                 disabled={exporting !== null}
                 aria-expanded={exportOpen}
                 aria-haspopup="menu"
-                className="inline-flex items-center gap-2 rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2.5 text-sm font-medium text-[#02465B] hover:border-[#02465B]/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2.5 text-sm font-medium text-[#02465B] hover:border-[#02465B]/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Download className="w-4 h-4" aria-hidden />
                 {exporting
@@ -368,11 +368,11 @@ export function DataTable<T>({
               {exportOpen && (
                 <div
                   role="menu"
-                  className="absolute right-0 z-10 mt-1 w-72 overflow-hidden rounded-xl border border-[#E8EFF3] bg-white shadow-lg"
+                  className="absolute right-0 z-10 mt-1 w-72 overflow-hidden rounded-xl border border-[#EAEAEA] bg-white shadow-lg"
                 >
-                  <div className="p-3 border-b border-[#F1F6F8]">
+                  <div className="p-3 border-b border-[#FAFAFA]">
                     <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-medium text-[#5A7D8A] tracking-wide">COLUMNS</p>
+                      <p className="text-xs font-medium text-[#666666] tracking-wide">COLUMNS</p>
                       <div className="flex gap-2 text-xs">
                         <button type="button" onClick={() => setAllColumns(true)} className="text-[#02465B] hover:underline">
                           All
@@ -389,19 +389,19 @@ export function DataTable<T>({
                             type="checkbox"
                             checked={selectedCols[column.key] !== false}
                             onChange={() => toggleColumn(column.key)}
-                            className="rounded border-[#D1E0E8]"
+                            className="rounded border-[#E5E5E5]"
                           />
                           {column.header}
                         </label>
                       ))}
                     </div>
                     {passwordColumn && (
-                      <label className="flex items-start gap-2 text-sm text-[#12333F] mt-3 pt-3 border-t border-[#F1F6F8]">
+                      <label className="flex items-start gap-2 text-sm text-[#12333F] mt-3 pt-3 border-t border-[#FAFAFA]">
                         <input
                           type="checkbox"
                           checked={includePasswords}
                           onChange={(e) => setIncludePasswords(e.target.checked)}
-                          className="rounded border-[#D1E0E8] mt-0.5"
+                          className="rounded border-[#E5E5E5] mt-0.5"
                         />
                         <span>
                           Include {(passwordColumn.label ?? 'password').toLowerCase()}
@@ -416,25 +416,25 @@ export function DataTable<T>({
                     type="button"
                     role="menuitem"
                     onClick={() => void handleExport('csv')}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#F8FBFC]"
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#FAFAFA]"
                   >
-                    <FileText className="w-3.5 h-3.5 text-[#5A7D8A]" aria-hidden /> CSV
+                    <FileText className="w-3.5 h-3.5 text-[#666666]" aria-hidden /> CSV
                   </button>
                   <button
                     type="button"
                     role="menuitem"
                     onClick={() => void handleExport('excel')}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#F8FBFC]"
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#FAFAFA]"
                   >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-[#5A7D8A]" aria-hidden /> Excel
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-[#666666]" aria-hidden /> Excel
                   </button>
                   <button
                     type="button"
                     role="menuitem"
                     onClick={() => void handleExport('pdf')}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#F8FBFC]"
+                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#FAFAFA]"
                   >
-                    <FileText className="w-3.5 h-3.5 text-[#5A7D8A]" aria-hidden /> PDF
+                    <FileText className="w-3.5 h-3.5 text-[#666666]" aria-hidden /> PDF
                   </button>
                 </div>
               )}
@@ -451,12 +451,12 @@ export function DataTable<T>({
       )}
 
       {filtersOpen && filters.length > 0 && (
-        <div className="rounded-xl border border-[#E8EFF3] bg-[#F8FBFC] p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+        <div className="rounded-xl border border-[#EAEAEA] bg-[#FAFAFA] p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {filters.map((filter) => (
             <div key={filter.key} className="space-y-1.5">
               <label
                 htmlFor={`filter-${filter.key}`}
-                className="text-xs font-medium text-[#5A7D8A] tracking-wide"
+                className="text-xs font-medium text-[#666666] tracking-wide"
               >
                 {filter.label}
               </label>
@@ -464,7 +464,7 @@ export function DataTable<T>({
                 id={`filter-${filter.key}`}
                 value={active[filter.key] ?? ''}
                 onChange={(e) => setFilter(filter.key, e.target.value)}
-                className="w-full rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2 text-sm focus:border-[#02465B] focus:outline-none"
+                className="w-full rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2 text-sm focus:border-[#02465B] focus:outline-none"
               >
                 <option value="">All</option>
                 {filter.options.map((option) => (
@@ -479,7 +479,7 @@ export function DataTable<T>({
             <button
               type="button"
               onClick={clearAll}
-              className="self-end inline-flex items-center gap-1.5 text-sm text-[#5A7D8A] hover:text-[#02465B] py-2"
+              className="self-end inline-flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#02465B] py-2"
             >
               <X className="w-3.5 h-3.5" aria-hidden />
               Clear all
@@ -488,7 +488,7 @@ export function DataTable<T>({
         </div>
       )}
 
-      <p className="text-xs text-[#5A7D8A]" role="status" aria-live="polite">
+      <p className="text-xs text-[#666666]" role="status" aria-live="polite">
         {loading
           ? 'Loading…'
           : `${processed.length} ${processed.length === 1 ? 'result' : 'results'}${
@@ -497,10 +497,10 @@ export function DataTable<T>({
       </p>
 
       {/* Desktop: real table. Hidden on phones, where it would need horizontal scrolling. */}
-      <div className="hidden sm:block overflow-x-auto rounded-2xl border border-[#E8EFF3] bg-white">
+      <div className="hidden sm:block overflow-x-auto rounded-2xl border border-[#EAEAEA] bg-white">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[#E8EFF3] bg-[#F8FBFC]">
+            <tr className="border-b border-[#EAEAEA] bg-[#FAFAFA]">
               {columns.map((column) => {
                 const isSorted = sort?.key === column.key;
                 const sortable = column.sortable !== false;
@@ -509,7 +509,7 @@ export function DataTable<T>({
                     key={column.key}
                     scope="col"
                     aria-sort={isSorted ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-                    className={`text-left font-medium text-[#5A7D8A] text-xs tracking-wide px-4 py-3 ${
+                    className={`text-left font-medium text-[#666666] text-xs tracking-wide px-4 py-3 ${
                       column.align === 'right' ? 'text-right' : ''
                     } ${column.hideOnMobile ? 'hidden lg:table-cell' : ''}`}
                   >
@@ -541,7 +541,7 @@ export function DataTable<T>({
           <tbody>
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-10 text-center text-[#5A7D8A]">
+                <td colSpan={columns.length} className="px-4 py-10 text-center text-[#666666]">
                   {loading ? 'Loading…' : emptyMessage}
                 </td>
               </tr>
@@ -550,8 +550,8 @@ export function DataTable<T>({
                 <tr
                   key={rowKey(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={`border-b border-[#F1F6F8] last:border-0 ${
-                    onRowClick ? 'cursor-pointer hover:bg-[#F8FBFC] transition-colors' : ''
+                  className={`border-b border-[#FAFAFA] last:border-0 ${
+                    onRowClick ? 'cursor-pointer hover:bg-[#FAFAFA] transition-colors' : ''
                   }`}
                 >
                   {columns.map((column) => {
@@ -583,7 +583,7 @@ export function DataTable<T>({
       {/* Mobile: one card per row, so every field stays readable without scrolling sideways. */}
       <div className="sm:hidden space-y-2">
         {visible.length === 0 ? (
-          <div className="rounded-2xl border border-[#E8EFF3] bg-white px-4 py-10 text-center text-[#5A7D8A]">
+          <div className="rounded-2xl border border-[#EAEAEA] bg-white px-4 py-10 text-center text-[#666666]">
             {loading ? 'Loading…' : emptyMessage}
           </div>
         ) : (
@@ -591,8 +591,8 @@ export function DataTable<T>({
             <div
               key={rowKey(row)}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={`rounded-2xl border border-[#E8EFF3] bg-white p-4 ${
-                onRowClick ? 'cursor-pointer active:bg-[#F8FBFC]' : ''
+              className={`rounded-2xl border border-[#EAEAEA] bg-white p-4 ${
+                onRowClick ? 'cursor-pointer active:bg-[#FAFAFA]' : ''
               }`}
             >
               <p className="font-medium text-[#12333F] mb-2">
@@ -607,7 +607,7 @@ export function DataTable<T>({
                   const rawValue = defaultValue(row, column);
                   return (
                     <div key={column.key} className="flex justify-between gap-3 text-sm">
-                      <dt className="text-[#5A7D8A] shrink-0">{column.header}</dt>
+                      <dt className="text-[#666666] shrink-0">{column.header}</dt>
                       <dd
                         className="text-[#12333F] text-right min-w-0 truncate"
                         title={!column.render && asSearchText(rawValue) ? String(rawValue) : undefined}
@@ -625,7 +625,7 @@ export function DataTable<T>({
 
       {processed.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-xs text-[#5A7D8A]">
+          <label className="flex items-center gap-2 text-xs text-[#666666]">
             Rows per page
             <select
               value={pageSize}
@@ -633,7 +633,7 @@ export function DataTable<T>({
                 setPageSize(Number(e.target.value));
                 setPage(0);
               }}
-              className="rounded-lg border-2 border-[#D1E0E8] bg-white px-2 py-1 text-xs text-[#02465B] focus:border-[#02465B] focus:outline-none"
+              className="rounded-lg border-2 border-[#E5E5E5] bg-white px-2 py-1 text-xs text-[#02465B] focus:border-[#02465B] focus:outline-none"
             >
               {PAGE_SIZE_OPTIONS.map((size) => (
                 <option key={size} value={size}>
@@ -649,19 +649,19 @@ export function DataTable<T>({
                 type="button"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={safePage === 0}
-                className="inline-flex items-center gap-1 rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2 text-sm text-[#02465B] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[#02465B]/40 transition-colors"
+                className="inline-flex items-center gap-1 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2 text-sm text-[#02465B] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[#02465B]/40 transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" aria-hidden />
                 Previous
               </button>
-              <span className="text-xs text-[#5A7D8A] whitespace-nowrap">
+              <span className="text-xs text-[#666666] whitespace-nowrap">
                 Page {safePage + 1} of {pageCount}
               </span>
               <button
                 type="button"
                 onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
                 disabled={safePage >= pageCount - 1}
-                className="inline-flex items-center gap-1 rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2 text-sm text-[#02465B] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[#02465B]/40 transition-colors"
+                className="inline-flex items-center gap-1 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2 text-sm text-[#02465B] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[#02465B]/40 transition-colors"
               >
                 Next
                 <ChevronRight className="w-4 h-4" aria-hidden />

@@ -396,11 +396,11 @@ export default function SystemSchoolsPage() {
               <img
                 src={s.logoUrl}
                 alt=""
-                className="w-7 h-7 rounded object-contain bg-[#F1F6F8] shrink-0"
+                className="w-7 h-7 rounded object-contain bg-[#FAFAFA] shrink-0"
               />
             ) : (
               <span
-                className="w-7 h-7 rounded bg-[#F1F6F8] text-[#9BB3BD] text-[9px] flex items-center justify-center shrink-0"
+                className="w-7 h-7 rounded bg-[#FAFAFA] text-[#A3A3A3] text-[9px] flex items-center justify-center shrink-0"
                 title="No logo — add one so it appears on question papers"
               >
                 no logo
@@ -433,7 +433,7 @@ export default function SystemSchoolsPage() {
               onClick={() => (s.schoolAdminAccountId ? void resetLoginPassword(s) : void generateLogin(s))}
               disabled={loginBusyId === s.id}
               title={s.schoolAdminAccountId ? `Reset ${s.name}'s login password` : `Generate a login for ${s.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8] disabled:opacity-40"
+              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA] disabled:opacity-40"
             >
               <KeyRound className="w-4 h-4" aria-hidden />
             </button>
@@ -441,7 +441,7 @@ export default function SystemSchoolsPage() {
               type="button"
               onClick={() => openManage(s)}
               title={`Classes and streams for ${s.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8]"
+              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA]"
             >
               <Layers className="w-4 h-4" aria-hidden />
             </button>
@@ -449,7 +449,7 @@ export default function SystemSchoolsPage() {
               type="button"
               onClick={() => setEditing(s)}
               title={`Edit ${s.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8]"
+              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA]"
             >
               <Pencil className="w-4 h-4" aria-hidden />
             </button>
@@ -457,7 +457,7 @@ export default function SystemSchoolsPage() {
               type="button"
               onClick={() => void toggleActive(s)}
               title={s.isActive ? `Deactivate ${s.name}` : `Reactivate ${s.name}`}
-              className="p-1.5 rounded-lg text-[#5A7D8A] hover:bg-[#F1F6F8]"
+              className="p-1.5 rounded-lg text-[#666666] hover:bg-[#FAFAFA]"
             >
               {s.isActive ? (
                 <PowerOff className="w-4 h-4" aria-hidden />
@@ -544,10 +544,10 @@ export default function SystemSchoolsPage() {
             </div>
 
             <div>
-              <p className="text-xs font-medium text-[#5A7D8A] tracking-wide mb-2">
+              <p className="text-xs font-medium text-[#666666] tracking-wide mb-2">
                 Classes this school runs
               </p>
-              <div className="rounded-xl border border-[#E8EFF3] divide-y divide-[#F1F6F8]">
+              <div className="rounded-xl border border-[#EAEAEA] divide-y divide-[#FAFAFA]">
                 {levels.map((level) => {
                   const choice = ladder[level.level] ?? {
                     selected: false,
@@ -564,7 +564,7 @@ export default function SystemSchoolsPage() {
                           type="checkbox"
                           checked={choice.selected}
                           onChange={(e) => setChoice(level.level, { selected: e.target.checked })}
-                          className="rounded border-[#D1E0E8]"
+                          className="rounded border-[#E5E5E5]"
                         />
                         <span className="font-medium text-[#12333F]">{level.code}</span>
                       </label>
@@ -576,16 +576,16 @@ export default function SystemSchoolsPage() {
                         onChange={(e) => setChoice(level.level, { alias: e.target.value })}
                         placeholder={`Display name (optional) — e.g. J${level.level}`}
                         aria-label={`Display name for ${level.code}`}
-                        className="flex-1 rounded-lg border-2 border-[#D1E0E8] bg-white px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] disabled:text-[#9BB3BD] focus:border-[#02465B] focus:outline-none"
+                        className="flex-1 rounded-lg border-2 border-[#E5E5E5] bg-white px-3 py-1.5 text-sm disabled:bg-[#FAFAFA] disabled:text-[#A3A3A3] focus:border-[#02465B] focus:outline-none"
                       />
 
-                      <label className="flex items-center gap-2 text-sm text-[#5A7D8A] shrink-0">
+                      <label className="flex items-center gap-2 text-sm text-[#666666] shrink-0">
                         <input
                           type="checkbox"
                           checked={choice.hasStreams}
                           disabled={!choice.selected}
                           onChange={(e) => setChoice(level.level, { hasStreams: e.target.checked })}
-                          className="rounded border-[#D1E0E8]"
+                          className="rounded border-[#E5E5E5]"
                         />
                         Has streams
                       </label>
@@ -718,7 +718,7 @@ export default function SystemSchoolsPage() {
               )}
 
               {classes.map((cls) => (
-                <div key={cls.id} className="rounded-xl border border-[#E8EFF3] p-3">
+                <div key={cls.id} className="rounded-xl border border-[#EAEAEA] p-3">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium text-[#12333F]">{cls.displayName}</span>
                     {cls.level !== null && cls.alias && (
@@ -727,12 +727,12 @@ export default function SystemSchoolsPage() {
                     {cls.level === null && <Badge variant="accent">Off-ladder</Badge>}
 
                     <div className="ml-auto flex items-center gap-3">
-                      <label className="flex items-center gap-1.5 text-xs text-[#5A7D8A]">
+                      <label className="flex items-center gap-1.5 text-xs text-[#666666]">
                         <input
                           type="checkbox"
                           checked={cls.hasStreams}
                           onChange={() => void patchClass(cls, { hasStreams: !cls.hasStreams })}
-                          className="rounded border-[#D1E0E8]"
+                          className="rounded border-[#E5E5E5]"
                         />
                         Streams
                       </label>
@@ -752,14 +752,14 @@ export default function SystemSchoolsPage() {
                       {cls.streams.map((stream) => (
                         <span
                           key={stream.id}
-                          className="inline-flex items-center gap-1 rounded-lg bg-[#F1F6F8] px-2 py-1 text-xs text-[#12333F]"
+                          className="inline-flex items-center gap-1 rounded-lg bg-[#FAFAFA] px-2 py-1 text-xs text-[#12333F]"
                         >
                           {stream.name}
                           <button
                             type="button"
                             onClick={() => void deleteStream(cls, stream)}
                             aria-label={`Remove stream ${stream.name}`}
-                            className="text-[#5A7D8A] hover:text-[#C26565]"
+                            className="text-[#666666] hover:text-[#C26565]"
                           >
                             <X className="w-3 h-3" aria-hidden />
                           </button>
@@ -774,7 +774,7 @@ export default function SystemSchoolsPage() {
                             onChange={(e) => setStreamName(e.target.value)}
                             placeholder="Stream name"
                             aria-label="Stream name"
-                            className="rounded-lg border-2 border-[#D1E0E8] px-2 py-1 text-xs focus:border-[#02465B] focus:outline-none"
+                            className="rounded-lg border-2 border-[#E5E5E5] px-2 py-1 text-xs focus:border-[#02465B] focus:outline-none"
                           />
                           <button
                             type="button"
@@ -801,11 +801,11 @@ export default function SystemSchoolsPage() {
                 </div>
               ))}
 
-              <div className="pt-3 border-t border-[#F1F6F8] flex flex-col sm:flex-row gap-2 sm:items-end">
+              <div className="pt-3 border-t border-[#FAFAFA] flex flex-col sm:flex-row gap-2 sm:items-end">
                 <div className="flex-1">
                   <label
                     htmlFor="customClass"
-                    className="text-xs font-medium text-[#5A7D8A] tracking-wide"
+                    className="text-xs font-medium text-[#666666] tracking-wide"
                   >
                     Add an off-ladder class (e.g. ELITE)
                   </label>
@@ -815,7 +815,7 @@ export default function SystemSchoolsPage() {
                     value={customClass.alias}
                     onChange={(e) => setCustomClass({ ...customClass, alias: e.target.value })}
                     placeholder="Class name"
-                    className="mt-1.5 w-full rounded-xl border-2 border-[#D1E0E8] px-3 py-2 text-sm focus:border-[#02465B] focus:outline-none"
+                    className="mt-1.5 w-full rounded-xl border-2 border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#02465B] focus:outline-none"
                   />
                 </div>
                 <Button

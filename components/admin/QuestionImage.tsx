@@ -119,7 +119,7 @@ export function QuestionImage({
           <img
             src={value}
             alt=""
-            className="w-20 h-16 rounded object-contain bg-[#F1F6F8] border border-[#E8EFF3] shrink-0"
+            className="w-20 h-16 rounded object-contain bg-[#FAFAFA] border border-[#EAEAEA] shrink-0"
           />
           {!disabled && (
             <button
@@ -151,7 +151,7 @@ export function QuestionImage({
             htmlFor={`qimg-${assessmentId}-${position}`}
             className={`inline-flex items-center gap-1.5 text-xs ${
               disabled || busy
-                ? 'text-[#9BB3BD] cursor-not-allowed'
+                ? 'text-[#A3A3A3] cursor-not-allowed'
                 : 'text-[#02465B] hover:underline cursor-pointer'
             }`}
           >

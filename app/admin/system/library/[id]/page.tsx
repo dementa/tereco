@@ -179,7 +179,7 @@ export default function LibraryApprovalDetailPage() {
             value={editDescription}
             onChange={(e) => setEditDescription(e.target.value)}
             rows={3}
-            className="w-full rounded-xl border-2 border-[#D1E0E8] bg-white px-4 py-2.5 text-sm focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-700/10"
+            className="w-full rounded-xl border-2 border-[#E5E5E5] bg-white px-4 py-2.5 text-sm focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-700/10"
           />
         </div>
         <Input label="Subject" value={editLearningArea} onChange={(e) => setEditLearningArea(e.target.value)} placeholder="e.g. Mathematics" />
@@ -209,7 +209,7 @@ export default function LibraryApprovalDetailPage() {
                 onChange={(e) => setReason(e.target.value)}
                 rows={2}
                 placeholder="Reason for rejection (shown to the uploader)"
-                className="w-full rounded-xl border-2 border-[#D1E0E8] bg-white px-4 py-2.5 text-sm focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-700/10"
+                className="w-full rounded-xl border-2 border-[#E5E5E5] bg-white px-4 py-2.5 text-sm focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-700/10"
               />
               <Button variant="outline" onClick={reject} isLoading={busy}>
                 Confirm rejection

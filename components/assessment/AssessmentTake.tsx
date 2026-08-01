@@ -368,7 +368,7 @@ export function AssessmentTake() {
       <Card className="max-w-4xl mx-auto p-6">
         <div className="mb-4">
           {q.config?.section && (
-            <p className="text-[10px] font-semibold text-[#5A7D8A] uppercase tracking-wider mb-1">
+            <p className="text-[10px] font-semibold text-[#666666] uppercase tracking-wider mb-1">
               Section {q.config.section}
             </p>
           )}
@@ -383,13 +383,13 @@ export function AssessmentTake() {
                   question(s)..." — it has to print above the image it refers
                   to, not after it. */}
               {currentGroup.groupHeading && (
-                <p className="text-sm italic text-[#5A7D8A] mt-2">{currentGroup.groupHeading}</p>
+                <p className="text-sm italic text-[#666666] mt-2">{currentGroup.groupHeading}</p>
               )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={currentGroup.groupImageUrl}
                 alt=""
-                className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
+                className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#FAFAFA]"
               />
             </>
           )}
@@ -407,7 +407,7 @@ export function AssessmentTake() {
                 <img
                   src={stemQuestion.imageUrl}
                   alt=""
-                  className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
+                  className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#FAFAFA]"
                 />
               )}
             </>
@@ -426,13 +426,13 @@ export function AssessmentTake() {
                   actually describing. Printed above the image, same as the
                   shared-stimulus case: the text reads "diagram below". */}
               {!currentGroup?.groupImageUrl && currentGroup?.groupHeading && (
-                <p className="text-sm italic text-[#5A7D8A] mt-2">{currentGroup.groupHeading}</p>
+                <p className="text-sm italic text-[#666666] mt-2">{currentGroup.groupHeading}</p>
               )}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={q.imageUrl}
                 alt=""
-                className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#F1F6F8]"
+                className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#FAFAFA]"
               />
             </>
           )}

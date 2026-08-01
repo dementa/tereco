@@ -46,7 +46,7 @@ const VERDICT: Record<Verdict, { label: string; className: string; Icon: typeof 
   correct: { label: 'Correct', className: 'text-[#1F7A54] bg-[#E8F5EE]', Icon: Check },
   partial: { label: 'Partly correct', className: 'text-[#8A6A16] bg-[#FBF3E0]', Icon: Minus },
   wrong: { label: 'Not correct', className: 'text-[#A34C4C] bg-[#FBF0F0]', Icon: X },
-  unmarked: { label: 'Not yet marked', className: 'text-[#5A7D8A] bg-[#F1F6F8]', Icon: Minus },
+  unmarked: { label: 'Not yet marked', className: 'text-[#666666] bg-[#FAFAFA]', Icon: Minus },
 };
 
 function formatAnswer(value: string, type: string): string {
@@ -132,7 +132,7 @@ export default function StudentResultPage() {
   }
 
   if (authLoading || loading) {
-    return <div className="p-8 text-center text-[#5A7A85]">Loading your result…</div>;
+    return <div className="p-8 text-center text-[#666666]">Loading your result…</div>;
   }
 
   if (error || !script) {
@@ -159,16 +159,16 @@ export default function StudentResultPage() {
       <button
         type="button"
         onClick={() => router.push('/student/list')}
-        className="inline-flex items-center gap-1.5 text-sm text-[#5A7D8A] hover:text-[#02465B]"
+        className="inline-flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#02465B]"
       >
         <ArrowLeft className="w-4 h-4" aria-hidden />
         Back to assessments
       </button>
 
       <Card>
-        <p className="text-xs text-[#5A7D8A]">{script.school}</p>
+        <p className="text-xs text-[#666666]">{script.school}</p>
         <h1 className="text-xl font-bold text-primary-900 mt-0.5">{script.assessmentTitle}</h1>
-        <p className="text-sm text-[#5A7D8A] mt-1">
+        <p className="text-sm text-[#666666] mt-1">
           {script.studentName}
           {script.className ? ` · ${script.className}` : ''} · Sat{' '}
           {new Date(script.submittedAt).toLocaleDateString('en-GB')}
@@ -178,20 +178,20 @@ export default function StudentResultPage() {
           {/* The mark out of 100 leads — a paper out of 65 or 40 marks still
               reads the way Ugandan report cards do, with the raw score as a
               reference line underneath rather than the headline number. */}
-          <div className="rounded-xl bg-[#F1F6F8] p-3">
-            <p className="text-[10px] text-[#5A7D8A] tracking-wide">MARK</p>
+          <div className="rounded-xl bg-[#FAFAFA] p-3">
+            <p className="text-[10px] text-[#666666] tracking-wide">MARK</p>
             <p className="text-2xl font-bold text-primary-900">
               {script.percentage === null ? '—' : `${script.percentage}%`}
             </p>
-            <p className="text-xs text-[#5A7D8A] mt-0.5">
+            <p className="text-xs text-[#666666] mt-0.5">
               {script.totalScore ?? '—'}/{script.maxScore} marks
             </p>
           </div>
-          <div className="rounded-xl bg-[#F1F6F8] p-3">
-            <p className="text-[10px] text-[#5A7D8A] tracking-wide">CORRECT</p>
+          <div className="rounded-xl bg-[#FAFAFA] p-3">
+            <p className="text-[10px] text-[#666666] tracking-wide">CORRECT</p>
             <p className="text-2xl font-bold text-primary-900">
               {correctCount}
-              <span className="text-sm font-normal text-[#5A7D8A]">/{answerableCount}</span>
+              <span className="text-sm font-normal text-[#666666]">/{answerableCount}</span>
             </p>
           </div>
         </div>
@@ -222,14 +222,14 @@ export default function StudentResultPage() {
             // above the image it refers to, not after it.
             <Card className="space-y-2">
               {group.groupHeading && (
-                <p className="text-sm italic text-[#5A7D8A]">{group.groupHeading}</p>
+                <p className="text-sm italic text-[#666666]">{group.groupHeading}</p>
               )}
               {group.groupImageUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={group.groupImageUrl}
                   alt=""
-                  className="max-h-40 rounded-lg object-contain bg-[#F1F6F8]"
+                  className="max-h-40 rounded-lg object-contain bg-[#FAFAFA]"
                 />
               )}
             </Card>
@@ -260,10 +260,10 @@ export default function StudentResultPage() {
                     <img
                       src={a.imageUrl}
                       alt=""
-                      className="mt-2 max-h-40 rounded-lg object-contain bg-[#F1F6F8]"
+                      className="mt-2 max-h-40 rounded-lg object-contain bg-[#FAFAFA]"
                     />
                   )}
-                  <p className="text-xs text-[#9BB3BD] italic mt-2">Scored on the parts below.</p>
+                  <p className="text-xs text-[#A3A3A3] italic mt-2">Scored on the parts below.</p>
                 </Card>
               );
             }
@@ -283,22 +283,22 @@ export default function StudentResultPage() {
                   <img
                     src={a.imageUrl}
                     alt=""
-                    className="mt-2 max-h-40 rounded-lg object-contain bg-[#F1F6F8]"
+                    className="mt-2 max-h-40 rounded-lg object-contain bg-[#FAFAFA]"
                   />
                 )}
 
-                <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-3">YOUR ANSWER</p>
+                <p className="text-[10px] text-[#666666] tracking-wide mt-3">YOUR ANSWER</p>
                 {given ? (
                   <p className="text-sm text-[#12333F] whitespace-pre-wrap">{given}</p>
                 ) : (
-                  <p className="text-sm text-[#9BB3BD] italic">No answer given</p>
+                  <p className="text-sm text-[#A3A3A3] italic">No answer given</p>
                 )}
 
                 {/* Only shown once the question is marked — an expected answer beside
                     an unscored one invites arguing with a mark nobody has given. */}
                 {a.verdict !== 'unmarked' && objective && a.verdict !== 'correct' && (
                   <>
-                    <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-3">CORRECT ANSWER</p>
+                    <p className="text-[10px] text-[#666666] tracking-wide mt-3">CORRECT ANSWER</p>
                     <p className="text-sm text-[#1F7A54]">
                       {formatAnswer(a.correctAnswer!, a.questionType)}
                     </p>
@@ -307,7 +307,7 @@ export default function StudentResultPage() {
 
                 {a.verdict !== 'unmarked' && !objective && a.modelAnswer && (
                   <>
-                    <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-3">WHAT WAS EXPECTED</p>
+                    <p className="text-[10px] text-[#666666] tracking-wide mt-3">WHAT WAS EXPECTED</p>
                     <MarkingGuidance text={a.modelAnswer} />
                   </>
                 )}

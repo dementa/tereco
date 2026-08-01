@@ -141,7 +141,7 @@ export default function AdminAssessments() {
         value: (a) => (a.targets.length === 0 ? 'All students' : `${a.targets.length}`),
         render: (a) =>
           a.targets.length === 0 ? (
-            <span className="text-[#5A7D8A]">All students</span>
+            <span className="text-[#666666]">All students</span>
           ) : (
             `${a.targets.length} target${a.targets.length === 1 ? '' : 's'}`
           ),

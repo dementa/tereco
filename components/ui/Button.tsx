@@ -22,8 +22,8 @@ export const Button: React.FC<ButtonProps> = ({
   const variants: Record<string, string> = {
     primary: "bg-[#02465B] text-white shadow-sm hover:shadow-md hover:bg-[#012B3A] active:scale-[0.98]",
     secondary: "bg-[#F5CA93] text-[#02465B] hover:bg-[#E8B87C] active:scale-[0.98]",
-    outline: "border-2 border-[#D1E0E8] text-[#02465B] hover:bg-[#02465B]/5 active:scale-[0.98]",
-    ghost: "text-[#5A7D8A] hover:bg-[#02465B]/5 active:scale-[0.98]",
+    outline: "border-2 border-[#E5E5E5] text-[#02465B] hover:bg-[#02465B]/5 active:scale-[0.98]",
+    ghost: "text-[#666666] hover:bg-[#02465B]/5 active:scale-[0.98]",
   };
 
   return (

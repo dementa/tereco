@@ -17,7 +17,7 @@ interface GenderBreakdownEntry {
 const COLORS: Record<GenderBreakdownEntry['gender'], string> = {
   male: '#0489AE',
   female: '#C4952A',
-  unspecified: '#9BBAC5',
+  unspecified: '#A3A3A3',
 };
 
 const LABELS: Record<GenderBreakdownEntry['gender'], string> = {

@@ -287,10 +287,10 @@ export default function SystemStaffPage() {
               <img
                 src={a.photoUrl}
                 alt=""
-                className="w-8 h-8 rounded-full object-cover border border-[#E8EFF3] shrink-0"
+                className="w-8 h-8 rounded-full object-cover border border-[#EAEAEA] shrink-0"
               />
             ) : (
-              <span className="w-8 h-8 rounded-full bg-[#F1F6F8] text-[#5A7D8A] text-xs font-medium flex items-center justify-center shrink-0 group-hover:bg-[#E8EFF3]">
+              <span className="w-8 h-8 rounded-full bg-[#FAFAFA] text-[#666666] text-xs font-medium flex items-center justify-center shrink-0 group-hover:bg-[#EAEAEA]">
                 {initials(a.name) || '—'}
               </span>
             )}
@@ -324,7 +324,7 @@ export default function SystemStaffPage() {
               type="button"
               onClick={() => setViewing(a)}
               title={`View ${a.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8]"
+              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA]"
             >
               <Eye className="w-4 h-4" aria-hidden />
             </button>
@@ -332,7 +332,7 @@ export default function SystemStaffPage() {
               type="button"
               onClick={() => setEditing(a)}
               title={`Edit ${a.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8]"
+              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA]"
             >
               <Pencil className="w-4 h-4" aria-hidden />
             </button>
@@ -341,7 +341,7 @@ export default function SystemStaffPage() {
               onClick={() => void handleResetPassword(a)}
               disabled={busyId === a.id}
               title={`Reset password for ${a.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8] disabled:opacity-40"
+              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA] disabled:opacity-40"
             >
               <KeyRound className="w-4 h-4" aria-hidden />
             </button>
@@ -349,7 +349,7 @@ export default function SystemStaffPage() {
               type="button"
               onClick={() => void toggleActive(a)}
               title={a.isActive ? `Deactivate ${a.name}` : `Reactivate ${a.name}`}
-              className="p-1.5 rounded-lg text-[#5A7D8A] hover:bg-[#F1F6F8]"
+              className="p-1.5 rounded-lg text-[#666666] hover:bg-[#FAFAFA]"
             >
               {a.isActive ? (
                 <PowerOff className="w-4 h-4" aria-hidden />
@@ -523,17 +523,17 @@ export default function SystemStaffPage() {
               <img
                 src={viewing.photoUrl}
                 alt=""
-                className="w-24 h-24 rounded-2xl object-cover border border-[#E8EFF3] shrink-0"
+                className="w-24 h-24 rounded-2xl object-cover border border-[#EAEAEA] shrink-0"
               />
             ) : (
-              <div className="w-24 h-24 rounded-2xl bg-[#F1F6F8] text-[#5A7D8A] text-2xl font-medium flex items-center justify-center shrink-0">
+              <div className="w-24 h-24 rounded-2xl bg-[#FAFAFA] text-[#666666] text-2xl font-medium flex items-center justify-center shrink-0">
                 {initials(viewing.name) || '—'}
               </div>
             )}
             <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-2 flex-1 text-sm">
               {VIEW_FIELDS.map(([label, value]) => (
-                <div key={label} className="flex justify-between gap-4 border-b border-[#F1F6F8] py-1.5">
-                  <dt className="text-[#5A7D8A]">{label}</dt>
+                <div key={label} className="flex justify-between gap-4 border-b border-[#FAFAFA] py-1.5">
+                  <dt className="text-[#666666]">{label}</dt>
                   <dd className="text-[#12333F] text-right">{value(viewing) || '—'}</dd>
                 </div>
               ))}

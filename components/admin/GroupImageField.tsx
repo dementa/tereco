@@ -56,7 +56,7 @@ export function GroupImageField({
             placeholder="What the diagram/image shows"
           />
           {title?.trim() && (
-            <p className="text-xs text-[#5A7D8A] italic">
+            <p className="text-xs text-[#666666] italic">
               {composeHeading(title.trim(), memberCodes)}
             </p>
           )}

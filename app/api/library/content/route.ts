@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getCurrentProfile, requireRole } from "@/lib/auth/session";
 import {
+  getAllLibraryContent,
   getLibraryContentForProfile,
   getLibraryPlaybackInfo,
   getMyLibraryContent,
@@ -29,6 +30,8 @@ function withDeliveryUrls<
  * a static/cacheable link):
  *   ?scope=mine    — the caller's own uploads, every status (authoring UI)
  *   ?scope=pending — the cross-school approval queue (super_admin only)
+ *   ?scope=all     — every item, every status/school (super_admin only) —
+ *                     the system-library management view
  *   (default)      — the browse view: approved items this profile may see,
  *                     via library_content_for_profile (17-library.sql)
  */
@@ -47,6 +50,12 @@ export async function GET(request: NextRequest) {
       if (profile.role !== "super_admin") return errorResponse("Forbidden", 403);
       const pending = await getPendingLibraryContent();
       return successResponse({ data: pending.map(withDeliveryUrls) });
+    }
+
+    if (scope === "all") {
+      if (profile.role !== "super_admin") return errorResponse("Forbidden", 403);
+      const all = await getAllLibraryContent();
+      return successResponse({ data: all.map(withDeliveryUrls) });
     }
 
     if (scope === "mine") {

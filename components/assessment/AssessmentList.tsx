@@ -65,7 +65,7 @@ export function AssessmentList() {
   };
 
   if (loading) {
-    return <div className="p-8 text-center text-[#5A7A85]">Loading assessments...</div>;
+    return <div className="p-8 text-center text-[#666666]">Loading assessments...</div>;
   }
 
   if (error) {
@@ -75,7 +75,7 @@ export function AssessmentList() {
   if (assessments.length === 0) {
     return (
       <div className="p-8 text-center">
-        <p className="text-[#5A7A85]">No assessments available for your school and class.</p>
+        <p className="text-[#666666]">No assessments available for your school and class.</p>
         <Button className="mt-4" variant="outline" onClick={() => router.push('/student/dashboard')}>
           Go Back
         </Button>
@@ -91,8 +91,8 @@ export function AssessmentList() {
           <Card key={a.id} hover className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5">
             <div>
               <h3 className="text-lg font-semibold text-[#011E28]">{a.title}</h3>
-              <p className="text-sm text-[#5A7A85]">{a.description}</p>
-              <div className="flex items-center gap-1 mt-1 text-xs text-[#9BBAC5]">
+              <p className="text-sm text-[#666666]">{a.description}</p>
+              <div className="flex items-center gap-1 mt-1 text-xs text-[#A3A3A3]">
                 <Clock className="w-3.5 h-3.5" />
                 {a.timeLimit} minutes
                 {/* Anything listed here is already open — the server only

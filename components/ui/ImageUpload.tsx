@@ -128,11 +128,11 @@ export function ImageUpload({
 
   return (
     <div className="space-y-1.5">
-      <span className="text-xs font-medium text-[#5A7D8A] tracking-wide">{label}</span>
+      <span className="text-xs font-medium text-[#666666] tracking-wide">{label}</span>
 
       <div className="flex items-center gap-3">
         <div
-          className="relative rounded-2xl overflow-hidden bg-[#F1F6F8] border-2 border-[#D1E0E8] shrink-0 flex items-center justify-center"
+          className="relative rounded-2xl overflow-hidden bg-[#FAFAFA] border-2 border-[#E5E5E5] shrink-0 flex items-center justify-center"
           style={{ width: size, height: size }}
         >
           {shown ? (
@@ -141,9 +141,9 @@ export function ImageUpload({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={shown} alt="" className="w-full h-full object-cover" />
           ) : kind === 'profile' ? (
-            <User className="w-1/3 h-1/3 text-[#9BB3BD]" aria-hidden />
+            <User className="w-1/3 h-1/3 text-[#A3A3A3]" aria-hidden />
           ) : (
-            <Camera className="w-1/3 h-1/3 text-[#9BB3BD]" aria-hidden />
+            <Camera className="w-1/3 h-1/3 text-[#A3A3A3]" aria-hidden />
           )}
 
           {busy && (
@@ -169,7 +169,7 @@ export function ImageUpload({
           />
           <label
             htmlFor={`upload-${kind}-${entityId}`}
-            className={`inline-flex items-center gap-1.5 rounded-xl border-2 border-[#D1E0E8] bg-white px-3 py-2 text-sm font-medium text-[#02465B] transition-colors ${
+            className={`inline-flex items-center gap-1.5 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2 text-sm font-medium text-[#02465B] transition-colors ${
               disabled || busy
                 ? 'opacity-50 cursor-not-allowed'
                 : 'cursor-pointer hover:border-[#02465B]/40'
@@ -191,7 +191,7 @@ export function ImageUpload({
             </button>
           )}
 
-          <span className="text-xs text-[#9BB3BD]">JPEG, PNG or WebP · max 5MB</span>
+          <span className="text-xs text-[#A3A3A3]">JPEG, PNG or WebP · max 5MB</span>
         </div>
       </div>
 

@@ -13,11 +13,11 @@ export function MarkingGuidance({ text }: { text: string }) {
     .filter(Boolean);
 
   if (lines.length <= 1) {
-    return <p className="text-sm text-[#5A7D8A]">{lines[0] ?? text}</p>;
+    return <p className="text-sm text-[#666666]">{lines[0] ?? text}</p>;
   }
 
   return (
-    <ul className="text-sm text-[#5A7D8A] list-disc pl-4 space-y-0.5">
+    <ul className="text-sm text-[#666666] list-disc pl-4 space-y-0.5">
       {lines.map((line, i) => (
         <li key={i}>{line}</li>
       ))}

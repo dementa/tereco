@@ -82,22 +82,22 @@ export default function ParentNotificationsPage() {
         ) : items.length === 0 ? (
           <p className="text-sm text-text-muted">Nothing yet.</p>
         ) : (
-          <div className="divide-y divide-[#F1F6F8]">
+          <div className="divide-y divide-[#FAFAFA]">
             {items.map((n) => (
               <button
                 key={n.id}
                 type="button"
                 onClick={() => void openItem(n)}
-                className={`w-full text-left px-2 py-3 hover:bg-[#F8FBFC] transition-colors ${
-                  n.isRead ? '' : 'bg-[#F1F6F8]/60'
+                className={`w-full text-left px-2 py-3 hover:bg-[#FAFAFA] transition-colors ${
+                  n.isRead ? '' : 'bg-[#FAFAFA]/60'
                 }`}
               >
                 <span className="flex items-start gap-2">
                   {!n.isRead && <span className="w-1.5 h-1.5 rounded-full bg-[#02465B] mt-1.5 shrink-0" aria-hidden />}
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-[#12333F]">{n.title}</span>
-                    {n.body && <span className="block text-xs text-[#5A7D8A] mt-0.5">{n.body}</span>}
-                    <span className="block text-[10px] text-[#9BB3BD] mt-1">
+                    {n.body && <span className="block text-xs text-[#666666] mt-0.5">{n.body}</span>}
+                    <span className="block text-[10px] text-[#A3A3A3] mt-1">
                       {new Date(n.createdAt).toLocaleString()}
                     </span>
                   </span>

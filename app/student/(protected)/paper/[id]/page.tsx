@@ -155,7 +155,7 @@ export default function PaperSubmissionPage() {
   }
 
   if (authLoading || loading) {
-    return <div className="p-8 text-center text-[#5A7A85]">Loading…</div>;
+    return <div className="p-8 text-center text-[#666666]">Loading…</div>;
   }
 
   const alreadyOnline = submission?.mode === 'online';
@@ -165,7 +165,7 @@ export default function PaperSubmissionPage() {
       <button
         type="button"
         onClick={() => router.push('/student/list')}
-        className="inline-flex items-center gap-1.5 text-sm text-[#5A7D8A] hover:text-[#02465B]"
+        className="inline-flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#02465B]"
       >
         <ArrowLeft className="w-4 h-4" aria-hidden />
         Back to assessments
@@ -211,9 +211,9 @@ export default function PaperSubmissionPage() {
           {submission?.scans.length ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-4">
               {submission.scans.map((scan) => (
-                <div key={scan.id} className="relative rounded-xl border border-[#E8EFF3] overflow-hidden">
+                <div key={scan.id} className="relative rounded-xl border border-[#EAEAEA] overflow-hidden">
                   {scan.url.endsWith('.pdf') ? (
-                    <div className="h-28 flex items-center justify-center bg-[#F1F6F8] text-xs text-[#5A7D8A]">
+                    <div className="h-28 flex items-center justify-center bg-[#FAFAFA] text-xs text-[#666666]">
                       PDF
                     </div>
                   ) : (
@@ -258,7 +258,7 @@ export default function PaperSubmissionPage() {
           />
           <label
             htmlFor="scan-input"
-            className={`inline-flex items-center gap-2 rounded-xl border-2 border-[#D1E0E8] bg-white px-4 py-2.5 text-sm font-medium text-[#02465B] ${
+            className={`inline-flex items-center gap-2 rounded-xl border-2 border-[#E5E5E5] bg-white px-4 py-2.5 text-sm font-medium text-[#02465B] ${
               busyPage !== null ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer hover:border-[#02465B]/40'
             }`}
           >

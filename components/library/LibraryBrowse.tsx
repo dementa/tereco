@@ -1,13 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
-import { LibraryThumbnail, type LibraryThumbnailItem } from '@/components/library/LibraryThumbnail';
+import { type LibraryThumbnailItem } from '@/components/library/LibraryThumbnail';
+import { LibraryBookCard } from '@/components/library/LibraryBookCard';
 import { LibraryFullScreenViewer } from '@/components/library/LibraryFullScreenViewer';
-import { Download } from 'lucide-react';
 
 interface LibraryItem extends LibraryThumbnailItem {
   id: string;
@@ -16,33 +14,38 @@ interface LibraryItem extends LibraryThumbnailItem {
   fileFormat: string | null;
   downloadable: boolean;
   learningArea: string | null;
+  authorName: string;
+  createdAt: string;
   streamUrl: string | null;
   pageImageUrls: string[] | null;
   downloadAvailable: boolean;
   downloadUrl: string | null;
 }
 
-const CONTENT_TYPE_OPTIONS = [
-  { value: '', label: 'All types' },
-  { value: 'video', label: 'Video' },
-  { value: 'document', label: 'Document' },
-  { value: 'notes', label: 'Notes' },
-  { value: 'support_file', label: 'Support file' },
-  { value: 'audiobook', label: 'Audiobook' },
-  { value: 'past_paper', label: 'Past paper' },
-  { value: 'presentation', label: 'Presentation' },
+/**
+ * Content kinds grouped into browse tabs, so each grid is one uniform kind
+ * of thing — videos never sit next to past papers. "Tutorials" is the
+ * videos tab: where a learner goes to watch. Order here is tab order.
+ */
+const TABS: { key: string; label: string; types: LibraryItem['contentType'][] }[] = [
+  { key: 'tutorials', label: 'Tutorials', types: ['video'] },
+  { key: 'documents', label: 'Documents', types: ['document', 'notes'] },
+  { key: 'past_papers', label: 'Past Papers', types: ['past_paper'] },
+  { key: 'presentations', label: 'Presentations', types: ['presentation'] },
+  { key: 'audiobooks', label: 'Audiobooks', types: ['audiobook'] },
+  { key: 'resources', label: 'Resources', types: ['support_file'] },
 ];
 
-/** Shared browse/consume view — used by students, parents, and teachers browsing (not authoring). */
+/** Shared browse/consume view — used by students, parents, teachers, and admins browsing (not authoring). */
 export function LibraryBrowse() {
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [contentType, setContentType] = useState('');
+  const [activeTab, setActiveTab] = useState('tutorials');
   const [keyword, setKeyword] = useState('');
   const [active, setActive] = useState<LibraryItem | null>(null);
 
-  // Fetched once; type/keyword narrow the already-loaded list client-side
+  // Fetched once; tab/keyword narrow the already-loaded list client-side
   // (mirrors app/staff/lessons/page.tsx) rather than re-fetching per
   // keystroke — a school's library is small enough that this is simpler
   // and cheaper than a request per filter change.
@@ -54,8 +57,23 @@ export function LibraryBrowse() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Only tabs that actually have content, so a learner never lands on an
+  // empty tab. Counts come along for the tab labels.
+  const visibleTabs = useMemo(
+    () =>
+      TABS.map((tab) => ({
+        ...tab,
+        count: items.filter((i) => tab.types.includes(i.contentType)).length,
+      })).filter((tab) => tab.count > 0),
+    [items]
+  );
+
+  // Keep the selected tab valid once content loads (default 'tutorials' may
+  // have nothing) — fall back to the first tab that does.
+  const currentTab = visibleTabs.find((t) => t.key === activeTab) ?? visibleTabs[0];
+
   const filtered = items.filter((item) => {
-    if (contentType && item.contentType !== contentType) return false;
+    if (!currentTab || !currentTab.types.includes(item.contentType)) return false;
     if (keyword) {
       const needle = keyword.toLowerCase();
       if (!item.title.toLowerCase().includes(needle) && !item.description.toLowerCase().includes(needle)) return false;
@@ -65,42 +83,66 @@ export function LibraryBrowse() {
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex items-center justify-between mb-4">
         <div>
           <h1 className="text-2xl font-bold text-primary-900">Library</h1>
           <p className="text-sm text-text-muted mt-1">Reading and teaching material for free time.</p>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3 mb-6">
-        <Select value={contentType} onChange={(e) => setContentType(e.target.value)} options={CONTENT_TYPE_OPTIONS} className="w-44" />
-        <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search…" className="w-56" />
-      </div>
+      {!loading && !error && visibleTabs.length > 0 && (
+        <>
+          <div className="flex flex-wrap gap-2 border-b border-[#EAEAEA] mb-4">
+            {visibleTabs.map((tab) => {
+              const selected = currentTab?.key === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`-mb-px px-3 py-2 text-sm font-medium border-b-2 transition-colors ${
+                    selected
+                      ? 'border-primary-700 text-primary-900'
+                      : 'border-transparent text-text-muted hover:text-primary-900'
+                  }`}
+                >
+                  {tab.label}
+                  <span className={`ml-1.5 text-xs ${selected ? 'text-primary-700' : 'text-text-muted/70'}`}>
+                    {tab.count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mb-5">
+            <Input value={keyword} onChange={(e) => setKeyword(e.target.value)} placeholder="Search this tab…" className="w-full sm:w-64" />
+          </div>
+        </>
+      )}
 
       {loading ? (
         <p className="text-sm text-text-muted">Loading…</p>
       ) : error ? (
         <p className="text-sm text-error">{error}</p>
-      ) : filtered.length === 0 ? (
+      ) : visibleTabs.length === 0 ? (
         <Card className="text-center py-10">
           <p className="text-sm text-text-muted">Nothing here yet.</p>
         </Card>
+      ) : filtered.length === 0 ? (
+        <Card className="text-center py-10">
+          <p className="text-sm text-text-muted">Nothing matches your search in this tab.</p>
+        </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
           {filtered.map((item) => (
-            <button key={item.id} type="button" onClick={() => setActive(item)} className="text-left">
-              <Card hover className="cursor-pointer h-full !p-0 overflow-hidden">
-                <LibraryThumbnail item={item} />
-                <div className="p-4">
-                  <p className="font-medium text-primary-900 truncate">{item.title}</p>
-                  {item.learningArea && <p className="text-xs text-text-muted mt-0.5">{item.learningArea}</p>}
-                  {item.downloadAvailable && (
-                    <Badge variant="accent" className="mt-2 inline-flex items-center gap-1">
-                      <Download className="w-3 h-3" /> Downloadable
-                    </Badge>
-                  )}
-                </div>
-              </Card>
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setActive(item)}
+              className="text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-700/40"
+            >
+              <LibraryBookCard item={item} />
             </button>
           ))}
         </div>

@@ -9,12 +9,12 @@
  * Palette (locked, dark-mode immune via darkMode: 'class' + explicit values):
  *   Teal   #02465B  primary / nav / focus rings
  *   Amber  #F5CA93  Submit button ONLY (final irreversible action)
- *   Ice    #F5FDFF  page background
+ *   Ice    #FFFFFF  page background
  *   White  #FFFFFF  card surfaces
  *   Ink    #011E28  primary text
- *   Slate  #5A7A85  secondary text
- *   Mist   #9BBAC5  faint / placeholder
- *   Tint   #EBF8FC  focus fill / row hover
+ *   Slate  #666666  secondary text
+ *   Mist   #A3A3A3  faint / placeholder
+ *   Tint   #F5F5F5  focus fill / row hover
  *   Danger #C0392B  errors only
  */
 
@@ -68,7 +68,7 @@ export function FloatingInput({
         className={cn(
           'absolute left-4 pointer-events-none transition-all duration-200 font-medium select-none',
           lifted ? 'top-2 text-[10px] tracking-wide uppercase' : 'top-[17px] text-sm',
-          error ? 'text-[#C0392B]' : focused ? 'text-[#02465B]' : 'text-[#9BBAC5]'
+          error ? 'text-[#C0392B]' : focused ? 'text-[#02465B]' : 'text-[#A3A3A3]'
         )}
       >
         {label}{required && ' *'}
@@ -78,7 +78,7 @@ export function FloatingInput({
           <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" aria-hidden /> {error}
         </p>
       )}
-      {!error && hint && <p id={`${id}-hint`} className="mt-1.5 text-xs text-[#9BBAC5]">{hint}</p>}
+      {!error && hint && <p id={`${id}-hint`} className="mt-1.5 text-xs text-[#A3A3A3]">{hint}</p>}
     </div>
   )
 }
@@ -132,18 +132,18 @@ export function FloatingSelect({
         className={cn(
           'absolute left-4 pointer-events-none transition-all duration-200 font-medium select-none',
           lifted ? 'top-2 text-[10px] tracking-wide uppercase' : 'top-[17px] text-sm',
-          error ? 'text-[#C0392B]' : focused ? 'text-[#02465B]' : 'text-[#9BBAC5]'
+          error ? 'text-[#C0392B]' : focused ? 'text-[#02465B]' : 'text-[#A3A3A3]'
         )}
       >
         {label}{required && ' *'}
       </label>
-      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#9BBAC5] pointer-events-none" aria-hidden />
+      <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3A3A3] pointer-events-none" aria-hidden />
       {error && (
         <p role="alert" className="mt-1.5 flex items-center gap-1.5 text-xs text-[#C0392B]">
           <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" aria-hidden /> {error}
         </p>
       )}
-      {!error && hint && <p className="mt-1.5 text-xs text-[#9BBAC5]">{hint}</p>}
+      {!error && hint && <p className="mt-1.5 text-xs text-[#A3A3A3]">{hint}</p>}
     </div>
   )
 }
@@ -186,7 +186,7 @@ export function FloatingTextarea({
         className={cn(
           'absolute left-4 pointer-events-none transition-all duration-200 font-medium select-none',
           lifted ? 'top-2.5 text-[10px] tracking-wide uppercase' : 'top-4 text-sm',
-          error ? 'text-[#C0392B]' : focused ? 'text-[#02465B]' : 'text-[#9BBAC5]'
+          error ? 'text-[#C0392B]' : focused ? 'text-[#02465B]' : 'text-[#A3A3A3]'
         )}
       >
         {label}{required && ' *'}
@@ -216,18 +216,18 @@ export function RadioCard({
         'w-full text-left p-4 rounded-xl border-2 transition-all duration-150 cursor-pointer',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B] focus-visible:ring-offset-1',
         selected
-          ? 'border-[#02465B] bg-[#EBF8FC]'
-          : 'border-[#02465B]/10 bg-white hover:border-[#02465B]/25 hover:bg-[#F5FDFF]'
+          ? 'border-[#02465B] bg-[#F5F5F5]'
+          : 'border-[#02465B]/10 bg-white hover:border-[#02465B]/25 hover:bg-[#FFFFFF]'
       )}
     >
       <div className="flex items-center justify-between gap-3">
         <div>
           <p className={cn('text-sm font-semibold', selected ? 'text-[#02465B]' : 'text-[#011E28]')}>{label}</p>
-          {description && <p className="text-xs text-[#5A7A85] mt-0.5 leading-relaxed">{description}</p>}
+          {description && <p className="text-xs text-[#666666] mt-0.5 leading-relaxed">{description}</p>}
         </div>
         <div className={cn(
           'w-4 h-4 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all duration-150',
-          selected ? 'border-[#02465B] bg-[#02465B]' : 'border-[#9BBAC5]'
+          selected ? 'border-[#02465B] bg-[#02465B]' : 'border-[#A3A3A3]'
         )}>
           {selected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
         </div>
@@ -246,7 +246,7 @@ export function AttendanceRow({
     <div className="flex items-center justify-between gap-3 py-2.5 px-1 border-b border-[#02465B]/06 last:border-0">
       <div className="min-w-0">
         <p className="text-sm font-medium text-[#011E28] truncate">{name}</p>
-        {systemId && <p className="text-xs text-[#9BBAC5]">{systemId}</p>}
+        {systemId && <p className="text-xs text-[#A3A3A3]">{systemId}</p>}
       </div>
       <button
         type="button"
@@ -255,7 +255,7 @@ export function AttendanceRow({
         className={cn(
           'shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-150 cursor-pointer',
           present
-            ? 'bg-[#EBF8FC] text-[#0489AE] hover:bg-[#D6F0F7]'
+            ? 'bg-[#F5F5F5] text-[#0489AE] hover:bg-[#D6F0F7]'
             : 'bg-[#C0392B]/10 text-[#C0392B] hover:bg-[#C0392B]/15'
         )}
       >
@@ -298,7 +298,7 @@ export function ReviewRow({
   if (!value || value.trim() === '') return null
   return (
     <div className="flex items-start justify-between gap-6 py-3 border-b border-[#02465B]/06 last:border-0 group">
-      <p className="text-xs text-[#9BBAC5] font-medium shrink-0 w-32 pt-0.5">{label}</p>
+      <p className="text-xs text-[#A3A3A3] font-medium shrink-0 w-32 pt-0.5">{label}</p>
       <p className="text-sm text-[#011E28] flex-1 leading-relaxed">{value}</p>
       {onEdit && (
         <button
@@ -343,7 +343,7 @@ export function SuccessScreen({
       initial={{ opacity: 0, scale: 0.97 }}
       animate={{ opacity: 1, scale: 1 }}
       transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="flex flex-col items-center justify-center min-h-screen bg-[#F5FDFF] px-6 text-center"
+      className="flex flex-col items-center justify-center min-h-screen bg-[#FFFFFF] px-6 text-center"
     >
       {/* Check mark */}
       <motion.div
@@ -362,16 +362,16 @@ export function SuccessScreen({
         transition={{ delay: 0.3, duration: 0.4 }}
       >
         <h2 className="text-2xl font-bold text-[#011E28] tracking-tight mb-2">{heading}</h2>
-        <p className="text-[#5A7A85] text-sm mb-6">{subheading}</p>
+        <p className="text-[#666666] text-sm mb-6">{subheading}</p>
 
         {/* Reference card */}
         <div className="inline-block rounded-2xl border border-[#02465B]/12 bg-white px-8 py-5 mb-8"
           style={{ boxShadow: '0 2px 12px rgba(2,70,91,0.08)' }}>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-[#9BBAC5] mb-1">Reference</p>
+          <p className="text-[10px] font-bold uppercase tracking-widest text-[#A3A3A3] mb-1">Reference</p>
           <p className="text-xl font-bold text-[#02465B] tracking-wider font-mono">{reference}</p>
           <div className="mt-3 pt-3 border-t border-[#02465B]/08 space-y-0.5">
-            <p className="text-xs text-[#5A7A85]">{teacherName}</p>
-            <p className="text-xs text-[#9BBAC5]">{new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</p>
+            <p className="text-xs text-[#666666]">{teacherName}</p>
+            <p className="text-xs text-[#A3A3A3]">{new Date().toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}</p>
           </div>
         </div>
 
@@ -387,15 +387,15 @@ export function SuccessScreen({
           <button
             type="button"
             onClick={onHome}
-            className="w-full sm:w-auto h-11 px-6 rounded-xl border border-[#02465B]/20 text-[#02465B] text-sm font-semibold hover:bg-[#EBF8FC] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B] focus-visible:ring-offset-2"
+            className="w-full sm:w-auto h-11 px-6 rounded-xl border border-[#02465B]/20 text-[#02465B] text-sm font-semibold hover:bg-[#F5F5F5] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B] focus-visible:ring-offset-2"
           >
             Back to forms
           </button>
         </div>
 
         {/* Auto-redirect countdown */}
-        <p className="mt-6 text-xs text-[#9BBAC5]">
-          Returning to forms in <span className="font-semibold text-[#5A7A85]">{countdown}s</span>
+        <p className="mt-6 text-xs text-[#A3A3A3]">
+          Returning to forms in <span className="font-semibold text-[#666666]">{countdown}s</span>
         </p>
       </motion.div>
     </motion.div>

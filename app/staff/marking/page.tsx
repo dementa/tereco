@@ -84,7 +84,7 @@ const VERDICT_CLASS: Record<Verdict, string> = {
   correct: 'text-[#1F7A54]',
   partial: 'text-[#8A6A16]',
   wrong: 'text-[#A34C4C]',
-  unmarked: 'text-[#9BB3BD]',
+  unmarked: 'text-[#A3A3A3]',
 };
 
 function formatAnswer(value: string, type: string): string {
@@ -370,7 +370,7 @@ export default function MarkingPage() {
               <button
                 type="button"
                 onClick={() => setOpenScript(null)}
-                className="inline-flex items-center gap-1.5 text-sm text-[#5A7D8A] hover:text-[#02465B] mb-2"
+                className="inline-flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#02465B] mb-2"
               >
                 <ArrowLeft className="w-4 h-4" aria-hidden />
                 Back to the class
@@ -403,7 +403,7 @@ export default function MarkingPage() {
               literally nothing to mark from. */}
           {openScript.mode === 'scanned' && (
             <div className="mb-4">
-              <p className="text-xs font-medium text-[#5A7D8A] mb-2">
+              <p className="text-xs font-medium text-[#666666] mb-2">
                 UPLOADED PAPER ({openScript.scans?.length ?? 0} page
                 {openScript.scans?.length === 1 ? '' : 's'})
               </p>
@@ -415,12 +415,12 @@ export default function MarkingPage() {
                       href={scan.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="shrink-0 rounded-xl border border-[#E8EFF3] overflow-hidden hover:border-[#02465B]/40"
+                      className="shrink-0 rounded-xl border border-[#EAEAEA] overflow-hidden hover:border-[#02465B]/40"
                       title={`Open page ${scan.pageNumber} full size`}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={scan.url} alt={`Page ${scan.pageNumber}`} className="h-40 w-auto object-contain bg-[#F1F6F8]" />
-                      <span className="block text-center text-xs text-[#5A7D8A] py-1">
+                      <img src={scan.url} alt={`Page ${scan.pageNumber}`} className="h-40 w-auto object-contain bg-[#FAFAFA]" />
+                      <span className="block text-center text-xs text-[#666666] py-1">
                         Page {scan.pageNumber}
                       </span>
                     </a>
@@ -449,14 +449,14 @@ export default function MarkingPage() {
                   // prints above the image it refers to, not after it.
                   <div className="space-y-1">
                     {group.groupHeading && (
-                      <p className="text-xs italic text-[#5A7D8A]">{group.groupHeading}</p>
+                      <p className="text-xs italic text-[#666666]">{group.groupHeading}</p>
                     )}
                     {group.groupImageUrl && (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
                         src={group.groupImageUrl}
                         alt=""
-                        className="max-h-28 rounded object-contain bg-[#F1F6F8]"
+                        className="max-h-28 rounded object-contain bg-[#FAFAFA]"
                       />
                     )}
                   </div>
@@ -476,7 +476,7 @@ export default function MarkingPage() {
                   const globalIdx = flatAnswers.findIndex((x) => x.questionId === a.questionId);
                   if (isStemParent(flatAnswers, globalIdx)) {
                     return (
-                      <div key={a.questionId} className="rounded-xl border border-[#E8EFF3] p-3 bg-[#F8FBFC]">
+                      <div key={a.questionId} className="rounded-xl border border-[#EAEAEA] p-3 bg-[#FAFAFA]">
                         <p className="text-sm font-medium text-[#12333F]">
                           {formatQuestionLabel(a.code, mi === 0)} {a.questionText}
                         </p>
@@ -485,21 +485,21 @@ export default function MarkingPage() {
                           <img
                             src={a.imageUrl}
                             alt=""
-                            className="mt-2 max-h-28 rounded object-contain bg-[#F1F6F8]"
+                            className="mt-2 max-h-28 rounded object-contain bg-[#FAFAFA]"
                           />
                         )}
-                        <p className="text-xs text-[#9BB3BD] italic mt-1">Scored on the parts below.</p>
+                        <p className="text-xs text-[#A3A3A3] italic mt-1">Scored on the parts below.</p>
                       </div>
                     );
                   }
                   return (
-                    <div key={a.questionId} className="rounded-xl border border-[#E8EFF3] p-3">
+                    <div key={a.questionId} className="rounded-xl border border-[#EAEAEA] p-3">
                       <div className="flex items-start justify-between gap-3">
                         <p className="text-sm font-medium text-[#12333F] flex-1">
                           {formatQuestionLabel(a.code, mi === 0)} {a.questionText}
                         </p>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-[10px] text-[#9BB3BD] mr-0.5">
+                          <span className="text-[10px] text-[#A3A3A3] mr-0.5">
                             {a.maxScore} pt{a.maxScore === 1 ? '' : 's'}
                           </span>
                           <button
@@ -510,7 +510,7 @@ export default function MarkingPage() {
                             className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border-2 transition-colors disabled:opacity-50 ${
                               a.score === a.maxScore
                                 ? 'bg-[#1F7A54] border-[#1F7A54] text-white'
-                                : 'border-[#D1E0E8] text-[#5A7D8A] hover:border-[#1F7A54] hover:text-[#1F7A54]'
+                                : 'border-[#E5E5E5] text-[#666666] hover:border-[#1F7A54] hover:text-[#1F7A54]'
                             }`}
                           >
                             <Check className="w-3.5 h-3.5" aria-hidden />
@@ -527,20 +527,20 @@ export default function MarkingPage() {
                             className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border-2 transition-colors disabled:opacity-50 ${
                               a.score !== null && a.score > 0 && a.score < a.maxScore
                                 ? 'bg-[#8A6A16] border-[#8A6A16] text-white'
-                                : 'border-[#D1E0E8] text-[#5A7D8A] hover:border-[#8A6A16] hover:text-[#8A6A16]'
+                                : 'border-[#E5E5E5] text-[#666666] hover:border-[#8A6A16] hover:text-[#8A6A16]'
                             }`}
                           >
                             <Minus className="w-3.5 h-3.5" aria-hidden />
                             Partial
                           </button>
                           {a.score !== null && a.score > 0 && a.score < a.maxScore && (
-                            <div className="flex items-center gap-1 rounded-lg border-2 border-[#D1E0E8] px-1">
+                            <div className="flex items-center gap-1 rounded-lg border-2 border-[#E5E5E5] px-1">
                               <button
                                 type="button"
                                 onClick={() => adjustScore(a, -0.5)}
                                 disabled={savingQuestionId === a.questionId}
                                 aria-label={`Decrease score for ${a.code}`}
-                                className="text-[#5A7D8A] hover:text-[#02465B] disabled:opacity-50"
+                                className="text-[#666666] hover:text-[#02465B] disabled:opacity-50"
                               >
                                 <Minus className="w-3.5 h-3.5" aria-hidden />
                               </button>
@@ -552,7 +552,7 @@ export default function MarkingPage() {
                                 onClick={() => adjustScore(a, 0.5)}
                                 disabled={savingQuestionId === a.questionId}
                                 aria-label={`Increase score for ${a.code}`}
-                                className="text-[#5A7D8A] hover:text-[#02465B] disabled:opacity-50"
+                                className="text-[#666666] hover:text-[#02465B] disabled:opacity-50"
                               >
                                 <Plus className="w-3.5 h-3.5" aria-hidden />
                               </button>
@@ -566,7 +566,7 @@ export default function MarkingPage() {
                             className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium border-2 transition-colors disabled:opacity-50 ${
                               a.score === 0
                                 ? 'bg-[#A34C4C] border-[#A34C4C] text-white'
-                                : 'border-[#D1E0E8] text-[#5A7D8A] hover:border-[#A34C4C] hover:text-[#A34C4C]'
+                                : 'border-[#E5E5E5] text-[#666666] hover:border-[#A34C4C] hover:text-[#A34C4C]'
                             }`}
                           >
                             <X className="w-3.5 h-3.5" aria-hidden />
@@ -580,20 +580,20 @@ export default function MarkingPage() {
                         <img
                           src={a.imageUrl}
                           alt=""
-                          className="mt-2 max-h-28 rounded object-contain bg-[#F1F6F8]"
+                          className="mt-2 max-h-28 rounded object-contain bg-[#FAFAFA]"
                         />
                       )}
 
-                      <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-2">ANSWER GIVEN</p>
+                      <p className="text-[10px] text-[#666666] tracking-wide mt-2">ANSWER GIVEN</p>
                       {given ? (
                         <p className="text-sm text-[#12333F] whitespace-pre-wrap">{given}</p>
                       ) : (
-                        <p className="text-sm text-[#9BB3BD] italic">No answer given</p>
+                        <p className="text-sm text-[#A3A3A3] italic">No answer given</p>
                       )}
 
                       {a.correctAnswer && (
                         <>
-                          <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-2">CORRECT</p>
+                          <p className="text-[10px] text-[#666666] tracking-wide mt-2">CORRECT</p>
                           <p className="text-sm text-[#1F7A54]">
                             {formatAnswer(a.correctAnswer, a.questionType)}
                           </p>
@@ -604,7 +604,7 @@ export default function MarkingPage() {
                           into, which is the only place it is any use. */}
                       {a.modelAnswer && (
                         <>
-                          <p className="text-[10px] text-[#5A7D8A] tracking-wide mt-2">
+                          <p className="text-[10px] text-[#666666] tracking-wide mt-2">
                             MARKING GUIDANCE
                           </p>
                           <MarkingGuidance text={a.modelAnswer} />
