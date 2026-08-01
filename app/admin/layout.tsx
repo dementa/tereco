@@ -39,7 +39,7 @@ const SYSTEM_NAV = [
   { href: '/admin/system/students', label: 'Student Accounts', icon: GraduationCap },
   { href: '/admin/system/parents', label: 'Parents', icon: Contact },
   { href: '/admin/system/super-admins', label: 'Super Admins', icon: ShieldCheck },
-  { href: '/admin/system/library', label: 'Library Approvals', icon: Library },
+  { href: '/admin/system/library', label: 'System Library', icon: Library },
 ];
 
 const ADMIN_ROLES: Role[] = ['admin', 'super_admin'];
