@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
 import { Select } from '@/components/ui/Select';
 import { Input } from '@/components/ui/Input';
-import { LibraryThumbnail, type LibraryThumbnailItem } from '@/components/library/LibraryThumbnail';
+import { type LibraryThumbnailItem } from '@/components/library/LibraryThumbnail';
+import { LibraryBookCard } from '@/components/library/LibraryBookCard';
 import { LibraryFullScreenViewer } from '@/components/library/LibraryFullScreenViewer';
-import { Download } from 'lucide-react';
 
 interface LibraryItem extends LibraryThumbnailItem {
   id: string;
@@ -16,6 +15,8 @@ interface LibraryItem extends LibraryThumbnailItem {
   fileFormat: string | null;
   downloadable: boolean;
   learningArea: string | null;
+  authorName: string;
+  createdAt: string;
   streamUrl: string | null;
   pageImageUrls: string[] | null;
   downloadAvailable: boolean;
@@ -88,19 +89,13 @@ export function LibraryBrowse() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {filtered.map((item) => (
-            <button key={item.id} type="button" onClick={() => setActive(item)} className="text-left">
-              <Card hover className="cursor-pointer h-full !p-0 overflow-hidden">
-                <LibraryThumbnail item={item} />
-                <div className="p-4">
-                  <p className="font-medium text-primary-900 truncate">{item.title}</p>
-                  {item.learningArea && <p className="text-xs text-text-muted mt-0.5">{item.learningArea}</p>}
-                  {item.downloadAvailable && (
-                    <Badge variant="accent" className="mt-2 inline-flex items-center gap-1">
-                      <Download className="w-3 h-3" /> Downloadable
-                    </Badge>
-                  )}
-                </div>
-              </Card>
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setActive(item)}
+              className="text-left rounded-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-700/40"
+            >
+              <LibraryBookCard item={item} />
             </button>
           ))}
         </div>

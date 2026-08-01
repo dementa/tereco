@@ -381,13 +381,24 @@ export async function submitLibraryContent(id: string): Promise<void> {
 
 // ─── Approval queue ───────────────────────────────────────────
 
-export interface PendingLibraryContent extends LibraryContent {
+export interface LibraryContentWithUploader extends LibraryContent {
   uploaderName: string;
   uploaderSchoolName: string | null;
 }
 
+/** Kept as a distinct name for the approval-queue call sites; same shape. */
+export type PendingLibraryContent = LibraryContentWithUploader;
+
 interface PendingRow extends Row {
   uploader: { first_name: string; last_name: string; school: { name: string } | null } | null;
+}
+
+function rowToContentWithUploader(row: PendingRow): LibraryContentWithUploader {
+  return {
+    ...rowToLibraryContent(row),
+    uploaderName: [row.uploader?.first_name, row.uploader?.last_name].filter(Boolean).join(" "),
+    uploaderSchoolName: row.uploader?.school?.name ?? null,
+  };
 }
 
 // schools!profiles_school_id_fkey is load-bearing, not decoration: profiles
@@ -409,11 +420,25 @@ export async function getPendingLibraryContent(): Promise<PendingLibraryContent[
     .order("submitted_at", { ascending: true });
   if (error) throw new Error(error.message);
 
-  return (data as unknown as PendingRow[]).map((row) => ({
-    ...rowToLibraryContent(row),
-    uploaderName: [row.uploader?.first_name, row.uploader?.last_name].filter(Boolean).join(" "),
-    uploaderSchoolName: row.uploader?.school?.name ?? null,
-  }));
+  return (data as unknown as PendingRow[]).map(rowToContentWithUploader);
+}
+
+/**
+ * Every non-archived item in the system, every status and every school,
+ * newest first — the super-admin management view, where the approval queue
+ * is just one status filter among all of them. Uploader + school come along
+ * so the table can be read without opening each item.
+ */
+export async function getAllLibraryContent(): Promise<LibraryContentWithUploader[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("library_content")
+    .select(PENDING_SELECT)
+    .is("archived_at", null)
+    .order("created_at", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  return (data as unknown as PendingRow[]).map(rowToContentWithUploader);
 }
 
 async function getPendingItem(id: string): Promise<LibraryContent> {
@@ -465,10 +490,36 @@ export interface BrowseFilters {
  * exactly one implementation of "may this person see this item," the same
  * reasoning getAssessmentsForStudent uses for assessments_for_student.
  */
+/** A browsable item plus its uploader's display name, for the card byline. */
+export interface BrowsableLibraryContent extends LibraryContent {
+  authorName: string;
+}
+
+/**
+ * Attach each item's uploader name in one lookup for the whole page, rather
+ * than embedding through the RPC (PostgREST embedding on a function result is
+ * fussier than on a table, and this keeps the browse query untouched).
+ */
+async function attachAuthorNames(items: LibraryContent[]): Promise<BrowsableLibraryContent[]> {
+  const creatorIds = [...new Set(items.map((i) => i.createdBy))];
+  if (creatorIds.length === 0) return [];
+
+  const supabase = getSupabaseAdmin();
+  const { data } = await supabase
+    .from("profiles")
+    .select("id, first_name, last_name")
+    .in("id", creatorIds);
+
+  const nameById = new Map(
+    (data ?? []).map((p) => [p.id, [p.first_name, p.last_name].filter(Boolean).join(" ")])
+  );
+  return items.map((item) => ({ ...item, authorName: nameById.get(item.createdBy) ?? "" }));
+}
+
 export async function getLibraryContentForProfile(
   profileId: string,
   filters: BrowseFilters = {}
-): Promise<LibraryContent[]> {
+): Promise<BrowsableLibraryContent[]> {
   const supabase = getSupabaseAdmin();
   let query = supabase.rpc("library_content_for_profile", { p_profile_id: profileId }).select(SELECT);
 
@@ -477,16 +528,19 @@ export async function getLibraryContentForProfile(
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  const items = (data as unknown as Row[]).map(rowToLibraryContent);
+  let items = (data as unknown as Row[]).map(rowToLibraryContent);
 
   // Done in-memory rather than a PostgREST `.or()` string built from raw
   // user input: a keyword containing a comma or parenthesis would otherwise
   // be parsed as filter syntax instead of the search term it's meant to be.
-  if (!filters.keyword?.trim()) return items;
-  const needle = filters.keyword.trim().toLowerCase();
-  return items.filter(
-    (item) => item.title.toLowerCase().includes(needle) || item.description.toLowerCase().includes(needle)
-  );
+  const needle = filters.keyword?.trim().toLowerCase();
+  if (needle) {
+    items = items.filter(
+      (item) => item.title.toLowerCase().includes(needle) || item.description.toLowerCase().includes(needle)
+    );
+  }
+
+  return attachAuthorNames(items);
 }
 
 /**
