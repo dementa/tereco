@@ -187,7 +187,7 @@ export function MyLibraryUploads({ newHref }: { newHref: string }) {
                 value={editDescription}
                 onChange={(e) => setEditDescription(e.target.value)}
                 rows={3}
-                className="w-full rounded-xl border-2 border-[#D1E0E8] bg-white px-4 py-2.5 text-sm focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-700/10"
+                className="w-full rounded-xl border-2 border-[#E5E5E5] bg-white px-4 py-2.5 text-sm focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-700/10"
               />
             </div>
             <Input label="Subject" value={editLearningArea} onChange={(e) => setEditLearningArea(e.target.value)} placeholder="e.g. Mathematics" />

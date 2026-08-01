@@ -67,7 +67,7 @@ export default function ParentDashboardPage() {
 
       {selected && (
         <Card className="p-5 mb-6">
-          <p className="text-xs font-medium text-[#5A7D8A] tracking-wide mb-1">VIEWING</p>
+          <p className="text-xs font-medium text-[#666666] tracking-wide mb-1">VIEWING</p>
           <p className="font-semibold text-primary-900 flex items-center gap-2">
             {selected.name}
             {selected.className && <Badge variant="muted">{selected.className}</Badge>}

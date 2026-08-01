@@ -54,7 +54,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
               role="dialog"
               aria-modal="true"
               aria-label={typeof title === 'string' ? title : undefined}
-              className={`relative w-full ${size === 'lg' ? 'max-w-2xl' : 'max-w-xl'} bg-white rounded-2xl border border-[#E8EFF3] shadow-xl my-auto`}
+              className={`relative w-full ${size === 'lg' ? 'max-w-2xl' : 'max-w-xl'} bg-white rounded-2xl border border-[#EAEAEA] shadow-xl my-auto`}
               initial={{ opacity: 0, scale: 0.97, y: 8 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.97, y: 8 }}
@@ -69,7 +69,7 @@ export function Modal({ open, onClose, title, children, size = 'md' }: ModalProp
                       type="button"
                       onClick={onClose}
                       aria-label="Close"
-                      className="p-1 -m-1 rounded-lg hover:bg-[#F1F6F8]"
+                      className="p-1 -m-1 rounded-lg hover:bg-[#FAFAFA]"
                     >
                       <X className="w-4 h-4 text-text-muted" aria-hidden />
                     </button>

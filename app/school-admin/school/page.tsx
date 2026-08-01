@@ -74,10 +74,10 @@ export default function SchoolAdminSchoolPage() {
               <img
                 src={school.logoUrl}
                 alt=""
-                className="w-20 h-20 rounded-2xl object-contain bg-[#F1F6F8] border border-[#E8EFF3] shrink-0"
+                className="w-20 h-20 rounded-2xl object-contain bg-[#FAFAFA] border border-[#EAEAEA] shrink-0"
               />
             ) : (
-              <div className="w-20 h-20 rounded-2xl bg-[#F1F6F8] text-[#9BB3BD] text-xs flex items-center justify-center shrink-0">
+              <div className="w-20 h-20 rounded-2xl bg-[#FAFAFA] text-[#A3A3A3] text-xs flex items-center justify-center shrink-0">
                 No logo
               </div>
             )}
@@ -88,8 +88,8 @@ export default function SchoolAdminSchoolPage() {
               </p>
               <dl className="mt-3 grid grid-cols-1 gap-y-2 text-sm">
                 {FIELDS.map(([label, value]) => (
-                  <div key={label} className="flex justify-between gap-4 border-b border-[#F1F6F8] py-1.5">
-                    <dt className="text-[#5A7D8A]">{label}</dt>
+                  <div key={label} className="flex justify-between gap-4 border-b border-[#FAFAFA] py-1.5">
+                    <dt className="text-[#666666]">{label}</dt>
                     <dd className="text-[#12333F] text-right">{value(school)}</dd>
                   </div>
                 ))}

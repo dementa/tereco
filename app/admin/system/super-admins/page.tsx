@@ -193,7 +193,7 @@ export default function SuperAdminsPage() {
                 onClick={() => void handleResetPassword(a)}
                 disabled={busyId === a.id}
                 title={`Reset password for ${a.name}`}
-                className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#F1F6F8] disabled:opacity-40"
+                className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA] disabled:opacity-40"
               >
                 <KeyRound className="w-4 h-4" aria-hidden />
               </button>
@@ -210,7 +210,7 @@ export default function SuperAdminsPage() {
                     type="button"
                     onClick={() => void toggleActive(a)}
                     title={a.isActive ? `Deactivate ${a.name}` : `Reactivate ${a.name}`}
-                    className="p-1.5 rounded-lg text-[#5A7D8A] hover:bg-[#F1F6F8]"
+                    className="p-1.5 rounded-lg text-[#666666] hover:bg-[#FAFAFA]"
                   >
                     {a.isActive ? <PowerOff className="w-4 h-4" aria-hidden /> : <Power className="w-4 h-4" aria-hidden />}
                   </button>

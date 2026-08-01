@@ -770,11 +770,11 @@ export default function AssessmentDetailPage() {
         value: (r) => r.percentage ?? -1,
         render: (r) =>
           r.percentage === null ? (
-            <span className="text-[#9BB3BD]">pending</span>
+            <span className="text-[#A3A3A3]">pending</span>
           ) : (
             <div>
               <div className="font-semibold text-[#12333F]">{r.percentage}%</div>
-              <div className="text-xs text-[#5A7D8A]">{r.totalScore} / {r.maxScore ?? '—'}</div>
+              <div className="text-xs text-[#666666]">{r.totalScore} / {r.maxScore ?? '—'}</div>
             </div>
           ),
       },
@@ -799,7 +799,7 @@ export default function AssessmentDetailPage() {
       <button
         type="button"
         onClick={() => router.push('/admin/assessments')}
-        className="inline-flex items-center gap-1.5 text-sm text-[#5A7D8A] hover:text-[#02465B]"
+        className="inline-flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#02465B]"
       >
         <ArrowLeft className="w-4 h-4" aria-hidden />
         All assessments
@@ -949,7 +949,7 @@ export default function AssessmentDetailPage() {
             collaborators.map((c) => (
               <span
                 key={c.id}
-                className="inline-flex items-center gap-1 rounded-lg bg-[#F1F6F8] px-2 py-1 text-xs text-[#12333F]"
+                className="inline-flex items-center gap-1 rounded-lg bg-[#FAFAFA] px-2 py-1 text-xs text-[#12333F]"
               >
                 {c.name}{c.systemId ? ` · ${c.systemId}` : ''}
                 {isOwner && (
@@ -957,7 +957,7 @@ export default function AssessmentDetailPage() {
                     type="button"
                     onClick={() => void removeCollaborator(c.id)}
                     aria-label={`Remove ${c.name}`}
-                    className="text-[#5A7D8A] hover:text-[#C26565]"
+                    className="text-[#666666] hover:text-[#C26565]"
                   >
                     <Trash2 className="w-3 h-3" aria-hidden />
                   </button>
@@ -1000,14 +1000,14 @@ export default function AssessmentDetailPage() {
             assessment.targets.map((t) => (
               <span
                 key={t.id}
-                className="inline-flex items-center gap-1 rounded-lg bg-[#F1F6F8] px-2 py-1 text-xs text-[#12333F]"
+                className="inline-flex items-center gap-1 rounded-lg bg-[#FAFAFA] px-2 py-1 text-xs text-[#12333F]"
               >
                 {targetLabel(t)}
                 <button
                   type="button"
                   onClick={() => void removeTarget(t.id)}
                   aria-label={`Remove target ${targetLabel(t)}`}
-                  className="text-[#5A7D8A] hover:text-[#C26565]"
+                  className="text-[#666666] hover:text-[#C26565]"
                 >
                   <Trash2 className="w-3 h-3" aria-hidden />
                 </button>
@@ -1122,7 +1122,7 @@ export default function AssessmentDetailPage() {
           The plain paper carries TERECO branding; a per-school paper carries that school&apos;s
           logo. The answer key is unavailable while the assessment is published.
         </p>
-        <label htmlFor="instructions" className="text-xs font-medium text-[#5A7D8A]">
+        <label htmlFor="instructions" className="text-xs font-medium text-[#666666]">
           Instructions printed on the paper (leave blank for the standard wording)
         </label>
         <textarea
@@ -1131,7 +1131,7 @@ export default function AssessmentDetailPage() {
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}
           placeholder="One instruction per line."
-          className="mt-1.5 w-full rounded-xl border-2 border-[#D1E0E8] px-3 py-2 text-sm focus:border-[#02465B] focus:outline-none"
+          className="mt-1.5 w-full rounded-xl border-2 border-[#E5E5E5] px-3 py-2 text-sm focus:border-[#02465B] focus:outline-none"
         />
         <div className="mt-2">
           <Button
@@ -1167,7 +1167,7 @@ export default function AssessmentDetailPage() {
             below and decides what "Add question" tags the new row with, so
             building a section end-to-end never touches the section field by
             hand past the first question. */}
-        <div className="flex gap-1 mb-4 border-b border-[#E8EFF3] overflow-x-auto">
+        <div className="flex gap-1 mb-4 border-b border-[#EAEAEA] overflow-x-auto">
           {SECTION_TABS.map((tab) => (
             <button
               key={tab.value}
@@ -1176,12 +1176,12 @@ export default function AssessmentDetailPage() {
               className={`px-3 py-1.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap transition-colors ${
                 activeSection === tab.value
                   ? 'border-[#02465B] text-[#02465B]'
-                  : 'border-transparent text-[#5A7D8A] hover:text-[#02465B]'
+                  : 'border-transparent text-[#666666] hover:text-[#02465B]'
               }`}
             >
               {tab.label}
               {sectionCounts[tab.value] ? (
-                <span className="ml-1.5 text-xs text-[#9BB3BD]">({sectionCounts[tab.value]})</span>
+                <span className="ml-1.5 text-xs text-[#A3A3A3]">({sectionCounts[tab.value]})</span>
               ) : null}
             </button>
           ))}
@@ -1198,7 +1198,7 @@ export default function AssessmentDetailPage() {
             const anchor = group.members[0];
             return (
               <div key={anchor.id} className="space-y-2">
-                <div className="rounded-xl border-2 border-[#E8EFF3] p-3 space-y-3">
+                <div className="rounded-xl border-2 border-[#EAEAEA] p-3 space-y-3">
                   <GroupImageField
                     assessmentId={assessment.id}
                     anchorPosition={anchor.position}
@@ -1234,18 +1234,18 @@ export default function AssessmentDetailPage() {
                     <div
                       key={q.id}
                       ref={q.globalIndex === newlyAddedIndex ? newlyAddedRef : undefined}
-                      className="space-y-2 pt-2 border-t border-[#E8EFF3] first:border-t-0 first:pt-0"
+                      className="space-y-2 pt-2 border-t border-[#EAEAEA] first:border-t-0 first:pt-0"
                     >
                       <div className="flex items-center gap-2">
                         <button
                           type="button"
                           onClick={() => toggleExpanded(q.id!)}
                           aria-label={isOpen ? `Collapse ${q.code}` : `Expand ${q.code}`}
-                          className="shrink-0 text-[#5A7D8A]"
+                          className="shrink-0 text-[#666666]"
                         >
                           {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
                         </button>
-                        <span className="text-xs font-medium text-[#5A7D8A] w-12 shrink-0">
+                        <span className="text-xs font-medium text-[#666666] w-12 shrink-0">
                           {formatQuestionLabel(q.code, mi === 0)}
                         </span>
                         {isOpen ? (
@@ -1256,7 +1256,7 @@ export default function AssessmentDetailPage() {
                             onChange={(e) => updateQuestion(q.globalIndex, { questionText: e.target.value })}
                             placeholder="Question text"
                             aria-label={`${q.code} text`}
-                            className="flex-1 rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
+                            className="flex-1 rounded-lg border-2 border-[#E5E5E5] px-3 py-1.5 text-sm disabled:bg-[#FAFAFA] focus:border-[#02465B] focus:outline-none"
                           />
                         ) : (
                           <button
@@ -1352,7 +1352,7 @@ export default function AssessmentDetailPage() {
 
                       {!stem && NEEDS_OPTIONS.includes(q.questionType) && (
                         <div className="space-y-1.5">
-                          <span className="text-xs font-medium text-[#5A7D8A]">
+                          <span className="text-xs font-medium text-[#666666]">
                             Choices
                             {q.questionType === 'checkbox' && ' — tick every correct one'}
                           </span>
@@ -1377,7 +1377,7 @@ export default function AssessmentDetailPage() {
                                       : chosen.filter((a) => a !== option.trim());
                                     updateQuestion(q.globalIndex, { correctAnswer: next.join(CHECKBOX_SEP) });
                                   }}
-                                  className="rounded border-[#D1E0E8] shrink-0"
+                                  className="rounded border-[#E5E5E5] shrink-0"
                                 />
                               )}
                               <input
@@ -1403,7 +1403,7 @@ export default function AssessmentDetailPage() {
                                 }}
                                 placeholder={`Choice ${oi + 1}`}
                                 aria-label={`${q.code} choice ${oi + 1}`}
-                                className="flex-1 rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
+                                className="flex-1 rounded-lg border-2 border-[#E5E5E5] px-3 py-1.5 text-sm disabled:bg-[#FAFAFA] focus:border-[#02465B] focus:outline-none"
                               />
                               {!locked && q.options.length > 2 && (
                                 <button
@@ -1452,7 +1452,7 @@ export default function AssessmentDetailPage() {
                         <div className="space-y-1.5">
                           <label
                             htmlFor={`model-${q.globalIndex}`}
-                            className="text-xs font-medium text-[#5A7D8A]"
+                            className="text-xs font-medium text-[#666666]"
                           >
                             Model answer / mark split (optional — printed on the answer key)
                           </label>
@@ -1463,7 +1463,7 @@ export default function AssessmentDetailPage() {
                             disabled={locked}
                             onChange={(e) => updateQuestion(q.globalIndex, { modelAnswer: e.target.value })}
                             placeholder="e.g. Mouse (1 mark). Used to move the pointer or select items (1 mark)."
-                            className="w-full rounded-lg border-2 border-[#D1E0E8] px-3 py-1.5 text-sm disabled:bg-[#F8FBFC] focus:border-[#02465B] focus:outline-none"
+                            className="w-full rounded-lg border-2 border-[#E5E5E5] px-3 py-1.5 text-sm disabled:bg-[#FAFAFA] focus:border-[#02465B] focus:outline-none"
                           />
                         </div>
                       )}
@@ -1540,12 +1540,12 @@ export default function AssessmentDetailPage() {
           </h2>
           <div className="flex items-center gap-2">
             {isOwner && results.length > 0 && !release.releasedAt && (
-              <label className="flex items-center gap-1.5 text-xs text-[#5A7D8A] mr-1">
+              <label className="flex items-center gap-1.5 text-xs text-[#666666] mr-1">
                 <input
                   type="checkbox"
                   checked={emailOnRelease}
                   onChange={(e) => setEmailOnRelease(e.target.checked)}
-                  className="rounded border-[#D1E0E8]"
+                  className="rounded border-[#E5E5E5]"
                 />
                 Email scripts to learners and parents
               </label>

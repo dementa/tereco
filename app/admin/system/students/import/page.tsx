@@ -162,7 +162,7 @@ export default function StudentImportPage() {
             type="checkbox"
             checked={allowCreateStructure}
             onChange={(e) => setAllowCreateStructure(e.target.checked)}
-            className="rounded border-[#D1E0E8] mt-0.5"
+            className="rounded border-[#E5E5E5] mt-0.5"
           />
           <span>
             Create missing classes and streams

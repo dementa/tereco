@@ -104,7 +104,7 @@ export function NotificationBell() {
         onClick={() => setOpen((v) => !v)}
         aria-label={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
         aria-expanded={open}
-        className="relative p-2 rounded-xl text-[#02465B] hover:bg-[#F1F6F8] transition-colors"
+        className="relative p-2 rounded-xl text-[#02465B] hover:bg-[#FAFAFA] transition-colors"
       >
         <Bell className="w-5 h-5" aria-hidden />
         {unread > 0 && (
@@ -115,8 +115,8 @@ export function NotificationBell() {
       </button>
 
       {open && (
-        <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-96 max-h-[70vh] overflow-y-auto rounded-2xl border border-[#E8EFF3] bg-white shadow-lg z-50">
-          <div className="flex items-center justify-between px-4 py-3 border-b border-[#F1F6F8] sticky top-0 bg-white">
+        <div className="absolute right-0 mt-2 w-[calc(100vw-2rem)] sm:w-96 max-h-[70vh] overflow-y-auto rounded-2xl border border-[#EAEAEA] bg-white shadow-lg z-50">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-[#FAFAFA] sticky top-0 bg-white">
             <span className="font-medium text-[#12333F]">Notifications</span>
             {unread > 0 && (
               <button
@@ -131,15 +131,15 @@ export function NotificationBell() {
           </div>
 
           {items.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-[#5A7D8A]">Nothing yet.</p>
+            <p className="px-4 py-8 text-center text-sm text-[#666666]">Nothing yet.</p>
           ) : (
             items.map((n) => (
               <button
                 key={n.id}
                 type="button"
                 onClick={() => void openItem(n)}
-                className={`w-full text-left px-4 py-3 border-b border-[#F1F6F8] last:border-0 hover:bg-[#F8FBFC] transition-colors ${
-                  n.isRead ? '' : 'bg-[#F1F6F8]/60'
+                className={`w-full text-left px-4 py-3 border-b border-[#FAFAFA] last:border-0 hover:bg-[#FAFAFA] transition-colors ${
+                  n.isRead ? '' : 'bg-[#FAFAFA]/60'
                 }`}
               >
                 <span className="flex items-start gap-2">
@@ -148,8 +148,8 @@ export function NotificationBell() {
                   )}
                   <span className="min-w-0">
                     <span className="block text-sm font-medium text-[#12333F]">{n.title}</span>
-                    {n.body && <span className="block text-xs text-[#5A7D8A] mt-0.5">{n.body}</span>}
-                    <span className="block text-[10px] text-[#9BB3BD] mt-1">{timeAgo(n.createdAt)}</span>
+                    {n.body && <span className="block text-xs text-[#666666] mt-0.5">{n.body}</span>}
+                    <span className="block text-[10px] text-[#A3A3A3] mt-1">{timeAgo(n.createdAt)}</span>
                   </span>
                 </span>
               </button>

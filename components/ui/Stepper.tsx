@@ -30,7 +30,7 @@ export const Stepper: React.FC<StepperProps> = ({ steps, currentStep, onStepClic
           </span>
         </button>
         {index < steps.length - 1 && (
-          <div className="w-4 sm:w-8 h-px bg-[#D1E0E8] mx-0.5" />
+          <div className="w-4 sm:w-8 h-px bg-[#E5E5E5] mx-0.5" />
         )}
       </div>
     ))}

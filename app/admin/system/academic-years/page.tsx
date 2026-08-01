@@ -288,7 +288,7 @@ export default function AcademicYearsPage() {
                 type="checkbox"
                 checked={form.makeCurrent}
                 onChange={(e) => setForm({ ...form, makeCurrent: e.target.checked })}
-                className="rounded border-[#D1E0E8]"
+                className="rounded border-[#E5E5E5]"
               />
               Make this the current academic year
             </label>

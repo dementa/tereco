@@ -20,10 +20,10 @@ export const Select: React.FC<SelectProps> = ({
   ...props
 }) => (
   <div className="space-y-1.5">
-    {label && <label htmlFor={id} className="text-xs font-medium text-[#5A7D8A] tracking-wide">{label}</label>}
+    {label && <label htmlFor={id} className="text-xs font-medium text-[#666666] tracking-wide">{label}</label>}
     <select
       id={id}
-      className={`w-full rounded-xl border-2 ${error ? 'border-[#C26565]' : 'border-[#D1E0E8]'} bg-white px-4 py-2.5 sm:py-3 text-sm transition-all duration-200 focus:border-[#02465B] focus:outline-none focus:ring-2 focus:ring-[#02465B]/10 appearance-none ${error ? 'focus:border-[#C26565] focus:ring-[#C26565]/20' : ''} ${className}`}
+      className={`w-full rounded-xl border-2 ${error ? 'border-[#C26565]' : 'border-[#E5E5E5]'} bg-white px-4 py-2.5 sm:py-3 text-sm transition-all duration-200 focus:border-[#02465B] focus:outline-none focus:ring-2 focus:ring-[#02465B]/10 appearance-none ${error ? 'focus:border-[#C26565] focus:ring-[#C26565]/20' : ''} ${className}`}
       {...props}
     >
       {options.map(opt => (

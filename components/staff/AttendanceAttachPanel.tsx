@@ -71,7 +71,7 @@ export function AttendanceAttachPanel({ classId, streamId, date, period, isMisse
   if (isMissed) return null
 
   if (loading) {
-    return <p className="text-sm text-[#9BBAC5] py-4">Looking for matching attendance records…</p>
+    return <p className="text-sm text-[#A3A3A3] py-4">Looking for matching attendance records…</p>
   }
 
   if (error) {
@@ -102,11 +102,11 @@ export function AttendanceAttachPanel({ classId, streamId, date, period, isMisse
   if (options.length === 1) {
     const only = options[0]
     return (
-      <div className="rounded-xl border border-[#02465B]/10 bg-[#EBF8FC] px-4 py-3.5">
+      <div className="rounded-xl border border-[#02465B]/10 bg-[#F5F5F5] px-4 py-3.5">
         <p className="text-sm text-[#02465B] font-medium">
           Attached — attendance taken {new Date(only.takenAt).toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })}
         </p>
-        <p className="text-xs text-[#5A7A85] mt-0.5">{only.present} present · {only.absent} absent</p>
+        <p className="text-xs text-[#666666] mt-0.5">{only.present} present · {only.absent} absent</p>
       </div>
     )
   }

@@ -11,12 +11,12 @@
  * Palette (locked, dark-mode immune via darkMode: 'class' + explicit values):
  *   Teal   #02465B  primary / nav / focus rings
  *   Amber  #F5CA93  Submit button ONLY (final irreversible action)
- *   Ice    #F5FDFF  page background
+ *   Ice    #FFFFFF  page background
  *   White  #FFFFFF  card surfaces
  *   Ink    #011E28  primary text
- *   Slate  #5A7A85  secondary text
- *   Mist   #9BBAC5  faint / placeholder
- *   Tint   #EBF8FC  focus fill / row hover
+ *   Slate  #666666  secondary text
+ *   Mist   #A3A3A3  faint / placeholder
+ *   Tint   #F5F5F5  focus fill / row hover
  *   Danger #C0392B  errors only
  *
  * Signature element: segmented teal progress pill — the one bold gesture.
@@ -419,8 +419,8 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
                   'px-3 py-2.5 rounded-xl border text-sm font-medium transition-all duration-150 cursor-pointer',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B]',
                   data.approach === a
-                    ? 'border-[#02465B] bg-[#EBF8FC] text-[#02465B]'
-                    : 'border-[#02465B]/10 bg-white text-[#5A7A85] hover:border-[#02465B]/25 hover:text-[#011E28]'
+                    ? 'border-[#02465B] bg-[#F5F5F5] text-[#02465B]'
+                    : 'border-[#02465B]/10 bg-white text-[#666666] hover:border-[#02465B]/25 hover:text-[#011E28]'
                 )}
               >
                 {a}
@@ -439,8 +439,8 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
     2: (
       <div className="space-y-4">
         {isMissed ? (
-          <div className="rounded-xl border border-[#02465B]/10 bg-[#F5FDFF] px-4 py-3.5">
-            <p className="text-sm text-[#5A7A85]">
+          <div className="rounded-xl border border-[#02465B]/10 bg-[#FFFFFF] px-4 py-3.5">
+            <p className="text-sm text-[#666666]">
               This lesson did not take place, so there is no attendance to record.
             </p>
           </div>
@@ -449,15 +449,15 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
             {/* Live stats, derived from the attached attendance record */}
             {selectedSession && (
               <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-xl bg-[#EBF8FC] border border-[#02465B]/08 px-4 py-3.5">
+                <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-4 py-3.5">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Present</p>
                   <p className="text-2xl font-bold text-[#011E28] tabular-nums">{presentCount}</p>
                 </div>
-                <div className="rounded-xl bg-[#EBF8FC] border border-[#02465B]/08 px-4 py-3.5">
+                <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-4 py-3.5">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Absent</p>
                   <p className="text-2xl font-bold text-[#011E28] tabular-nums">{absentCount}</p>
                 </div>
-                <div className="rounded-xl bg-[#EBF8FC] border border-[#02465B]/08 px-4 py-3.5">
+                <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-4 py-3.5">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Rate</p>
                   <p className="text-2xl font-bold text-[#011E28] tabular-nums">
                     {presentCount + absentCount > 0 ? `${Math.round((presentCount / (presentCount + absentCount)) * 100)}%` : '—'}
@@ -529,8 +529,8 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
                   'px-3 py-2.5 rounded-xl border text-sm font-medium transition-all duration-150 cursor-pointer',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B]',
                   data.overallProgress === p
-                    ? 'border-[#02465B] bg-[#EBF8FC] text-[#02465B]'
-                    : 'border-[#02465B]/10 bg-white text-[#5A7A85] hover:border-[#02465B]/25 hover:text-[#011E28]'
+                    ? 'border-[#02465B] bg-[#F5F5F5] text-[#02465B]'
+                    : 'border-[#02465B]/10 bg-white text-[#666666] hover:border-[#02465B]/25 hover:text-[#011E28]'
                 )}
               >
                 {p}
@@ -608,10 +608,10 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
         {/* Section: Lesson Details */}
         <div className="rounded-xl border border-[#02465B]/08 bg-white overflow-hidden"
           style={{ boxShadow: '0 1px 4px rgba(2,70,91,0.04)' }}>
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#02465B]/06 bg-[#F5FDFF]">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#02465B]/06 bg-[#FFFFFF]">
             <p className="text-xs font-bold uppercase tracking-wider text-[#02465B]">Lesson details</p>
             <button type="button" onClick={() => goToStep(0)}
-              className="flex items-center gap-1 text-xs text-[#5A7A85] hover:text-[#02465B] transition-colors cursor-pointer">
+              className="flex items-center gap-1 text-xs text-[#666666] hover:text-[#02465B] transition-colors cursor-pointer">
               <Pencil className="w-3 h-3" /> Edit
             </button>
           </div>
@@ -630,10 +630,10 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
         {!isMissed && (
           <div className="rounded-xl border border-[#02465B]/08 bg-white overflow-hidden"
             style={{ boxShadow: '0 1px 4px rgba(2,70,91,0.04)' }}>
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#02465B]/06 bg-[#F5FDFF]">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#02465B]/06 bg-[#FFFFFF]">
               <p className="text-xs font-bold uppercase tracking-wider text-[#02465B]">Learning</p>
               <button type="button" onClick={() => goToStep(1)}
-                className="flex items-center gap-1 text-xs text-[#5A7A85] hover:text-[#02465B] transition-colors cursor-pointer">
+                className="flex items-center gap-1 text-xs text-[#666666] hover:text-[#02465B] transition-colors cursor-pointer">
                 <Pencil className="w-3 h-3" /> Edit
               </button>
             </div>
@@ -649,10 +649,10 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
         {!isMissed && (
           <div className="rounded-xl border border-[#02465B]/08 bg-white overflow-hidden"
             style={{ boxShadow: '0 1px 4px rgba(2,70,91,0.04)' }}>
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#02465B]/06 bg-[#F5FDFF]">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#02465B]/06 bg-[#FFFFFF]">
               <p className="text-xs font-bold uppercase tracking-wider text-[#02465B]">Attendance</p>
               <button type="button" onClick={() => goToStep(2)}
-                className="flex items-center gap-1 text-xs text-[#5A7A85] hover:text-[#02465B] transition-colors cursor-pointer">
+                className="flex items-center gap-1 text-xs text-[#666666] hover:text-[#02465B] transition-colors cursor-pointer">
                 <Pencil className="w-3 h-3" /> Edit
               </button>
             </div>
@@ -668,10 +668,10 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
         {!isMissed && (
           <div className="rounded-xl border border-[#02465B]/08 bg-white overflow-hidden"
             style={{ boxShadow: '0 1px 4px rgba(2,70,91,0.04)' }}>
-            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#02465B]/06 bg-[#F5FDFF]">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-[#02465B]/06 bg-[#FFFFFF]">
               <p className="text-xs font-bold uppercase tracking-wider text-[#02465B]">Learner progress</p>
               <button type="button" onClick={() => goToStep(3)}
-                className="flex items-center gap-1 text-xs text-[#5A7A85] hover:text-[#02465B] transition-colors cursor-pointer">
+                className="flex items-center gap-1 text-xs text-[#666666] hover:text-[#02465B] transition-colors cursor-pointer">
                 <Pencil className="w-3 h-3" /> Edit
               </button>
             </div>
@@ -710,14 +710,14 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
   }
 
   return (
-    <div ref={topRef} className="min-h-screen bg-[#F5FDFF]">
+    <div ref={topRef} className="min-h-screen bg-[#FFFFFF]">
       {/* Top nav bar */}
       <header className="sticky top-0 z-20 bg-white/90 backdrop-blur-md border-b border-[#02465B]/06">
         <div className="max-w-4xl mx-auto px-5 sm:px-6 h-14 flex items-center justify-between gap-4">
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-1.5 text-sm text-[#5A7A85] hover:text-[#02465B] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B] rounded-md"
+            className="flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#02465B] transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B] rounded-md"
           >
             <ArrowLeft className="w-4 h-4" />
             <span className="hidden sm:inline">Back to forms</span>
@@ -729,7 +729,7 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
           </div>
 
           {/* Step label */}
-          <p className="text-xs font-medium text-[#5A7A85] whitespace-nowrap flex-shrink-0">
+          <p className="text-xs font-medium text-[#666666] whitespace-nowrap flex-shrink-0">
             <span className="text-[#02465B] font-semibold">{step + 1}</span>/{STEPS.length}
           </p>
         </div>
@@ -740,7 +740,7 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
 
           {/* Left nav — desktop */}
           <aside className="hidden md:flex flex-col w-44 lg:w-52 flex-shrink-0 pt-1">
-            <p className="text-[10px] font-bold uppercase tracking-widest text-[#9BBAC5] mb-5">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-[#A3A3A3] mb-5">
               Daily ICT Record
             </p>
             <nav className="space-y-0.5" role="navigation" aria-label="Form steps">
@@ -759,15 +759,15 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
                       'w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm transition-all duration-150',
                       'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B]',
                       isActive
-                        ? 'bg-[#EBF8FC] text-[#02465B] font-semibold cursor-default'
+                        ? 'bg-[#F5F5F5] text-[#02465B] font-semibold cursor-default'
                         : isDone
-                        ? 'text-[#5A7A85] hover:bg-[#F5FDFF] hover:text-[#02465B] cursor-pointer'
-                        : 'text-[#9BBAC5] cursor-default'
+                        ? 'text-[#666666] hover:bg-[#FFFFFF] hover:text-[#02465B] cursor-pointer'
+                        : 'text-[#A3A3A3] cursor-default'
                     )}
                   >
                     <div className={cn(
                       'w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 transition-all',
-                      isActive ? 'bg-[#02465B] text-white' : isDone ? 'bg-[#D6F0F7] text-[#0489AE]' : 'bg-[#F0FAFD] text-[#9BBAC5]'
+                      isActive ? 'bg-[#02465B] text-white' : isDone ? 'bg-[#D6F0F7] text-[#0489AE]' : 'bg-[#F5F5F5] text-[#A3A3A3]'
                     )}>
                       {isDone ? <Check className="w-3.5 h-3.5" /> : <Icon className="w-3 h-3" />}
                     </div>
@@ -780,9 +780,9 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
             {/* Teacher info */}
             {user && (
               <div className="mt-auto pt-6 border-t border-[#02465B]/06">
-                <p className="text-[10px] font-bold uppercase tracking-widest text-[#9BBAC5] mb-1">Submitting as</p>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-[#A3A3A3] mb-1">Submitting as</p>
                 <p className="text-sm font-semibold text-[#011E28] truncate">{user.name}</p>
-                <p className="text-xs text-[#9BBAC5] truncate">{user.staffId || user.id}</p>
+                <p className="text-xs text-[#A3A3A3] truncate">{user.staffId || user.id}</p>
               </div>
             )}
           </aside>
@@ -820,8 +820,8 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
                 disabled={step === 0}
                 className={cn(
                   'flex items-center gap-2 h-11 px-5 rounded-xl text-sm font-semibold transition-all duration-150 cursor-pointer',
-                  'border border-[#02465B]/20 text-[#5A7A85]',
-                  'hover:border-[#02465B]/40 hover:text-[#02465B] hover:bg-[#F5FDFF]',
+                  'border border-[#02465B]/20 text-[#666666]',
+                  'hover:border-[#02465B]/40 hover:text-[#02465B] hover:bg-[#FFFFFF]',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B] focus-visible:ring-offset-1',
                   'disabled:opacity-30 disabled:cursor-not-allowed disabled:pointer-events-none'
                 )}
@@ -835,8 +835,8 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
                   type="button"
                   className={cn(
                     'flex items-center gap-2 h-11 px-4 rounded-xl text-sm font-medium transition-all duration-150 cursor-pointer',
-                    'border border-[#02465B]/15 text-[#9BBAC5]',
-                    'hover:border-[#02465B]/30 hover:text-[#5A7A85]',
+                    'border border-[#02465B]/15 text-[#A3A3A3]',
+                    'hover:border-[#02465B]/30 hover:text-[#666666]',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#02465B] focus-visible:ring-offset-1'
                   )}
                 >
