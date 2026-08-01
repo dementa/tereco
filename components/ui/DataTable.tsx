@@ -12,10 +12,10 @@ import {
   FileSpreadsheet,
   FileText,
   Search,
-  SlidersHorizontal,
   X,
 } from 'lucide-react';
 import { exportToCsv, exportToExcel, exportToPdf, type ExportCell } from '@/lib/tableExport';
+import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 
 export interface DataTableColumn<T> {
   /** Stable key, also used as the sort key. */
@@ -75,6 +75,12 @@ interface DataTableProps<T> {
   onRowClick?: (row: T) => void;
   /** Rendered to the right of the search box (e.g. a "New" button). */
   actions?: React.ReactNode;
+  /**
+   * Per-row overflow menu. When given, a right-aligned "⋯" column is appended
+   * automatically — the modern replacement for a strip of icon buttons. The
+   * menu never triggers `onRowClick`.
+   */
+  rowActions?: (row: T) => DropdownMenuItem[];
   /** Headline for each card in the mobile layout. Defaults to the first column. */
   mobileTitle?: (row: T) => React.ReactNode;
   /**
@@ -135,6 +141,7 @@ export function DataTable<T>({
   pageSize: initialPageSize = 15,
   onRowClick,
   actions,
+  rowActions,
   mobileTitle,
   exportFileName = 'export',
   passwordColumn,
@@ -146,7 +153,6 @@ export function DataTable<T>({
   // Seeded from the `pageSize` prop, but from here on the user's own choice —
   // the selector below (15/30/50) is what actually drives it.
   const [pageSize, setPageSize] = useState(initialPageSize);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<'csv' | 'excel' | 'pdf' | null>(null);
   const [exportError, setExportError] = useState('');
@@ -311,9 +317,9 @@ export function DataTable<T>({
 
   return (
     <div className="space-y-3">
-      {/* Controls */}
-      <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
-        <div className="relative flex-1">
+      {/* Controls — search + inline filter dropdowns, always visible */}
+      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-center">
+        <div className="relative flex-1 min-w-[180px]">
           <Search
             className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#666666] pointer-events-none"
             aria-hidden
@@ -331,21 +337,36 @@ export function DataTable<T>({
           />
         </div>
 
-        <div className="flex gap-2">
-          {filters.length > 0 && (
+        {filters.map((filter) => {
+          const value = active[filter.key] ?? '';
+          return (
+            <select
+              key={filter.key}
+              aria-label={filter.label}
+              value={value}
+              onChange={(e) => setFilter(filter.key, e.target.value)}
+              className={`rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2.5 text-sm transition-colors focus:border-[#02465B] focus:outline-none ${
+                value ? 'text-[#171717] font-medium' : 'text-[#666666]'
+              }`}
+            >
+              <option value="">All {filter.label.toLowerCase()}</option>
+              {filter.options.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          );
+        })}
+
+        <div className="flex gap-2 sm:ml-auto">
+          {(activeCount > 0 || search) && (
             <button
               type="button"
-              onClick={() => setFiltersOpen((v) => !v)}
-              aria-expanded={filtersOpen}
-              className="inline-flex items-center gap-2 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2.5 text-sm font-medium text-[#02465B] hover:border-[#02465B]/40 transition-colors"
+              onClick={clearAll}
+              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2.5 text-sm font-medium text-[#666666] hover:text-[#171717] transition-colors"
             >
-              <SlidersHorizontal className="w-4 h-4" aria-hidden />
-              Filters
-              {activeCount > 0 && (
-                <span className="rounded-full bg-[#02465B] text-white text-xs px-1.5 py-0.5 leading-none">
-                  {activeCount}
-                </span>
-              )}
+              <X className="w-4 h-4" aria-hidden /> Clear
             </button>
           )}
           {rows.length > 0 && (
@@ -450,44 +471,6 @@ export function DataTable<T>({
         </p>
       )}
 
-      {filtersOpen && filters.length > 0 && (
-        <div className="rounded-xl border border-[#EAEAEA] bg-[#FAFAFA] p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-          {filters.map((filter) => (
-            <div key={filter.key} className="space-y-1.5">
-              <label
-                htmlFor={`filter-${filter.key}`}
-                className="text-xs font-medium text-[#666666] tracking-wide"
-              >
-                {filter.label}
-              </label>
-              <select
-                id={`filter-${filter.key}`}
-                value={active[filter.key] ?? ''}
-                onChange={(e) => setFilter(filter.key, e.target.value)}
-                className="w-full rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2 text-sm focus:border-[#02465B] focus:outline-none"
-              >
-                <option value="">All</option>
-                {filter.options.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ))}
-          {(activeCount > 0 || search) && (
-            <button
-              type="button"
-              onClick={clearAll}
-              className="self-end inline-flex items-center gap-1.5 text-sm text-[#666666] hover:text-[#02465B] py-2"
-            >
-              <X className="w-3.5 h-3.5" aria-hidden />
-              Clear all
-            </button>
-          )}
-        </div>
-      )}
-
       <p className="text-xs text-[#666666]" role="status" aria-live="polite">
         {loading
           ? 'Loading…'
@@ -536,12 +519,13 @@ export function DataTable<T>({
                   </th>
                 );
               })}
+              {rowActions && <th scope="col" className="w-12 px-4 py-3" aria-label="Actions" />}
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={columns.length} className="px-4 py-10 text-center text-[#666666]">
+                <td colSpan={columns.length + (rowActions ? 1 : 0)} className="px-4 py-10 text-center text-[#666666]">
                   {loading ? 'Loading…' : emptyMessage}
                 </td>
               </tr>
@@ -559,7 +543,7 @@ export function DataTable<T>({
                     return (
                       <td
                         key={column.key}
-                        className={`px-4 py-3 text-[#12333F] ${
+                        className={`px-4 py-2.5 text-[#404040] ${
                           column.align === 'right' ? 'text-right' : ''
                         } ${column.hideOnMobile ? 'hidden lg:table-cell' : ''} ${column.className ?? ''}`}
                       >
@@ -573,6 +557,11 @@ export function DataTable<T>({
                       </td>
                     );
                   })}
+                  {rowActions && (
+                    <td className="px-2 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                      <DropdownMenu items={rowActions(row)} />
+                    </td>
+                  )}
                 </tr>
               ))
             )}
@@ -595,13 +584,20 @@ export function DataTable<T>({
                 onRowClick ? 'cursor-pointer active:bg-[#FAFAFA]' : ''
               }`}
             >
-              <p className="font-medium text-[#12333F] mb-2">
-                {mobileTitle
-                  ? mobileTitle(row)
-                  : columns[0].render
-                    ? columns[0].render(row)
-                    : (defaultValue(row, columns[0]) ?? '—')}
-              </p>
+              <div className="flex items-start justify-between gap-2 mb-2">
+                <p className="font-medium text-[#171717]">
+                  {mobileTitle
+                    ? mobileTitle(row)
+                    : columns[0].render
+                      ? columns[0].render(row)
+                      : (defaultValue(row, columns[0]) ?? '—')}
+                </p>
+                {rowActions && (
+                  <div onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenu items={rowActions(row)} />
+                  </div>
+                )}
+              </div>
               <dl className="space-y-1.5">
                 {columns.slice(1).map((column) => {
                   const rawValue = defaultValue(row, column);
@@ -609,7 +605,7 @@ export function DataTable<T>({
                     <div key={column.key} className="flex justify-between gap-3 text-sm">
                       <dt className="text-[#666666] shrink-0">{column.header}</dt>
                       <dd
-                        className="text-[#12333F] text-right min-w-0 truncate"
+                        className="text-[#404040] text-right min-w-0 truncate"
                         title={!column.render && asSearchText(rawValue) ? String(rawValue) : undefined}
                       >
                         {column.render ? column.render(row) : (rawValue ?? '—')}

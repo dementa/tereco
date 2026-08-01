@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { ImageUpload } from '@/components/ui/ImageUpload';
 import { Modal } from '@/components/ui/Modal';
 import { CredentialsCard } from '@/components/admin/CredentialsCard';
@@ -645,69 +646,28 @@ export default function SystemStudentsPage() {
         value: (a) => a.contactEmail ?? '—',
         hideOnMobile: true,
       },
+    ],
+    []
+  );
+
+  const rowActions = useCallback(
+    (a: StudentAccount): DropdownMenuItem[] => [
+      { label: 'View profile', icon: Eye, onClick: () => setViewing(a) },
+      { label: 'Move or withdraw', icon: ArrowRightLeft, onClick: () => void openMove(a) },
+      { label: 'Edit details', icon: Pencil, onClick: () => setEditing(a) },
       {
-        key: 'actions',
-        header: '',
-        sortable: false,
-        align: 'right',
-        render: (a) => (
-          <div className="flex justify-end gap-1">
-            <button
-              type="button"
-              onClick={() => setViewing(a)}
-              title={`View ${a.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA]"
-            >
-              <Eye className="w-4 h-4" aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={() => void openMove(a)}
-              title={`Move or withdraw ${a.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA]"
-            >
-              <ArrowRightLeft className="w-4 h-4" aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditing(a)}
-              title={`Edit ${a.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA]"
-            >
-              <Pencil className="w-4 h-4" aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleResetPassword(a)}
-              disabled={busyId === a.id}
-              title={`Reset password for ${a.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA] disabled:opacity-40"
-            >
-              <KeyRound className="w-4 h-4" aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={() => void toggleActive(a)}
-              title={a.isActive ? `Deactivate ${a.name}` : `Reactivate ${a.name}`}
-              className="p-1.5 rounded-lg text-[#666666] hover:bg-[#FAFAFA]"
-            >
-              {a.isActive ? (
-                <PowerOff className="w-4 h-4" aria-hidden />
-              ) : (
-                <Power className="w-4 h-4" aria-hidden />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => void removeAccount(a)}
-              title={`Delete ${a.name}`}
-              className="p-1.5 rounded-lg text-[#C26565] hover:bg-[#FBF0F0]"
-            >
-              <Trash2 className="w-4 h-4" aria-hidden />
-            </button>
-          </div>
-        ),
+        label: 'Reset password',
+        icon: KeyRound,
+        disabled: busyId === a.id,
+        onClick: () => void handleResetPassword(a),
       },
+      {
+        label: a.isActive ? 'Deactivate account' : 'Reactivate account',
+        icon: a.isActive ? PowerOff : Power,
+        separatorBefore: true,
+        onClick: () => void toggleActive(a),
+      },
+      { label: 'Delete', icon: Trash2, danger: true, onClick: () => void removeAccount(a) },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [busyId]
@@ -893,6 +853,7 @@ export default function SystemStudentsPage() {
         rows={accounts}
         columns={columns}
         rowKey={(a) => a.id}
+        rowActions={rowActions}
         loading={loading}
         initialSort={{ key: 'name', direction: 'asc' }}
         searchPlaceholder="Search by name, student ID, school, class or stream…"

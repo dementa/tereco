@@ -12,7 +12,9 @@
   --color-foreground: #171717;
 
   /* ── Primary scale (TEAL — brand accent) ── */
-  --color-primary-900: #011E28;
+  /* 900 is text-only (headings) — neutralised to near-black so headings read
+     black; 400–800 stay teal for accents (buttons, active nav, links). */
+  --color-primary-900: #171717;
   --color-primary-800: #02303F;
   --color-primary-700: #02465B;
   --color-primary-600: #035D77;
