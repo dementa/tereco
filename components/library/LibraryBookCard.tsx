@@ -47,38 +47,38 @@ function initials(name: string): string {
  */
 export function LibraryBookCard({ item }: { item: LibraryBookCardItem }) {
   return (
-    <div className="group flex h-full flex-col overflow-hidden rounded-2xl bg-[#02465B] shadow-md ring-1 ring-black/5 transition-shadow hover:shadow-xl">
+    <div className="group flex h-full flex-col overflow-hidden rounded-xl bg-[#02465B] shadow-md ring-1 ring-black/5 transition-shadow hover:shadow-xl">
       <div className="relative overflow-hidden">
         <div className="transition-transform duration-300 group-hover:scale-[1.03]">
-          <LibraryThumbnail item={item} />
+          <LibraryThumbnail item={item} aspectClassName="aspect-[3/4]" />
         </div>
         {item.downloadAvailable && (
-          <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-lg bg-black/45 px-2 py-1 text-[11px] font-medium text-white backdrop-blur-sm">
-            <Download className="h-3 w-3" aria-hidden /> Downloadable
+          <span className="absolute right-1.5 top-1.5 inline-flex items-center gap-1 rounded-md bg-black/45 px-1.5 py-0.5 text-[10px] font-medium text-white backdrop-blur-sm">
+            <Download className="h-3 w-3" aria-hidden /> Download
           </span>
         )}
       </div>
 
-      <div className="flex flex-1 flex-col bg-gradient-to-b from-[#0B6C7E] to-[#02465B] p-4 text-white">
-        <h3 className="truncate text-lg font-bold leading-tight">{item.title}</h3>
-        <p className="mt-1 truncate text-sm text-white/70">
+      <div className="flex flex-1 flex-col bg-gradient-to-b from-[#0B6C7E] to-[#02465B] p-3 text-white">
+        <h3 className="truncate text-sm font-bold leading-tight">{item.title}</h3>
+        <p className="mt-0.5 truncate text-xs text-white/70">
           {item.description?.trim() || 'No description provided.'}
         </p>
 
-        <div className="mt-4 flex items-center gap-2.5">
+        <div className="mt-2.5 flex items-center gap-2">
           <span
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/15 text-xs font-semibold text-white ring-1 ring-white/25"
+            className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-white/15 text-[10px] font-semibold text-white ring-1 ring-white/25"
             aria-hidden
           >
             {initials(item.authorName)}
           </span>
           <div className="min-w-0">
-            <p className="truncate text-sm font-medium leading-tight">
+            <p className="truncate text-xs font-medium leading-tight">
               {item.authorName || 'Unknown'}
             </p>
-            <p className="text-[11px] text-white/55">Author</p>
+            <p className="text-[10px] text-white/55">Author</p>
           </div>
-          <span className="ml-auto shrink-0 text-[11px] text-white/55">{timeAgo(item.createdAt)}</span>
+          <span className="ml-auto shrink-0 text-[10px] text-white/55">{timeAgo(item.createdAt)}</span>
         </div>
       </div>
     </div>
