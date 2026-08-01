@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { TermsManager } from '@/components/admin/TermsManager';
 import { useToast } from '@/components/ui/ToastProvider';
 import { CalendarDays, CheckCircle2, Pencil, Plus, Trash2, X } from 'lucide-react';
@@ -180,43 +181,14 @@ export default function AcademicYearsPage() {
     { key: 'startsOn', header: 'Starts', value: (y) => y.startsOn, render: (y) => formatDate(y.startsOn) },
     { key: 'endsOn', header: 'Ends', value: (y) => y.endsOn, render: (y) => formatDate(y.endsOn) },
     { key: 'termCount', header: 'Terms', value: (y) => y.termCount, align: 'right', hideOnMobile: true },
-    {
-      key: 'actions',
-      header: '',
-      sortable: false,
-      align: 'right',
-      render: (y) => (
-        <div className="flex justify-end gap-2 items-center">
-          <button
-            type="button"
-            onClick={() => setEditing(y)}
-            title={`Edit ${y.label}`}
-            className="text-[#02465B] hover:text-[#02465B]/70"
-          >
-            <Pencil className="w-4 h-4" aria-hidden />
-          </button>
-          {!y.isCurrent && (
-            <button
-              type="button"
-              onClick={() => void makeCurrent(y)}
-              title="Make this the current year"
-              className="inline-flex items-center gap-1 text-xs text-[#02465B] hover:underline"
-            >
-              <CheckCircle2 className="w-3.5 h-3.5" aria-hidden />
-              Set current
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => void remove(y)}
-            title={`Delete ${y.label}`}
-            className="text-[#C26565] hover:text-[#A34C4C]"
-          >
-            <Trash2 className="w-4 h-4" aria-hidden />
-          </button>
-        </div>
-      ),
-    },
+  ];
+
+  const rowActions = (y: AcademicYear): DropdownMenuItem[] => [
+    { label: 'Edit', icon: Pencil, onClick: () => setEditing(y) },
+    ...(y.isCurrent
+      ? []
+      : [{ label: 'Set as current', icon: CheckCircle2, onClick: () => void makeCurrent(y) }]),
+    { label: 'Delete', icon: Trash2, danger: true, separatorBefore: true, onClick: () => void remove(y) },
   ];
 
   const current = years.find((y) => y.isCurrent);
@@ -348,6 +320,7 @@ export default function AcademicYearsPage() {
       <DataTable
         rows={years}
         columns={columns}
+        rowActions={rowActions}
         rowKey={(y) => y.id}
         loading={loading}
         initialSort={{ key: 'startsOn', direction: 'desc' }}

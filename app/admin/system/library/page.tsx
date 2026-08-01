@@ -7,7 +7,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
-import { Plus, Trash2 } from 'lucide-react';
+import { Eye, Plus, Trash2 } from 'lucide-react';
+import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 
 type Status = 'draft' | 'pending_approval' | 'approved' | 'rejected';
 
@@ -105,24 +106,17 @@ export default function SystemLibraryPage() {
       render: (r) => <span className="text-text-muted">{formatDate(r.createdAt)}</span>,
       hideOnMobile: true,
     },
+  ];
+
+  const rowActions = (r: Item): DropdownMenuItem[] => [
+    { label: 'Open', icon: Eye, onClick: () => router.push(`/admin/system/library/${r.id}`) },
     {
-      key: 'actions',
-      header: '',
-      align: 'right',
-      render: (r) => (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            void deleteItem(r);
-          }}
-          disabled={deletingId === r.id}
-          aria-label={`Delete ${r.title}`}
-          className="p-1.5 rounded-lg text-error hover:bg-error-bg disabled:opacity-50"
-        >
-          <Trash2 className="w-4 h-4" aria-hidden />
-        </button>
-      ),
+      label: 'Delete',
+      icon: Trash2,
+      danger: true,
+      separatorBefore: true,
+      disabled: deletingId === r.id,
+      onClick: () => void deleteItem(r),
     },
   ];
 
@@ -146,6 +140,7 @@ export default function SystemLibraryPage() {
         <DataTable
           rows={items}
           columns={columns}
+          rowActions={rowActions}
           rowKey={(r) => r.id}
           loading={loading}
           initialSort={{ key: 'createdAt', direction: 'desc' }}
