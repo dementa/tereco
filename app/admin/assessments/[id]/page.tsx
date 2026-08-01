@@ -14,6 +14,7 @@ import {
   ArrowLeft, ChevronDown, ChevronRight, Download, KeyRound, Plus, Printer, Save, Send, Trash2, UserPlus,
 } from 'lucide-react';
 import { GroupImageField } from '@/components/admin/GroupImageField';
+import { PdfPreviewModal } from '@/components/assessment/PdfPreviewModal';
 import {
   computeCodes,
   groupQuestions,
@@ -209,6 +210,11 @@ export default function AssessmentDetailPage() {
   // otherwise. Only asked for when that's actually the case.
   const [reopenClosesAt, setReopenClosesAt] = useState('');
   const [showReopenForm, setShowReopenForm] = useState(false);
+
+  // The PDF the "Preview" buttons are showing in-app, before the user downloads.
+  const [preview, setPreview] = useState<{ url: string; filename: string; title: string } | null>(
+    null,
+  );
 
   // Deleting and releasing results stay with the creator or an admin, even
   // though a collaborator can otherwise edit and mark this same paper.
@@ -1057,40 +1063,59 @@ export default function AssessmentDetailPage() {
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <h2 className="font-semibold text-primary-900">Printed paper</h2>
           <div className="flex flex-wrap gap-2">
-            <a href={`/api/admin/assessments/${systemId}/paper`} download>
-              <Button variant="outline">
-                <Printer className="w-4 h-4 mr-1.5" aria-hidden />
-                Question paper
-              </Button>
-            </a>
+            <Button
+              variant="outline"
+              onClick={() =>
+                setPreview({
+                  url: `/api/admin/assessments/${systemId}/paper`,
+                  filename: `${systemId}-paper.pdf`,
+                  title: 'Question paper',
+                })
+              }
+            >
+              <Printer className="w-4 h-4 mr-1.5" aria-hidden />
+              Question paper
+            </Button>
             {assessment.targets
               .filter((t) => t.schoolId)
-              .map((t) => (
-                <a
-                  key={t.id}
-                  href={`/api/admin/assessments/${systemId}/paper?schoolId=${t.schoolId}`}
-                  download
-                >
-                  <Button variant="outline">
+              .map((t) => {
+                const schoolName = schools.find((s) => s.id === t.schoolId)?.name ?? 'School';
+                return (
+                  <Button
+                    key={t.id}
+                    variant="outline"
+                    onClick={() =>
+                      setPreview({
+                        url: `/api/admin/assessments/${systemId}/paper?schoolId=${t.schoolId}`,
+                        filename: `${systemId}-${schoolName.replace(/[^a-zA-Z0-9]+/g, '-')}-paper.pdf`,
+                        title: `${schoolName} paper`,
+                      })
+                    }
+                  >
                     <Printer className="w-4 h-4 mr-1.5" aria-hidden />
-                    {schools.find((s) => s.id === t.schoolId)?.name ?? 'School'} paper
+                    {schoolName} paper
                   </Button>
-                </a>
-              ))}
-            <a href={`/api/admin/assessments/${systemId}/answer-key`} download>
-              <Button
-                variant="outline"
-                disabled={assessment.status === 'published'}
-                title={
-                  assessment.status === 'published'
-                    ? 'Unavailable while learners can still sit this paper'
-                    : 'Correct answers and marking guidance'
-                }
-              >
-                <KeyRound className="w-4 h-4 mr-1.5" aria-hidden />
-                Answer key
-              </Button>
-            </a>
+                );
+              })}
+            <Button
+              variant="outline"
+              disabled={assessment.status === 'published'}
+              title={
+                assessment.status === 'published'
+                  ? 'Unavailable while learners can still sit this paper'
+                  : 'Correct answers and marking guidance'
+              }
+              onClick={() =>
+                setPreview({
+                  url: `/api/admin/assessments/${systemId}/answer-key`,
+                  filename: `${systemId}-answer-key.pdf`,
+                  title: 'Answer key',
+                })
+              }
+            >
+              <KeyRound className="w-4 h-4 mr-1.5" aria-hidden />
+              Answer key
+            </Button>
           </div>
         </div>
         <p className="text-xs text-text-muted mb-3">
@@ -1541,12 +1566,19 @@ export default function AssessmentDetailPage() {
               </Button>
             )}
             {results.length > 0 && (
-              <a href={`/api/admin/assessments/${systemId}/results/pdf`} download>
-                <Button variant="outline">
-                  <Download className="w-4 h-4 mr-1.5" aria-hidden />
-                  Download PDF
-                </Button>
-              </a>
+              <Button
+                variant="outline"
+                onClick={() =>
+                  setPreview({
+                    url: `/api/admin/assessments/${systemId}/results/pdf`,
+                    filename: `${systemId}-results.pdf`,
+                    title: 'Results',
+                  })
+                }
+              >
+                <Download className="w-4 h-4 mr-1.5" aria-hidden />
+                Preview &amp; download
+              </Button>
             )}
           </div>
         </div>
@@ -1579,6 +1611,14 @@ export default function AssessmentDetailPage() {
           ]}
         />
       </Card>
+
+      <PdfPreviewModal
+        open={preview !== null}
+        onClose={() => setPreview(null)}
+        url={preview?.url ?? null}
+        filename={preview?.filename ?? 'document.pdf'}
+        title={preview?.title ?? 'Preview'}
+      />
     </div>
   );
 }
