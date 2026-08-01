@@ -10,7 +10,8 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useAuth } from '@/components/auth/AuthContext';
-import { KeyRound, Lock, Power, PowerOff, ShieldPlus, Trash2, X } from 'lucide-react';
+import { KeyRound, Power, PowerOff, ShieldPlus, Trash2, X } from 'lucide-react';
+import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 
 // Kept in sync with ROOT_SUPER_ADMIN_EMAIL in lib/entities/accounts.ts — this
 // one account can't be deactivated or deleted by anyone, so its row-level
@@ -179,58 +180,37 @@ export default function SuperAdminsPage() {
       },
       { key: 'contactEmail', header: 'Email', value: (a) => a.contactEmail ?? '—' },
       { key: 'gender', header: 'Gender', value: (a) => a.gender ?? '—', hideOnMobile: true },
-      {
-        key: 'actions',
-        header: '',
-        sortable: false,
-        align: 'right',
-        render: (a) => {
-          const protectedRoot = a.contactEmail === ROOT_SUPER_ADMIN_EMAIL;
-          return (
-            <div className="flex justify-end gap-1">
-              <button
-                type="button"
-                onClick={() => void handleResetPassword(a)}
-                disabled={busyId === a.id}
-                title={`Reset password for ${a.name}`}
-                className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA] disabled:opacity-40"
-              >
-                <KeyRound className="w-4 h-4" aria-hidden />
-              </button>
-              {protectedRoot ? (
-                <span
-                  title="The root super admin account can't be deactivated or deleted"
-                  className="p-1.5 rounded-lg text-[#9BB0B8]"
-                >
-                  <Lock className="w-4 h-4" aria-hidden />
-                </span>
-              ) : (
-                <>
-                  <button
-                    type="button"
-                    onClick={() => void toggleActive(a)}
-                    title={a.isActive ? `Deactivate ${a.name}` : `Reactivate ${a.name}`}
-                    className="p-1.5 rounded-lg text-[#666666] hover:bg-[#FAFAFA]"
-                  >
-                    {a.isActive ? <PowerOff className="w-4 h-4" aria-hidden /> : <Power className="w-4 h-4" aria-hidden />}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void removeAccount(a)}
-                    title={`Delete ${a.name}`}
-                    className="p-1.5 rounded-lg text-[#C26565] hover:bg-[#FBF0F0]"
-                  >
-                    <Trash2 className="w-4 h-4" aria-hidden />
-                  </button>
-                </>
-              )}
-            </div>
-          );
-        },
-      },
     ],
+    [user?.id]
+  );
+
+  const rowActions = useCallback(
+    (a: SuperAdminAccount): DropdownMenuItem[] => {
+      const protectedRoot = a.contactEmail === ROOT_SUPER_ADMIN_EMAIL;
+      const items: DropdownMenuItem[] = [
+        {
+          label: 'Reset password',
+          icon: KeyRound,
+          disabled: busyId === a.id,
+          onClick: () => void handleResetPassword(a),
+        },
+      ];
+      // The root super admin can't be deactivated or deleted.
+      if (!protectedRoot) {
+        items.push(
+          {
+            label: a.isActive ? 'Deactivate account' : 'Reactivate account',
+            icon: a.isActive ? PowerOff : Power,
+            separatorBefore: true,
+            onClick: () => void toggleActive(a),
+          },
+          { label: 'Delete', icon: Trash2, danger: true, onClick: () => void removeAccount(a) }
+        );
+      }
+      return items;
+    },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [busyId, user?.id]
+    [busyId]
   );
 
   return (
@@ -297,6 +277,7 @@ export default function SuperAdminsPage() {
       <DataTable
         rows={accounts}
         columns={columns}
+        rowActions={rowActions}
         rowKey={(a) => a.id}
         loading={loading}
         initialSort={{ key: 'name', direction: 'asc' }}

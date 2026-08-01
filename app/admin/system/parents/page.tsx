@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
 import { ImageUpload } from '@/components/ui/ImageUpload';
 import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
@@ -334,64 +335,31 @@ export default function SystemParentsPage() {
       },
       { key: 'systemId', header: 'Parent ID', value: (a) => a.systemId ?? '—' },
       { key: 'contactEmail', header: 'Email', value: (a) => a.contactEmail ?? '—' },
-      {
-        key: 'actions',
-        header: '',
-        sortable: false,
-        align: 'right',
-        render: (a) => (
-          <div className="flex justify-end gap-1">
-            <button
-              type="button"
-              onClick={() => setViewing(a)}
-              title={`View ${a.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA]"
-            >
-              <Eye className="w-4 h-4" aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={() => setEditing(a)}
-              title={`Edit ${a.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA]"
-            >
-              <Pencil className="w-4 h-4" aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleResetPassword(a)}
-              disabled={busyId === a.id}
-              title={`Reset password for ${a.name}`}
-              className="p-1.5 rounded-lg text-[#02465B] hover:bg-[#FAFAFA] disabled:opacity-40"
-            >
-              <KeyRound className="w-4 h-4" aria-hidden />
-            </button>
-            <button
-              type="button"
-              onClick={() => void toggleActive(a)}
-              title={a.isActive ? `Deactivate ${a.name}` : `Reactivate ${a.name}`}
-              className="p-1.5 rounded-lg text-[#666666] hover:bg-[#FAFAFA]"
-            >
-              {a.isActive ? (
-                <PowerOff className="w-4 h-4" aria-hidden />
-              ) : (
-                <Power className="w-4 h-4" aria-hidden />
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={() => void removeAccount(a)}
-              title={`Delete ${a.name}`}
-              className="p-1.5 rounded-lg text-[#C26565] hover:bg-[#FBF0F0]"
-            >
-              <Trash2 className="w-4 h-4" aria-hidden />
-            </button>
-          </div>
-        ),
-      },
     ],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [busyId, openManage]
+    [openManage]
+  );
+
+  const rowActions = useCallback(
+    (a: ParentAccount): DropdownMenuItem[] => [
+      { label: 'View profile', icon: Eye, onClick: () => setViewing(a) },
+      { label: 'Edit details', icon: Pencil, onClick: () => setEditing(a) },
+      {
+        label: 'Reset password',
+        icon: KeyRound,
+        disabled: busyId === a.id,
+        onClick: () => void handleResetPassword(a),
+      },
+      {
+        label: a.isActive ? 'Deactivate account' : 'Reactivate account',
+        icon: a.isActive ? PowerOff : Power,
+        separatorBefore: true,
+        onClick: () => void toggleActive(a),
+      },
+      { label: 'Delete', icon: Trash2, danger: true, onClick: () => void removeAccount(a) },
+    ],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [busyId]
   );
 
   // Children already linked shouldn't be offered again.
@@ -453,6 +421,7 @@ export default function SystemParentsPage() {
       <DataTable
         rows={accounts}
         columns={columns}
+        rowActions={rowActions}
         rowKey={(a) => a.id}
         loading={loading}
         initialSort={{ key: 'name', direction: 'asc' }}
