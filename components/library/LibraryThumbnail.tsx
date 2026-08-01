@@ -34,13 +34,20 @@ const TYPE_ICON: Record<LibraryContentTypeValue, React.ElementType> = {
  * image for). `onError` falls back to the icon too, in case a thumbnail URL
  * exists but the underlying asset doesn't load for some reason.
  */
-export function LibraryThumbnail({ item }: { item: LibraryThumbnailItem }) {
+export function LibraryThumbnail({
+  item,
+  aspectClassName = 'aspect-[16/11]',
+}: {
+  item: LibraryThumbnailItem;
+  /** Cover shape. Defaults to landscape; the browse cards pass a portrait ratio. */
+  aspectClassName?: string;
+}) {
   const [failed, setFailed] = useState(false);
   const Icon = TYPE_ICON[item.contentType];
 
   if (!item.thumbnailUrl || failed) {
     return (
-      <div className="w-full aspect-[16/11] bg-bg-muted flex items-center justify-center">
+      <div className={`w-full ${aspectClassName} bg-bg-muted flex items-center justify-center`}>
         <Icon className="w-8 h-8 text-primary-700" />
       </div>
     );
@@ -52,7 +59,7 @@ export function LibraryThumbnail({ item }: { item: LibraryThumbnailItem }) {
       src={item.thumbnailUrl}
       alt=""
       onError={() => setFailed(true)}
-      className="w-full aspect-[16/11] object-cover bg-bg-muted"
+      className={`w-full ${aspectClassName} object-cover bg-bg-muted`}
     />
   );
 }

@@ -1,7 +1,7 @@
 'use client';
 
-import { MyLibraryUploads } from '@/components/library/MyLibraryUploads';
+import { LibraryPortal } from '@/components/library/LibraryPortal';
 
 export default function SchoolAdminLibraryPage() {
-  return <MyLibraryUploads newHref="/school-admin/library/new" />;
+  return <LibraryPortal newHref="/school-admin/library/new" />;
 }
