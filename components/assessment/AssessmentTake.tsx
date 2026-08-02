@@ -445,7 +445,7 @@ export function AssessmentTake() {
           {(q.questionType === 'mcq' || q.questionType === 'true_false') && (
             <div className="space-y-2">
               {q.options.map((opt, idx) => (
-                <label key={idx} className="flex items-center gap-3 p-3 rounded-xl border border-primary-700/10 hover:bg-primary-50 cursor-pointer transition-colors">
+                <label key={idx} className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-bg-muted cursor-pointer transition-colors">
                   <input
                     type="radio"
                     name={`question-${q.id}`}
@@ -463,7 +463,7 @@ export function AssessmentTake() {
           {q.questionType === 'checkbox' && (
             <div className="space-y-2">
               {q.options.map((opt, idx) => (
-                <label key={idx} className="flex items-center gap-3 p-3 rounded-xl border border-primary-700/10 hover:bg-primary-50 cursor-pointer transition-colors">
+                <label key={idx} className="flex items-center gap-3 p-3 rounded-xl border border-border hover:bg-bg-muted cursor-pointer transition-colors">
                   <input
                     type="checkbox"
                     checked={checkboxSelected.includes(opt)}
@@ -482,7 +482,7 @@ export function AssessmentTake() {
               value={answers[q.id] || ''}
               onChange={(e) => handleAnswer(q.id, e.target.value)}
               placeholder="Type your answer..."
-              className="w-full p-3 rounded-xl border border-primary-700/15 focus:border-primary-700 focus:ring-2 focus:ring-primary-700/10 outline-none transition-all"
+              className="w-full p-3 rounded-xl border border-border focus:border-primary-700 focus:ring-2 focus:ring-primary-700/10 outline-none transition-all"
             />
           )}
 
@@ -492,13 +492,13 @@ export function AssessmentTake() {
               onChange={(e) => handleAnswer(q.id, e.target.value)}
               placeholder="Type your answer here..."
               rows={5}
-              className="w-full p-3 rounded-xl border border-primary-700/15 focus:border-primary-700 focus:ring-2 focus:ring-primary-700/10 outline-none transition-all"
+              className="w-full p-3 rounded-xl border border-border focus:border-primary-700 focus:ring-2 focus:ring-primary-700/10 outline-none transition-all"
             />
           )}
         </div>
         )}
 
-        <div className="flex justify-between items-center mt-6 pt-4 border-t border-primary-700/10">
+        <div className="flex justify-between items-center mt-6 pt-4 border-t border-border">
           <Button variant="outline" onClick={() => goToQuestion(currentIndex - 1)} disabled={isFirst}>
             <ChevronLeft className="w-4 h-4 mr-1" /> Previous
           </Button>
@@ -531,7 +531,7 @@ export function AssessmentTake() {
                   ? 'bg-primary-700 text-white'
                   : answered
                     ? 'bg-primary-100 text-primary-800'
-                    : 'bg-white text-text-muted border border-primary-700/10'
+                    : 'bg-white text-text-muted border border-border'
               }`}
             >
               {labelByQuestionId.get(qq.id) ?? qq.code}

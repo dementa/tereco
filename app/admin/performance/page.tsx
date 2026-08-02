@@ -111,13 +111,13 @@ export default function AdminPerformancePage() {
           <div className="flex gap-1 text-xs">
             <button
               onClick={() => setView('chart')}
-              className={`px-2.5 py-1 rounded-lg ${view === 'chart' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-primary-50'}`}
+              className={`px-2.5 py-1 rounded-lg ${view === 'chart' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
             >
               Chart
             </button>
             <button
               onClick={() => setView('table')}
-              className={`px-2.5 py-1 rounded-lg ${view === 'table' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-primary-50'}`}
+              className={`px-2.5 py-1 rounded-lg ${view === 'table' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
             >
               Table
             </button>
@@ -154,7 +154,7 @@ export default function AdminPerformancePage() {
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-left text-text-muted border-b border-primary-100">
+                <tr className="text-left text-text-muted border-b border-border">
                   <th className="py-2 pr-4">Rank</th>
                   <th className="py-2 pr-4">School</th>
                   <th className="py-2 pr-4">Students assessed</th>
@@ -184,7 +184,7 @@ export default function AdminPerformancePage() {
           <select
             value={schoolId}
             onChange={(e) => setSchoolId(e.target.value)}
-            className="border border-primary-100 rounded-lg px-3 py-2 text-sm"
+            className="border border-border rounded-lg px-3 py-2 text-sm"
           >
             <option value="">Select a school…</option>
             {benchmark.map((row) => (

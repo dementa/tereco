@@ -102,7 +102,7 @@ export default function StaffLessonsPage() {
               <Card key={l.id} className="p-0 overflow-hidden">
                 <button
                   onClick={() => setExpanded(open ? null : l.id)}
-                  className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-primary-50/50 transition-colors"
+                  className="w-full flex items-center justify-between gap-3 p-4 text-left hover:bg-bg-muted transition-colors"
                 >
                   <div className="min-w-0">
                     <p className="font-semibold text-primary-900 truncate">
@@ -115,7 +115,7 @@ export default function StaffLessonsPage() {
                   {open ? <ChevronUp className="w-5 h-5 text-text-muted shrink-0" /> : <ChevronDown className="w-5 h-5 text-text-muted shrink-0" />}
                 </button>
                 {open && (
-                  <div className="border-t border-primary-100 p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
+                  <div className="border-t border-border p-4 grid grid-cols-2 sm:grid-cols-3 gap-4">
                     <Detail label="Reference" value={l.reference} />
                     <Detail label="Date" value={l.lessonDate} />
                     <Detail label="School" value={l.school} />

@@ -21,7 +21,7 @@ export function PdfPageViewer({ pageImageUrls }: { pageImageUrls: string[] }) {
       <img
         src={pageImageUrls[page]}
         alt={`Page ${page + 1} of ${pageImageUrls.length}`}
-        className="w-full rounded-xl border border-primary-100"
+        className="w-full rounded-xl border border-border"
         onContextMenu={(e) => e.preventDefault()}
       />
       {pageImageUrls.length > 1 && (
@@ -30,7 +30,7 @@ export function PdfPageViewer({ pageImageUrls }: { pageImageUrls: string[] }) {
             type="button"
             onClick={() => setPage((p) => Math.max(0, p - 1))}
             disabled={page === 0}
-            className="p-1.5 rounded-lg hover:bg-primary-50 disabled:opacity-30"
+            className="p-1.5 rounded-lg hover:bg-bg-muted disabled:opacity-30"
             aria-label="Previous page"
           >
             <ChevronLeft className="w-5 h-5" />
@@ -42,7 +42,7 @@ export function PdfPageViewer({ pageImageUrls }: { pageImageUrls: string[] }) {
             type="button"
             onClick={() => setPage((p) => Math.min(pageImageUrls.length - 1, p + 1))}
             disabled={page === pageImageUrls.length - 1}
-            className="p-1.5 rounded-lg hover:bg-primary-50 disabled:opacity-30"
+            className="p-1.5 rounded-lg hover:bg-bg-muted disabled:opacity-30"
             aria-label="Next page"
           >
             <ChevronRight className="w-5 h-5" />

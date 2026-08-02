@@ -50,13 +50,13 @@ export function GenderDonutChart({ data }: GenderDonutChartProps) {
         <div className="flex gap-1 text-xs">
           <button
             onClick={() => setView('chart')}
-            className={`px-2.5 py-1 rounded-lg ${view === 'chart' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-primary-50'}`}
+            className={`px-2.5 py-1 rounded-lg ${view === 'chart' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
           >
             Chart
           </button>
           <button
             onClick={() => setView('table')}
-            className={`px-2.5 py-1 rounded-lg ${view === 'table' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-primary-50'}`}
+            className={`px-2.5 py-1 rounded-lg ${view === 'table' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
           >
             Table
           </button>
@@ -88,7 +88,7 @@ export function GenderDonutChart({ data }: GenderDonutChartProps) {
       ) : (
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-text-muted border-b border-primary-100">
+            <tr className="text-left text-text-muted border-b border-border">
               <th className="py-2 pr-4">Gender</th>
               <th className="py-2 pr-4">Students</th>
               <th className="py-2 pr-4">Share</th>

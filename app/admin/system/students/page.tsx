@@ -710,7 +710,7 @@ export default function SystemStudentsPage() {
             {requests.map((r) => (
               <div
                 key={r.id}
-                className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-primary-100 p-3"
+                className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-xl border border-border p-3"
               >
                 <div className="min-w-0 flex-1">
                   <p className="font-medium text-primary-900">

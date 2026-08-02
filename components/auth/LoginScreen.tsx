@@ -144,7 +144,7 @@ export const LoginScreen: React.FC<{
                     type="text"
                     value={forgotIdentifier}
                     onChange={(e) => setForgotIdentifier(e.target.value)}
-                    className="w-full border-0 border-b border-primary-200 bg-transparent pl-6 pr-2 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
+                    className="w-full border-0 border-b border-border-strong bg-transparent pl-6 pr-2 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
                     placeholder="e.g. TSF-2026-0001"
                     required
                     autoComplete="username"
@@ -205,7 +205,7 @@ export const LoginScreen: React.FC<{
                 type="text"
                 value={identifier}
                 onChange={(e) => setIdentifier(e.target.value)}
-                className="w-full border-0 border-b border-primary-200 bg-transparent pl-6 pr-2 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
+                className="w-full border-0 border-b border-border-strong bg-transparent pl-6 pr-2 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
                 placeholder="e.g. TSF-2026-0001"
                 required
                 autoComplete="username"
@@ -224,7 +224,7 @@ export const LoginScreen: React.FC<{
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                className="w-full border-0 border-b border-primary-200 bg-transparent pl-6 pr-8 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
+                className="w-full border-0 border-b border-border-strong bg-transparent pl-6 pr-8 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
                 placeholder="Enter your password"
                 required
                 autoComplete="current-password"
@@ -253,7 +253,7 @@ export const LoginScreen: React.FC<{
 
           <div className="flex items-center justify-between text-sm pt-1">
             <label className="flex items-center gap-2 cursor-pointer text-text-muted">
-              <input type="checkbox" className="rounded border-primary-200 text-primary-700 focus:ring-primary-700/20 w-4 h-4" />
+              <input type="checkbox" className="rounded border-border-strong text-primary-700 focus:ring-primary-700/20 w-4 h-4" />
               Remember me
             </label>
             <button

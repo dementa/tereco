@@ -18,13 +18,13 @@ export function LibraryPortal({ newHref }: { newHref: string }) {
       <div className="flex gap-2 mb-6">
         <button
           onClick={() => setTab('browse')}
-          className={`px-4 py-2 rounded-xl text-sm font-medium ${tab === 'browse' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-primary-50'}`}
+          className={`px-4 py-2 rounded-xl text-sm font-medium ${tab === 'browse' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
         >
           Browse
         </button>
         <button
           onClick={() => setTab('mine')}
-          className={`px-4 py-2 rounded-xl text-sm font-medium ${tab === 'mine' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-primary-50'}`}
+          className={`px-4 py-2 rounded-xl text-sm font-medium ${tab === 'mine' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
         >
           My uploads
         </button>

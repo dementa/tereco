@@ -41,12 +41,12 @@ export function DocxViewer({ src }: { src: string }) {
   return (
     <div
       dangerouslySetInnerHTML={{ __html: html }}
-      className="bg-white rounded-xl border border-primary-100 p-6 overflow-y-auto max-h-[75vh] text-sm text-text-primary leading-relaxed
+      className="bg-white rounded-xl border border-border p-6 overflow-y-auto max-h-[75vh] text-sm text-text-primary leading-relaxed
         [&_h1]:text-xl [&_h1]:font-bold [&_h1]:text-primary-900 [&_h1]:mt-4 [&_h1]:mb-2
         [&_h2]:text-lg [&_h2]:font-semibold [&_h2]:text-primary-900 [&_h2]:mt-4 [&_h2]:mb-2
         [&_h3]:text-base [&_h3]:font-semibold [&_h3]:text-primary-900 [&_h3]:mt-3 [&_h3]:mb-1.5
         [&_p]:mb-3 [&_ul]:list-disc [&_ul]:pl-6 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:pl-6 [&_ol]:mb-3
-        [&_li]:mb-1 [&_strong]:font-semibold [&_em]:italic [&_table]:border-collapse [&_td]:border [&_td]:border-primary-100 [&_td]:p-2"
+        [&_li]:mb-1 [&_strong]:font-semibold [&_em]:italic [&_table]:border-collapse [&_td]:border [&_td]:border-border [&_td]:p-2"
     />
   );
 }
