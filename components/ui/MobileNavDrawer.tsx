@@ -135,10 +135,14 @@ export function MobileNavDrawer({
         <Menu className="w-5 h-5" />
       </button>
 
+      {/* cursor-pointer is load-bearing on iOS, not decoration: React binds the
+          click at the root container, so this div carries no inline onclick, and
+          Safari only synthesizes click events for elements that look clickable.
+          Without it, tapping outside the drawer does nothing on an iPhone. */}
       <div
         onClick={close}
         aria-hidden="true"
-        className={`md:hidden fixed inset-0 z-50 bg-black/40 transition-opacity duration-200 print:hidden ${
+        className={`md:hidden fixed inset-0 z-50 cursor-pointer bg-black/40 transition-opacity duration-200 print:hidden ${
           open ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       />
