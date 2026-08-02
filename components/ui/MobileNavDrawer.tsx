@@ -24,6 +24,9 @@ type MobileNavDrawerProps = {
   /** Optional second group, rendered under `secondaryLabel` (admin's System block). */
   secondaryItems?: NavItem[];
   secondaryLabel?: string;
+  /** Account-level links, pinned to the footer beside Sign out rather than
+      sitting in the scrolling nav list with the day-to-day pages. */
+  footerItems?: NavItem[];
   onSignOut: () => void;
 };
 
@@ -47,6 +50,7 @@ export function MobileNavDrawer({
   items,
   secondaryItems = [],
   secondaryLabel = 'System',
+  footerItems = [],
   onSignOut,
 }: MobileNavDrawerProps) {
   const pathname = usePathname();
@@ -192,7 +196,8 @@ export function MobileNavDrawer({
           )}
         </nav>
 
-        <div className="p-3 border-t border-border pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="p-3 border-t border-border space-y-1 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          {footerItems.map(renderLink)}
           <button
             type="button"
             onClick={() => {

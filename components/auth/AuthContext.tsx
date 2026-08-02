@@ -6,6 +6,9 @@ export interface User {
   id: string;
   staffId: string;
   name: string;
+  /** Always sent by /api/auth/login and /api/auth/me; optional only because
+      older callers construct a User without it. */
+  email?: string;
   role: string;
   school: string;
   schoolId?: string | null;
