@@ -10,6 +10,7 @@ import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import {
   LayoutDashboard, FileText, GraduationCap, ClipboardList,
   CheckSquare, LogOut, School, UserCog, Contact, CalendarDays, ShieldCheck, TrendingUp, Library,
+  UserCircle,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -40,6 +41,14 @@ const SYSTEM_NAV = [
   { href: '/admin/system/parents', label: 'Parents', icon: Contact },
   { href: '/admin/system/super-admins', label: 'Super Admins', icon: ShieldCheck },
   { href: '/admin/system/library', label: 'System Library', icon: Library },
+];
+
+// Own-account settings — kept out of NAV and pinned beside Sign out, since it
+// is about the person signed in rather than the work they came here to do.
+// Available to every role that can reach this portal: an admin locked out of
+// their own password would be a strange thing to ship.
+const ACCOUNT_NAV = [
+  { href: '/admin/account', label: 'My Account', icon: UserCircle },
 ];
 
 const ADMIN_ROLES: Role[] = ['admin', 'super_admin'];
@@ -106,6 +115,24 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           )}
         </nav>
         <div className="p-3 border-t border-border space-y-1">
+          {ACCOUNT_NAV.map((item) => {
+            const Icon = item.icon;
+            const active = pathname.startsWith(item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors ${
+                  active
+                    ? 'bg-primary-700 text-white'
+                    : 'text-text-secondary hover:bg-bg-muted'
+                }`}
+              >
+                <Icon className="w-4.5 h-4.5" />
+                {item.label}
+              </Link>
+            );
+          })}
           <button
             onClick={() => { logout(); router.push('/auth'); }}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm text-error hover:bg-error-bg"
@@ -130,6 +157,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
               subtitle={user?.name}
               items={NAV}
               secondaryItems={user?.role === 'super_admin' ? SYSTEM_NAV : []}
+              footerItems={ACCOUNT_NAV}
               onSignOut={() => { logout(); router.push('/auth'); }}
             />
             <div className="w-8 h-8 rounded-lg bg-primary-700 flex items-center justify-center shrink-0">
