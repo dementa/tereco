@@ -31,13 +31,16 @@ export interface ViewableLibraryItem {
 export function LibraryItemViewer({
   item,
   pdfViewer = 'inline',
+  onClose,
 }: {
   item: ViewableLibraryItem;
   pdfViewer?: 'inline' | 'lightbox';
+  /** Only meaningful for the lightbox: it owns Escape, so it needs a way out. */
+  onClose?: () => void;
 }) {
   if (item.pageImageUrls) {
     return pdfViewer === 'lightbox' ? (
-      <PdfLightboxViewer pageImageUrls={item.pageImageUrls} />
+      <PdfLightboxViewer pageImageUrls={item.pageImageUrls} onClose={onClose} />
     ) : (
       <PdfPageViewer pageImageUrls={item.pageImageUrls} />
     );

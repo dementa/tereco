@@ -36,17 +36,23 @@ export function LibraryFullScreenViewer({ item, onClose }: { item: FullScreenLib
     function onKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose();
     }
-    document.addEventListener('keydown', onKeyDown);
+    // Capture phase, deliberately: the PDF lightbox binds onKeyDown:
+    // stopPropagation on its own container, so a bubble-phase listener here
+    // never sees Escape while a book is open. Capture runs first and cannot be
+    // cancelled by a descendant.
+    document.addEventListener('keydown', onKeyDown, true);
     return () => {
       document.body.style.overflow = previousOverflow;
-      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('keydown', onKeyDown, true);
     };
   }, [onClose]);
 
   if (typeof document === 'undefined') return null;
 
+  // z-100 for all viewer chrome, above the PDF lightbox root (90) and the
+  // non-PDF backdrop (90). Nothing in the app's own chrome goes past z-50.
   const floatingButtons = (
-    <div className="fixed top-4 right-4 z-[10000] flex items-center gap-2">
+    <div className="fixed top-4 right-4 z-[100] flex items-center gap-2">
       {item.downloadAvailable && item.downloadUrl && (
         <a href={item.downloadUrl} download>
           <button
@@ -78,7 +84,7 @@ export function LibraryFullScreenViewer({ item, onClose }: { item: FullScreenLib
   );
 
   const feedbackDrawer = showFeedback && (
-    <div className="fixed bottom-0 inset-x-0 z-[10000] bg-white rounded-t-2xl border-t border-border p-4 sm:p-6 max-h-[40vh] overflow-y-auto shadow-2xl">
+    <div className="fixed bottom-0 inset-x-0 z-[100] bg-white rounded-t-2xl border-t border-border p-4 sm:p-6 max-h-[40vh] overflow-y-auto shadow-2xl">
       <div className="max-w-xl mx-auto">
         <FeedbackForm contentId={item.id} />
       </div>
@@ -88,7 +94,7 @@ export function LibraryFullScreenViewer({ item, onClose }: { item: FullScreenLib
   if (isPdfPages) {
     return createPortal(
       <>
-        <LibraryItemViewer item={item} pdfViewer="lightbox" />
+        <LibraryItemViewer item={item} pdfViewer="lightbox" onClose={onClose} />
         {floatingButtons}
         {feedbackDrawer}
       </>,
@@ -97,12 +103,19 @@ export function LibraryFullScreenViewer({ item, onClose }: { item: FullScreenLib
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[95] bg-black/95 flex flex-col" role="dialog" aria-modal="true" aria-label={item.title}>
+    <div className="fixed inset-0 z-[90] bg-black/95 flex flex-col" role="dialog" aria-modal="true" aria-label={item.title}>
       <div className="flex items-center justify-between gap-4 px-4 sm:px-6 py-3 bg-black/40 shrink-0">
         <p className="font-medium text-white truncate">{item.title}</p>
       </div>
-      <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-8 flex items-start justify-center">
-        <div className="w-full max-w-3xl space-y-4">
+      {/* Clicking the letterboxing closes, the way every other lightbox behaves.
+          cursor-pointer is load-bearing on iOS: React binds the click at the
+          root container, so this div carries no inline onclick and Safari will
+          not synthesize click events for it otherwise. */}
+      <div
+        onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+        className="flex-1 min-h-0 cursor-pointer overflow-y-auto p-4 sm:p-8 flex items-start justify-center"
+      >
+        <div className="w-full max-w-3xl space-y-4 cursor-auto">
           {item.description && <p className="text-sm text-white/80">{item.description}</p>}
           <LibraryItemViewer item={item} />
           {!item.downloadAvailable && item.downloadable && (
