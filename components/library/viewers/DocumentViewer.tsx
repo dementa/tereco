@@ -28,7 +28,7 @@ export function DocumentViewer({ src, format }: { src: string; format: string })
 
   if (OFFICE_EMBED_FORMATS.has(normalized)) {
     const embedUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(src)}`;
-    return <iframe src={embedUrl} className="w-full h-[70vh] rounded-xl border border-primary-100" title="Document preview" />;
+    return <iframe src={embedUrl} className="w-full h-[70vh] rounded-xl border border-border" title="Document preview" />;
   }
 
   return (

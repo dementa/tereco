@@ -31,7 +31,7 @@ export function FeedbackList({ contentId }: { contentId: string }) {
   return (
     <div className="space-y-3">
       {items.map((item) => (
-        <div key={item.id} className="border-b border-primary-100 pb-2 last:border-0">
+        <div key={item.id} className="border-b border-border pb-2 last:border-0">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium text-primary-900">{item.submittedByName}</p>
             {item.rating && (

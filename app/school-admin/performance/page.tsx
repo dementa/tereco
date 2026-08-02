@@ -131,7 +131,7 @@ export default function SchoolAdminPerformancePage() {
                 setClassId(e.target.value);
                 setStreamId('');
               }}
-              className="border border-primary-100 rounded-lg px-3 py-2 text-sm"
+              className="border border-border rounded-lg px-3 py-2 text-sm"
             >
               {classes.map((c) => (
                 <option key={c.id} value={c.id}>
@@ -143,7 +143,7 @@ export default function SchoolAdminPerformancePage() {
               <select
                 value={streamId}
                 onChange={(e) => setStreamId(e.target.value)}
-                className="border border-primary-100 rounded-lg px-3 py-2 text-sm"
+                className="border border-border rounded-lg px-3 py-2 text-sm"
               >
                 <option value="">All streams</option>
                 {selectedClass.streams.map((s) => (

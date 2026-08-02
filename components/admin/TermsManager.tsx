@@ -169,13 +169,13 @@ export function TermsManager({ apiBasePath, academicYearId }: TermsManagerProps)
       )}
 
       {showForm && (
-        <form onSubmit={submit} className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-primary-100">
+        <form onSubmit={submit} className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-border">
           <div>
             <label className="block text-xs font-medium text-text-muted tracking-wide mb-1">Term number</label>
             <select
               value={form.number}
               onChange={(e) => setForm({ ...form, number: Number(e.target.value) })}
-              className="w-full border border-primary-100 rounded-lg px-3 py-2.5 text-sm"
+              className="w-full border border-border rounded-lg px-3 py-2.5 text-sm"
             >
               <option value={1}>1</option>
               <option value={2}>2</option>
@@ -214,7 +214,7 @@ export function TermsManager({ apiBasePath, academicYearId }: TermsManagerProps)
       )}
 
       {editing && (
-        <form onSubmit={saveEdit} className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-primary-100">
+        <form onSubmit={saveEdit} className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-border">
           <Input label="Name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
           <Input
             label="Starts on"

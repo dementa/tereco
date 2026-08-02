@@ -78,7 +78,7 @@ export function LibraryFullScreenViewer({ item, onClose }: { item: FullScreenLib
   );
 
   const feedbackDrawer = showFeedback && (
-    <div className="fixed bottom-0 inset-x-0 z-[10000] bg-white rounded-t-2xl border-t border-primary-100 p-4 sm:p-6 max-h-[40vh] overflow-y-auto shadow-2xl">
+    <div className="fixed bottom-0 inset-x-0 z-[10000] bg-white rounded-t-2xl border-t border-border p-4 sm:p-6 max-h-[40vh] overflow-y-auto shadow-2xl">
       <div className="max-w-xl mx-auto">
         <FeedbackForm contentId={item.id} />
       </div>

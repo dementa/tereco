@@ -43,17 +43,17 @@ export function CredentialsCard({
 
       <div className="mt-4 grid grid-cols-2 gap-3">
         {systemId ? (
-          <div className="bg-white rounded-xl p-3 border border-primary-100">
+          <div className="bg-white rounded-xl p-3 border border-border">
             <p className="text-[10px] font-bold uppercase tracking-widest text-text-faint mb-1">System ID</p>
             <p className="font-mono font-semibold text-primary-900">{systemId}</p>
           </div>
         ) : (
-          <div className="bg-white rounded-xl p-3 border border-primary-100">
+          <div className="bg-white rounded-xl p-3 border border-border">
             <p className="text-[10px] font-bold uppercase tracking-widest text-text-faint mb-1">Sign in with</p>
             <p className="font-mono font-semibold text-primary-900">Email</p>
           </div>
         )}
-        <div className="bg-white rounded-xl p-3 border border-primary-100">
+        <div className="bg-white rounded-xl p-3 border border-border">
           <p className="text-[10px] font-bold uppercase tracking-widest text-text-faint mb-1">Temporary password</p>
           <p className="font-mono font-semibold text-primary-900">{temporaryPassword}</p>
         </div>
@@ -76,14 +76,14 @@ export function CredentialsCard({
         <div className="flex gap-2 print:hidden">
           <button
             onClick={copyAll}
-            className="flex items-center gap-1.5 text-xs font-medium text-primary-700 hover:text-primary-800 px-3 py-1.5 rounded-lg border border-primary-200 bg-white"
+            className="flex items-center gap-1.5 text-xs font-medium text-primary-700 hover:text-primary-800 px-3 py-1.5 rounded-lg border border-border bg-white"
           >
             {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
             {copied ? 'Copied' : 'Copy'}
           </button>
           <button
             onClick={() => window.print()}
-            className="text-xs font-medium text-primary-700 hover:text-primary-800 px-3 py-1.5 rounded-lg border border-primary-200 bg-white"
+            className="text-xs font-medium text-primary-700 hover:text-primary-800 px-3 py-1.5 rounded-lg border border-border bg-white"
           >
             Print
           </button>
