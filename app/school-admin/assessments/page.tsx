@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
@@ -63,7 +62,7 @@ export default function SchoolAdminAssessmentsPage() {
   }, []);
 
   return (
-    <div className="max-w-6xl space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Assessments</h1>
         <p className="text-sm text-text-muted">
@@ -71,18 +70,16 @@ export default function SchoolAdminAssessmentsPage() {
           stay with staff.
         </p>
       </div>
-      <Card>
-        <DataTable
-          rows={assessments}
-          columns={columns}
-          rowKey={(a) => a.id}
-          loading={loading}
-          initialSort={{ key: 'title', direction: 'asc' }}
-          searchPlaceholder="Search by title or ID…"
-          emptyMessage="No assessments target your school yet."
-          exportFileName="school-assessments"
-        />
-      </Card>
+      <DataTable
+        rows={assessments}
+        columns={columns}
+        rowKey={(a) => a.id}
+        loading={loading}
+        initialSort={{ key: 'title', direction: 'asc' }}
+        searchPlaceholder="Search by title or ID…"
+        emptyMessage="No assessments target your school yet."
+        exportFileName="school-assessments"
+      />
     </div>
   );
 }

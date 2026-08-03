@@ -121,7 +121,7 @@ export default function SystemLibraryPage() {
   ];
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">System library</h1>
       <p className="text-sm text-text-muted mb-6">
         Every school&apos;s content, in every status.

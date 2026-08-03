@@ -101,7 +101,7 @@ export default function AdminLessonsPage() {
   });
 
   return (
-    <div className="max-w-7xl">
+    <div className="w-full">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">Lesson Submissions</h1>
       <p className="text-sm text-text-muted mb-6">All daily ICT lesson records submitted by teachers.</p>
 

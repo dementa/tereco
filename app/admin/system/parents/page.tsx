@@ -369,7 +369,7 @@ export default function SystemParentsPage() {
   );
 
   return (
-    <div className="max-w-7xl space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Parents</h1>
         <p className="text-sm text-text-muted">
@@ -554,7 +554,7 @@ export default function SystemParentsPage() {
               {VIEW_FIELDS.map(([label, value]) => (
                 <div key={label} className="flex justify-between gap-4 border-b border-[#FAFAFA] py-1.5">
                   <dt className="text-[#666666]">{label}</dt>
-                  <dd className="text-[#12333F] text-right">{value(viewing) || '—'}</dd>
+                  <dd className="text-[#12333F] text-right min-w-0 break-words">{value(viewing) || '—'}</dd>
                 </div>
               ))}
             </dl>
@@ -601,7 +601,7 @@ export default function SystemParentsPage() {
               Role and System ID cannot be changed: the ID encodes the role and is referenced by
               enrolments, submissions and audit records.
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-col xs:flex-row gap-2">
               <Button type="submit" isLoading={savingEdit}>
                 Save changes
               </Button>

@@ -62,7 +62,7 @@ export default function SchoolAdminTermsPage() {
               <select
                 value={yearId}
                 onChange={(e) => setYearId(e.target.value)}
-                className="border border-border rounded-lg px-3 py-2 text-sm"
+                className="w-full xs:w-auto h-11 sm:h-9 border border-border rounded-lg px-3 text-sm"
               >
                 {years.map((y) => (
                   <option key={y.id} value={y.id}>

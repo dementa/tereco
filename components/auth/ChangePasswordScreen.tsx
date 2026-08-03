@@ -97,7 +97,7 @@ export const ChangePasswordScreen: React.FC<{
             </div>
           )}
 
-          <Button variant="primary" className="w-full justify-center text-base py-3" type="submit" isLoading={isLoading}>
+          <Button variant="primary" className="w-full justify-center text-base h-11" type="submit" isLoading={isLoading}>
             Set password
           </Button>
 

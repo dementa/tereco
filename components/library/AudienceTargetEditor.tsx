@@ -149,14 +149,17 @@ export function AudienceTargetEditor({
         </p>
       )}
 
-      <div className="flex flex-wrap items-end gap-2 pt-1">
+      {/* Fixed-width selects (w-48/w-36/w-40) are wider than the usable area of
+          a 360px screen once card padding is taken off, so below `xs` each
+          control takes the full line instead of being squeezed by its siblings. */}
+      <div className="flex flex-col xs:flex-row xs:flex-wrap items-stretch xs:items-end gap-2 pt-1">
         {!locked && (
           <Select
             label="School"
             value={addSchoolId}
             onChange={(e) => setAddSchoolId(e.target.value)}
             options={[{ value: '', label: 'Every school' }, ...schools.map((s) => ({ value: s.id, label: s.name }))]}
-            className="w-48"
+            className="w-full xs:w-48"
           />
         )}
         <Select
@@ -164,7 +167,7 @@ export function AudienceTargetEditor({
           value={addLevel}
           onChange={(e) => setAddLevel(e.target.value)}
           options={[{ value: '', label: 'Choose a grade' }, ...GRADE_LEVELS]}
-          className="w-36"
+          className="w-full xs:w-36"
         />
         <Button type="button" variant="outline" onClick={addLevelTarget} disabled={!addLevel}>
           Add grade
@@ -174,7 +177,7 @@ export function AudienceTargetEditor({
           value={addClassId}
           onChange={(e) => setAddClassId(e.target.value)}
           options={[{ value: '', label: 'Choose a class' }, ...classOptions.map((c) => ({ value: c.id, label: c.displayName }))]}
-          className="w-40"
+          className="w-full xs:w-40"
         />
         <Button type="button" variant="outline" onClick={addClass} disabled={!addClassId}>
           Add class

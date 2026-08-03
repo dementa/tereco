@@ -70,7 +70,7 @@ export function CredentialSlips({ title, entries, fileBaseName }: CredentialSlip
       {/* Printable slips — hidden on screen, shown only by the print stylesheet. */}
       <div className="hidden print:block">
         <h2 className="text-lg font-semibold mb-4">{title}</h2>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 xs:grid-cols-2 gap-3">
           {entries.map((e, i) => (
             <div key={i} className="border border-black rounded-lg p-3 break-inside-avoid">
               <p className="font-medium">{e.name}</p>
@@ -89,10 +89,13 @@ export function CredentialSlips({ title, entries, fileBaseName }: CredentialSlip
         {entries.map((e, i) => (
           <div
             key={i}
-            className="flex items-center justify-between gap-3 text-xs py-1.5 border-b border-primary-50 last:border-0"
+            className="flex flex-col xs:flex-row xs:items-center xs:justify-between gap-0.5 xs:gap-3 text-xs py-1.5 border-b border-primary-50 last:border-0"
           >
             <span className="truncate">{e.name}</span>
-            <span className="text-text-muted font-mono shrink-0">
+            {/* ID + password is ~25 monospace characters that `shrink-0` refused
+                to yield, so on a phone it squeezed the name to nothing and could
+                still overrun the row. Below `xs` it gets its own line. */}
+            <span className="text-text-muted font-mono break-all xs:shrink-0">
               {e.systemId} · {e.temporaryPassword}
             </span>
           </div>

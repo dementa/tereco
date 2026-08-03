@@ -49,20 +49,20 @@ export default function StaffDashboard() {
   }, []);
 
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">Dashboard</h1>
       <p className="text-sm text-text-muted mb-6">Your lesson reports, papers and marking.</p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-3 gap-2.5 sm:gap-4">
         {CARDS.map((c) => {
           const Icon = c.icon;
           return (
             <Link key={c.key} href={c.href}>
-              <Card hover className="p-5">
-                <div className="p-2.5 rounded-xl bg-bg-muted w-fit mb-3">
+              <Card hover className="p-3 sm:p-5">
+                <div className="p-2 sm:p-2.5 rounded-xl bg-bg-muted w-fit mb-2 sm:mb-3">
                   <Icon className="w-5 h-5 text-primary-700" />
                 </div>
-                <p className="text-3xl font-bold text-primary-900">
+                <p className="text-2xl sm:text-3xl font-bold text-primary-900 tabular-nums">
                   {loading ? '—' : (stats[c.key] ?? 0)}
                 </p>
                 <p className="text-sm text-text-muted mt-1">{c.label}</p>
@@ -72,16 +72,16 @@ export default function StaffDashboard() {
         })}
 
         <Link href="/staff/performance">
-          <Card hover className="p-5">
-            <div className="p-2.5 rounded-xl bg-accent-lighter w-fit mb-3">
+          <Card hover className="p-3 sm:p-5">
+            <div className="p-2 sm:p-2.5 rounded-xl bg-accent-lighter w-fit mb-2 sm:mb-3">
               <TrendingUp className="w-5 h-5 text-accent-dark" />
             </div>
-            <p className="text-3xl font-bold text-primary-900">
+            <p className="text-2xl sm:text-3xl font-bold text-primary-900 tabular-nums">
               {trend.length > 0 ? `${trend[trend.length - 1].value}%` : '—'}
             </p>
-            <div className="flex items-center justify-between mt-1">
+            <div className="flex flex-col xs:flex-row xs:items-center xs:justify-between gap-1 mt-1">
               <p className="text-sm text-text-muted">Performance</p>
-              <Sparkline points={trend.map((t) => t.value)} />
+              <div className="shrink-0"><Sparkline points={trend.map((t) => t.value)} /></div>
             </div>
           </Card>
         </Link>

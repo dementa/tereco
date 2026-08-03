@@ -133,9 +133,9 @@ export function MyLibraryUploads({ newHref }: { newHref: string }) {
 
   return (
     <div className="max-w-3xl">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-primary-900">Library uploads</h1>
+      <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3 mb-6">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-primary-900">Library uploads</h1>
           <p className="text-sm text-text-muted mt-1">Reading and teaching material you&apos;ve shared, awaiting or past super-admin review.</p>
         </div>
         <Link href={newHref}>
@@ -156,11 +156,14 @@ export function MyLibraryUploads({ newHref }: { newHref: string }) {
           {items.map((item) => (
             <button key={item.id} type="button" onClick={() => openEdit(item)} className="block w-full text-left">
               <Card hover className="!p-0 overflow-hidden">
-                <div className="flex items-center gap-4">
-                  <div className="w-24 shrink-0 self-stretch">
+                <div className="flex items-center gap-3 sm:gap-4">
+                  <div className="w-16 xs:w-24 shrink-0 self-stretch">
                     <LibraryThumbnail item={item} />
                   </div>
-                  <div className="flex-1 min-w-0 flex items-start justify-between gap-4 py-3 pr-4">
+                  {/* Title and status badge sit side by side from `xs` up; below
+                      that the badge would leave the title ~140px and it would
+                      truncate to nothing, so the badge drops to its own line. */}
+                  <div className="flex-1 min-w-0 flex flex-col xs:flex-row xs:items-start xs:justify-between gap-1 xs:gap-4 py-3 pr-3 sm:pr-4">
                     <div className="min-w-0">
                       <p className="font-medium text-primary-900 truncate">{item.title}</p>
                       <p className="text-xs text-text-muted mt-0.5 capitalize">{item.contentType.replace('_', ' ')}</p>

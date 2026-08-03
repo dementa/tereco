@@ -45,7 +45,7 @@ export default function StaffAttendancePage() {
   });
 
   return (
-    <div className="max-w-7xl">
+    <div className="w-full">
       <div className="flex flex-wrap items-start justify-between gap-3 mb-1">
         <h1 className="text-2xl font-bold text-primary-900">Attendance</h1>
         <Link href="/staff/attendance/new">
@@ -70,7 +70,7 @@ export default function StaffAttendancePage() {
       ) : error ? (
         <p className="text-error">{error}</p>
       ) : filtered.length === 0 ? (
-        <Card className="p-8 text-center">
+        <Card className="p-6 sm:p-8 text-center">
           <ClipboardCheck className="w-10 h-10 text-text-faint mx-auto mb-3" />
           <p className="text-text-muted">No attendance taken yet.</p>
         </Card>
@@ -78,7 +78,11 @@ export default function StaffAttendancePage() {
         <div className="space-y-3">
           {filtered.map((s) => (
             <Card key={s.id} className="p-4">
-              <div className="flex items-start justify-between gap-3">
+              {/* The status pill can read "Attached • LR-2026-0042" — roughly
+                  180px. Kept `shrink-0` on the same row as the title, it left
+                  about 100px for the class name on a 360px screen and truncated
+                  it away, so below `xs` it moves onto its own line instead. */}
+              <div className="flex flex-col xs:flex-row xs:items-start xs:justify-between gap-1.5 xs:gap-3">
                 <div className="min-w-0">
                   <p className="font-semibold text-primary-900 truncate">
                     {s.className}{s.streamName ? ` ${s.streamName}` : ''} • Session {s.period}
@@ -88,7 +92,7 @@ export default function StaffAttendancePage() {
                   </p>
                 </div>
                 <span
-                  className={`shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${
+                  className={`self-start shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full ${
                     s.attached ? 'bg-primary-50 text-primary-700' : 'bg-amber-50 text-amber-700'
                   }`}
                 >

@@ -448,18 +448,18 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
           <>
             {/* Live stats, derived from the attached attendance record */}
             {selectedSession && (
-              <div className="grid grid-cols-3 gap-3">
-                <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-4 py-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Present</p>
-                  <p className="text-2xl font-bold text-[#011E28] tabular-nums">{presentCount}</p>
+              <div className="grid grid-cols-3 gap-2 xs:gap-3">
+                <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-2.5 py-2.5 xs:px-4 xs:py-3.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wide xs:tracking-widest text-[#0489AE] mb-0.5">Present</p>
+                  <p className="text-xl xs:text-2xl font-bold text-[#011E28] tabular-nums">{presentCount}</p>
                 </div>
-                <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-4 py-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Absent</p>
-                  <p className="text-2xl font-bold text-[#011E28] tabular-nums">{absentCount}</p>
+                <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-2.5 py-2.5 xs:px-4 xs:py-3.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wide xs:tracking-widest text-[#0489AE] mb-0.5">Absent</p>
+                  <p className="text-xl xs:text-2xl font-bold text-[#011E28] tabular-nums">{absentCount}</p>
                 </div>
-                <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-4 py-3.5">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Rate</p>
-                  <p className="text-2xl font-bold text-[#011E28] tabular-nums">
+                <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-2.5 py-2.5 xs:px-4 xs:py-3.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wide xs:tracking-widest text-[#0489AE] mb-0.5">Rate</p>
+                  <p className="text-xl xs:text-2xl font-bold text-[#011E28] tabular-nums">
                     {presentCount + absentCount > 0 ? `${Math.round((presentCount / (presentCount + absentCount)) * 100)}%` : '—'}
                   </p>
                 </div>
@@ -556,7 +556,7 @@ export function DailyLessonWizard({ onBack }: { onBack: () => void }) {
           <p className="text-xs font-semibold uppercase tracking-wider text-[#02465B] mb-2.5">
             Challenges encountered <span className="text-[#C0392B]">*</span>
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 xs:grid-cols-2 gap-3">
             {(['No', 'Yes'] as const).map(o => (
               <RadioCard
                 key={o}

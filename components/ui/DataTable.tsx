@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useDeferredValue, useMemo, useState } from 'react';
 import {
   AlertCircle,
   ArrowDown,
@@ -11,11 +11,13 @@ import {
   Download,
   FileSpreadsheet,
   FileText,
+  MoreHorizontal,
   Search,
   X,
 } from 'lucide-react';
 import { exportToCsv, exportToExcel, exportToPdf, type ExportCell } from '@/lib/tableExport';
 import { DropdownMenu, type DropdownMenuItem } from '@/components/ui/DropdownMenu';
+import { Modal } from '@/components/ui/Modal';
 
 export interface DataTableColumn<T> {
   /** Stable key, also used as the sort key. */
@@ -73,8 +75,18 @@ interface DataTableProps<T> {
   loading?: boolean;
   pageSize?: number;
   onRowClick?: (row: T) => void;
-  /** Rendered to the right of the search box (e.g. a "New" button). */
+  /**
+   * The page's primary call to action, rendered as a real button at the end of
+   * the toolbar. Keep this to one button — everything else belongs in
+   * `secondaryActions`, or the toolbar wraps onto a second line.
+   */
   actions?: React.ReactNode;
+  /**
+   * Secondary page actions (Import, bulk operations, …). These are folded into
+   * the toolbar's "⋯" menu alongside Export, so the number of them never
+   * changes the toolbar's height.
+   */
+  secondaryActions?: DropdownMenuItem[];
   /**
    * Per-row overflow menu. When given, a right-aligned "⋯" column is appended
    * automatically — the modern replacement for a strip of icon buttons. The
@@ -141,6 +153,7 @@ export function DataTable<T>({
   pageSize: initialPageSize = 15,
   onRowClick,
   actions,
+  secondaryActions = [],
   rowActions,
   mobileTitle,
   exportFileName = 'export',
@@ -153,10 +166,12 @@ export function DataTable<T>({
   // Seeded from the `pageSize` prop, but from here on the user's own choice —
   // the selector below (15/30/50) is what actually drives it.
   const [pageSize, setPageSize] = useState(initialPageSize);
+  // The export UI is a dialog rather than a popover: it carries a column
+  // picker, a password opt-in and three format choices, which is more than a
+  // menu-sized surface can hold without becoming a nested-popover puzzle.
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState<'csv' | 'excel' | 'pdf' | null>(null);
   const [exportError, setExportError] = useState('');
-  const exportRef = useRef<HTMLDivElement>(null);
 
   // The blank-header "actions" column is a UI-only affordance, never something
   // worth exporting — everything else starts checked.
@@ -241,14 +256,26 @@ export function DataTable<T>({
     setSearch('');
   }
 
-  useEffect(() => {
-    if (!exportOpen) return;
-    function onClickOutside(e: MouseEvent) {
-      if (exportRef.current && !exportRef.current.contains(e.target as Node)) setExportOpen(false);
-    }
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, [exportOpen]);
+  // Export lives here rather than as its own toolbar button — one "⋯" is the
+  // whole overflow story, so adding a page action can never push the toolbar
+  // onto a second line again.
+  const overflowItems: DropdownMenuItem[] = [
+    ...secondaryActions,
+    ...(rows.length > 0
+      ? [
+          {
+            label: exporting ? 'Exporting…' : 'Export…',
+            icon: Download,
+            disabled: exporting !== null,
+            separatorBefore: secondaryActions.length > 0,
+            onClick: () => {
+              setExportError('');
+              setExportOpen(true);
+            },
+          },
+        ]
+      : []),
+  ];
 
   async function handleExport(format: 'csv' | 'excel' | 'pdf') {
     const chosenColumns = exportableColumns.filter((c) => selectedCols[c.key] !== false);
@@ -317,11 +344,16 @@ export function DataTable<T>({
 
   return (
     <div className="space-y-3">
-      {/* Controls — search + inline filter dropdowns, always visible */}
-      <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 sm:items-center">
-        <div className="relative flex-1 min-w-[180px]">
+      {/*
+        One toolbar row on desktop, and it stays one row no matter how many
+        filters or page actions a caller passes: the filter strip is the only
+        thing allowed to scroll, the action cluster is `shrink-0`, and
+        everything beyond the single primary button lives behind the "⋯".
+      */}
+      <div className="flex flex-col md:flex-row md:items-center gap-2">
+        <div className="relative flex-1 min-w-0 md:max-w-md">
           <Search
-            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-[#666666] pointer-events-none"
+            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
             aria-hidden
           />
           <input
@@ -333,145 +365,149 @@ export function DataTable<T>({
             }}
             placeholder={searchPlaceholder}
             aria-label={searchPlaceholder}
-            className="w-full rounded-xl border-2 border-[#E5E5E5] bg-white pl-9 pr-3 py-2.5 text-sm transition-all duration-200 focus:border-[#02465B] focus:outline-none focus:ring-2 focus:ring-[#02465B]/10"
+            className="w-full h-9 rounded-lg border border-border-strong bg-bg-card pl-9 pr-3 text-sm transition-colors focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-700/15"
           />
         </div>
 
-        {filters.map((filter) => {
-          const value = active[filter.key] ?? '';
-          return (
-            <select
-              key={filter.key}
-              aria-label={filter.label}
-              value={value}
-              onChange={(e) => setFilter(filter.key, e.target.value)}
-              className={`rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2.5 text-sm transition-colors focus:border-[#02465B] focus:outline-none ${
-                value ? 'text-[#171717] font-medium' : 'text-[#666666]'
-              }`}
-            >
-              <option value="">All {filter.label.toLowerCase()}</option>
-              {filter.options.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          );
-        })}
+        {filters.length > 0 && (
+          <div className="flex items-center gap-2 min-w-0 overflow-x-auto md:overflow-visible [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {filters.map((filter) => {
+              const value = active[filter.key] ?? '';
+              return (
+                <select
+                  key={filter.key}
+                  aria-label={filter.label}
+                  value={value}
+                  onChange={(e) => setFilter(filter.key, e.target.value)}
+                  className={`h-9 shrink-0 rounded-lg border border-border-strong bg-bg-card px-2.5 text-sm transition-colors focus:border-primary-700 focus:outline-none ${
+                    value ? 'text-text-primary font-medium' : 'text-text-muted'
+                  }`}
+                >
+                  <option value="">All {filter.label.toLowerCase()}</option>
+                  {filter.options.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              );
+            })}
+          </div>
+        )}
 
-        <div className="flex gap-2 sm:ml-auto">
+        <div className="flex items-center gap-2 shrink-0 md:ml-auto">
           {(activeCount > 0 || search) && (
             <button
               type="button"
               onClick={clearAll}
-              className="inline-flex items-center gap-1.5 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2.5 text-sm font-medium text-[#666666] hover:text-[#171717] transition-colors"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2.5 text-sm font-medium text-text-muted hover:bg-bg-muted hover:text-text-primary transition-colors"
             >
               <X className="w-4 h-4" aria-hidden /> Clear
             </button>
           )}
-          {rows.length > 0 && (
-            <div className="relative" ref={exportRef}>
-              <button
-                type="button"
-                onClick={() => setExportOpen((v) => !v)}
-                disabled={exporting !== null}
-                aria-expanded={exportOpen}
-                aria-haspopup="menu"
-                className="inline-flex items-center gap-2 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2.5 text-sm font-medium text-[#02465B] hover:border-[#02465B]/40 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Download className="w-4 h-4" aria-hidden />
-                {exporting
-                  ? passwordProgress
-                    ? `Resetting passwords… ${passwordProgress.done}/${passwordProgress.total}`
-                    : 'Exporting…'
-                  : 'Export'}
-              </button>
-              {exportOpen && (
-                <div
-                  role="menu"
-                  className="absolute right-0 z-10 mt-1 w-72 overflow-hidden rounded-xl border border-[#EAEAEA] bg-white shadow-lg"
-                >
-                  <div className="p-3 border-b border-[#FAFAFA]">
-                    <div className="flex items-center justify-between mb-2">
-                      <p className="text-xs font-medium text-[#666666] tracking-wide">COLUMNS</p>
-                      <div className="flex gap-2 text-xs">
-                        <button type="button" onClick={() => setAllColumns(true)} className="text-[#02465B] hover:underline">
-                          All
-                        </button>
-                        <button type="button" onClick={() => setAllColumns(false)} className="text-[#02465B] hover:underline">
-                          None
-                        </button>
-                      </div>
-                    </div>
-                    <div className="max-h-40 overflow-y-auto space-y-1 pr-1">
-                      {exportableColumns.map((column) => (
-                        <label key={column.key} className="flex items-center gap-2 text-sm text-[#12333F]">
-                          <input
-                            type="checkbox"
-                            checked={selectedCols[column.key] !== false}
-                            onChange={() => toggleColumn(column.key)}
-                            className="rounded border-[#E5E5E5]"
-                          />
-                          {column.header}
-                        </label>
-                      ))}
-                    </div>
-                    {passwordColumn && (
-                      <label className="flex items-start gap-2 text-sm text-[#12333F] mt-3 pt-3 border-t border-[#FAFAFA]">
-                        <input
-                          type="checkbox"
-                          checked={includePasswords}
-                          onChange={(e) => setIncludePasswords(e.target.checked)}
-                          className="rounded border-[#E5E5E5] mt-0.5"
-                        />
-                        <span>
-                          Include {(passwordColumn.label ?? 'password').toLowerCase()}
-                          <span className="block text-xs text-text-muted">
-                            Resets it for every exported account — their old password stops working.
-                          </span>
-                        </span>
-                      </label>
-                    )}
-                  </div>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => void handleExport('csv')}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#FAFAFA]"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-[#666666]" aria-hidden /> CSV
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => void handleExport('excel')}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#FAFAFA]"
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-[#666666]" aria-hidden /> Excel
-                  </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => void handleExport('pdf')}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm text-[#12333F] hover:bg-[#FAFAFA]"
-                  >
-                    <FileText className="w-3.5 h-3.5 text-[#666666]" aria-hidden /> PDF
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
           {actions}
+          {overflowItems.length > 0 && (
+            <DropdownMenu
+              items={overflowItems}
+              label="More actions"
+              triggerClassName="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border-strong bg-bg-card text-text-muted transition-colors hover:bg-bg-subtle hover:text-text-primary"
+            />
+          )}
         </div>
       </div>
 
+      <Modal open={exportOpen} onClose={() => setExportOpen(false)} title="Export">
+        <div className="space-y-4">
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-text-muted tracking-wide">COLUMNS</p>
+              <div className="flex gap-3 text-xs">
+                <button type="button" onClick={() => setAllColumns(true)} className="text-primary-700 hover:underline">
+                  All
+                </button>
+                <button type="button" onClick={() => setAllColumns(false)} className="text-primary-700 hover:underline">
+                  None
+                </button>
+              </div>
+            </div>
+            <div className="max-h-56 overflow-y-auto grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1.5 pr-1">
+              {exportableColumns.map((column) => (
+                <label key={column.key} className="flex items-center gap-2 text-sm text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={selectedCols[column.key] !== false}
+                    onChange={() => toggleColumn(column.key)}
+                    className="rounded border-border-strong"
+                  />
+                  {column.header}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {passwordColumn && (
+            <label className="flex items-start gap-2 text-sm text-text-secondary pt-3 border-t border-border">
+              <input
+                type="checkbox"
+                checked={includePasswords}
+                onChange={(e) => setIncludePasswords(e.target.checked)}
+                className="rounded border-border-strong mt-0.5"
+              />
+              <span>
+                Include {(passwordColumn.label ?? 'password').toLowerCase()}
+                <span className="block text-xs text-text-muted">
+                  Resets it for every exported account — their old password stops working.
+                </span>
+              </span>
+            </label>
+          )}
+
+          <div className="flex flex-col sm:flex-row gap-2 pt-3 border-t border-border">
+            <button
+              type="button"
+              onClick={() => void handleExport('csv')}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-border-strong bg-bg-card text-sm font-medium text-text-primary hover:bg-bg-subtle transition-colors"
+            >
+              <FileText className="w-4 h-4 text-text-muted" aria-hidden /> CSV
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExport('excel')}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-border-strong bg-bg-card text-sm font-medium text-text-primary hover:bg-bg-subtle transition-colors"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-text-muted" aria-hidden /> Excel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleExport('pdf')}
+              className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-border-strong bg-bg-card text-sm font-medium text-text-primary hover:bg-bg-subtle transition-colors"
+            >
+              <FileText className="w-4 h-4 text-text-muted" aria-hidden /> PDF
+            </button>
+          </div>
+
+          <p className="text-xs text-text-muted">
+            Exports all {processed.length} filtered {processed.length === 1 ? 'row' : 'rows'}, not just this page.
+          </p>
+        </div>
+      </Modal>
+
+      {exporting && (
+        <p className="flex items-center gap-1.5 text-xs text-text-muted" role="status" aria-live="polite">
+          <MoreHorizontal className="w-3.5 h-3.5 animate-pulse" aria-hidden />
+          {passwordProgress
+            ? `Resetting passwords… ${passwordProgress.done}/${passwordProgress.total}`
+            : 'Preparing export…'}
+        </p>
+      )}
+
       {exportError && (
-        <p role="alert" className="flex items-center gap-1.5 text-xs text-[#C0392B]">
+        <p role="alert" className="flex items-center gap-1.5 text-xs text-error">
           <AlertCircle className="w-3.5 h-3.5" aria-hidden /> {exportError}
         </p>
       )}
 
-      <p className="text-xs text-[#666666]" role="status" aria-live="polite">
+      <p className="text-xs text-text-muted" role="status" aria-live="polite">
         {loading
           ? 'Loading…'
           : `${processed.length} ${processed.length === 1 ? 'result' : 'results'}${
@@ -480,10 +516,10 @@ export function DataTable<T>({
       </p>
 
       {/* Desktop: real table. Hidden on phones, where it would need horizontal scrolling. */}
-      <div className="hidden sm:block overflow-x-auto rounded-2xl border border-[#EAEAEA] bg-white">
+      <div className="hidden sm:block overflow-x-auto rounded-lg border border-border bg-bg-card">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-[#EAEAEA] bg-[#FAFAFA]">
+            <tr className="border-b border-border bg-bg-subtle">
               {columns.map((column) => {
                 const isSorted = sort?.key === column.key;
                 const sortable = column.sortable !== false;
@@ -492,7 +528,7 @@ export function DataTable<T>({
                     key={column.key}
                     scope="col"
                     aria-sort={isSorted ? (sort.direction === 'asc' ? 'ascending' : 'descending') : 'none'}
-                    className={`text-left font-medium text-[#666666] text-xs tracking-wide px-4 py-3 ${
+                    className={`text-left font-medium text-text-muted text-xs tracking-wide px-3 h-9 ${
                       column.align === 'right' ? 'text-right' : ''
                     } ${column.hideOnMobile ? 'hidden lg:table-cell' : ''}`}
                   >
@@ -500,7 +536,7 @@ export function DataTable<T>({
                       <button
                         type="button"
                         onClick={() => toggleSort(column)}
-                        className="inline-flex items-center gap-1 hover:text-[#02465B] transition-colors"
+                        className="inline-flex items-center gap-1 hover:text-text-primary transition-colors"
                       >
                         {column.header}
                         {isSorted ? (
@@ -519,13 +555,13 @@ export function DataTable<T>({
                   </th>
                 );
               })}
-              {rowActions && <th scope="col" className="w-12 px-4 py-3" aria-label="Actions" />}
+              {rowActions && <th scope="col" className="w-12 px-3 h-9" aria-label="Actions" />}
             </tr>
           </thead>
           <tbody>
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (rowActions ? 1 : 0)} className="px-4 py-10 text-center text-[#666666]">
+                <td colSpan={columns.length + (rowActions ? 1 : 0)} className="px-3 py-10 text-center text-text-muted">
                   {loading ? 'Loading…' : emptyMessage}
                 </td>
               </tr>
@@ -534,8 +570,8 @@ export function DataTable<T>({
                 <tr
                   key={rowKey(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
-                  className={`border-b border-[#FAFAFA] last:border-0 ${
-                    onRowClick ? 'cursor-pointer hover:bg-[#FAFAFA] transition-colors' : ''
+                  className={`border-b border-border last:border-0 ${
+                    onRowClick ? 'cursor-pointer hover:bg-bg-subtle transition-colors' : ''
                   }`}
                 >
                   {columns.map((column) => {
@@ -543,7 +579,7 @@ export function DataTable<T>({
                     return (
                       <td
                         key={column.key}
-                        className={`px-4 py-2.5 text-[#404040] ${
+                        className={`px-3 py-2 text-text-secondary ${
                           column.align === 'right' ? 'text-right' : ''
                         } ${column.hideOnMobile ? 'hidden lg:table-cell' : ''} ${column.className ?? ''}`}
                       >
@@ -558,7 +594,7 @@ export function DataTable<T>({
                     );
                   })}
                   {rowActions && (
-                    <td className="px-2 py-2.5 text-right" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-2 py-2 text-right" onClick={(e) => e.stopPropagation()}>
                       <DropdownMenu items={rowActions(row)} />
                     </td>
                   )}
@@ -572,7 +608,7 @@ export function DataTable<T>({
       {/* Mobile: one card per row, so every field stays readable without scrolling sideways. */}
       <div className="sm:hidden space-y-2">
         {visible.length === 0 ? (
-          <div className="rounded-2xl border border-[#EAEAEA] bg-white px-4 py-10 text-center text-[#666666]">
+          <div className="rounded-lg border border-border bg-bg-card px-4 py-10 text-center text-text-muted">
             {loading ? 'Loading…' : emptyMessage}
           </div>
         ) : (
@@ -580,12 +616,12 @@ export function DataTable<T>({
             <div
               key={rowKey(row)}
               onClick={onRowClick ? () => onRowClick(row) : undefined}
-              className={`rounded-2xl border border-[#EAEAEA] bg-white p-4 ${
-                onRowClick ? 'cursor-pointer active:bg-[#FAFAFA]' : ''
+              className={`rounded-lg border border-border bg-bg-card p-3 ${
+                onRowClick ? 'cursor-pointer active:bg-bg-subtle' : ''
               }`}
             >
               <div className="flex items-start justify-between gap-2 mb-2">
-                <p className="font-medium text-[#171717]">
+                <p className="font-medium text-text-primary min-w-0 break-words">
                   {mobileTitle
                     ? mobileTitle(row)
                     : columns[0].render
@@ -593,24 +629,30 @@ export function DataTable<T>({
                       : (defaultValue(row, columns[0]) ?? '—')}
                 </p>
                 {rowActions && (
-                  <div onClick={(e) => e.stopPropagation()}>
+                  <div className="shrink-0 -mr-1 -mt-1" onClick={(e) => e.stopPropagation()}>
                     <DropdownMenu items={rowActions(row)} />
                   </div>
                 )}
               </div>
-              <dl className="space-y-1.5">
+              {/*
+                A label/value grid rather than `justify-between` rows. The old
+                layout pinned the label at its natural width and gave the value
+                whatever was left, then truncated it — so on a 360px screen a
+                long value ("Ebenezer Standard Junior Schools") was clipped to a
+                few characters and the card was all labels. Here the label column
+                is sized once from the widest label, and values wrap instead of
+                truncating, so nothing is hidden.
+              */}
+              <dl className="grid grid-cols-[minmax(0,auto)_minmax(0,1fr)] gap-x-3 gap-y-1 text-sm">
                 {columns.slice(1).map((column) => {
                   const rawValue = defaultValue(row, column);
                   return (
-                    <div key={column.key} className="flex justify-between gap-3 text-sm">
-                      <dt className="text-[#666666] shrink-0">{column.header}</dt>
-                      <dd
-                        className="text-[#404040] text-right min-w-0 truncate"
-                        title={!column.render && asSearchText(rawValue) ? String(rawValue) : undefined}
-                      >
+                    <React.Fragment key={column.key}>
+                      <dt className="text-text-muted">{column.header}</dt>
+                      <dd className="text-text-secondary text-right break-words min-w-0">
                         {column.render ? column.render(row) : (rawValue ?? '—')}
                       </dd>
-                    </div>
+                    </React.Fragment>
                   );
                 })}
               </dl>
@@ -621,7 +663,7 @@ export function DataTable<T>({
 
       {processed.length > 0 && (
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
-          <label className="flex items-center gap-2 text-xs text-[#666666]">
+          <label className="flex items-center gap-2 text-xs text-text-muted">
             Rows per page
             <select
               value={pageSize}
@@ -629,7 +671,7 @@ export function DataTable<T>({
                 setPageSize(Number(e.target.value));
                 setPage(0);
               }}
-              className="rounded-lg border-2 border-[#E5E5E5] bg-white px-2 py-1 text-xs text-[#02465B] focus:border-[#02465B] focus:outline-none"
+              className="h-7 rounded-md border border-border-strong bg-bg-card px-2 text-xs text-text-primary focus:border-primary-700 focus:outline-none"
             >
               {PAGE_SIZE_OPTIONS.map((size) => (
                 <option key={size} value={size}>
@@ -645,19 +687,19 @@ export function DataTable<T>({
                 type="button"
                 onClick={() => setPage((p) => Math.max(0, p - 1))}
                 disabled={safePage === 0}
-                className="inline-flex items-center gap-1 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2 text-sm text-[#02465B] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[#02465B]/40 transition-colors"
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-border-strong bg-bg-card px-2.5 text-sm text-text-primary disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors"
               >
                 <ChevronLeft className="w-4 h-4" aria-hidden />
                 Previous
               </button>
-              <span className="text-xs text-[#666666] whitespace-nowrap">
+              <span className="text-xs text-text-muted whitespace-nowrap">
                 Page {safePage + 1} of {pageCount}
               </span>
               <button
                 type="button"
                 onClick={() => setPage((p) => Math.min(pageCount - 1, p + 1))}
                 disabled={safePage >= pageCount - 1}
-                className="inline-flex items-center gap-1 rounded-xl border-2 border-[#E5E5E5] bg-white px-3 py-2 text-sm text-[#02465B] disabled:opacity-40 disabled:cursor-not-allowed hover:border-[#02465B]/40 transition-colors"
+                className="inline-flex h-8 items-center gap-1 rounded-lg border border-border-strong bg-bg-card px-2.5 text-sm text-text-primary disabled:opacity-40 disabled:cursor-not-allowed hover:bg-bg-subtle transition-colors"
               >
                 Next
                 <ChevronRight className="w-4 h-4" aria-hidden />

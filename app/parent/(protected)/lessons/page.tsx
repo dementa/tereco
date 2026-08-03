@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
@@ -61,23 +60,21 @@ export default function ParentLessonsPage() {
   }, [selectedId, load]);
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Lessons</h1>
         <p className="text-sm text-text-muted">Topics covered in your child&apos;s class, newest first.</p>
       </div>
-      <Card>
-        <DataTable
-          rows={lessons}
-          columns={columns}
-          rowKey={(l) => l.id}
-          loading={loading || childrenLoading}
-          initialSort={{ key: 'lessonDate', direction: 'desc' }}
-          searchPlaceholder="Search by learning area or topic…"
-          emptyMessage="No lesson reports filed yet."
-          exportFileName="child-lessons"
-        />
-      </Card>
+      <DataTable
+        rows={lessons}
+        columns={columns}
+        rowKey={(l) => l.id}
+        loading={loading || childrenLoading}
+        initialSort={{ key: 'lessonDate', direction: 'desc' }}
+        searchPlaceholder="Search by learning area or topic…"
+        emptyMessage="No lesson reports filed yet."
+        exportFileName="child-lessons"
+      />
     </div>
   );
 }

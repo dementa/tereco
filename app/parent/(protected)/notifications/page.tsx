@@ -62,10 +62,10 @@ export default function ParentNotificationsPage() {
   }
 
   return (
-    <div className="max-w-3xl space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-primary-900 mb-1">Notifications</h1>
+    <div className="space-y-4">
+      <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-primary-900 mb-1">Notifications</h1>
           <p className="text-sm text-text-muted">Announcements and updates about your children.</p>
         </div>
         {unread > 0 && (

@@ -102,7 +102,7 @@ export default function StaffPerformancePage() {
   const selectedClass = classes.find((c) => c.id === classId);
 
   return (
-    <div className="max-w-3xl space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Performance</h1>
         <p className="text-sm text-text-muted">Class leaderboard, ranked by average marked-assessment percentage this academic year.</p>

@@ -167,7 +167,7 @@ function AdminShell({ children }: { children: React.ReactNode }) {
           </div>
           <NotificationBell />
         </div>
-        <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-x-hidden print:p-0">{children}</main>
+        <main className="flex-1 p-3 sm:p-6 md:p-8 print:p-0">{children}</main>
       </div>
     </div>
   );

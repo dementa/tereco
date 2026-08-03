@@ -154,9 +154,9 @@ export default function LibraryApprovalDetailPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-bold text-primary-900">{item.title}</h1>
+      <div className="flex flex-col xs:flex-row xs:items-center justify-between gap-3 xs:gap-4">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
+          <h1 className="text-xl sm:text-2xl font-bold text-primary-900 break-words">{item.title}</h1>
           <Badge variant={item.status === 'pending_approval' ? 'accent' : item.status === 'approved' ? 'success' : 'muted'}>
             {item.status.replace('_', ' ')}
           </Badge>
@@ -194,7 +194,7 @@ export default function LibraryApprovalDetailPage() {
 
       {item.status === 'pending_approval' && (
         <Card className="space-y-3">
-          <div className="flex gap-3">
+          <div className="flex flex-col xs:flex-row gap-3">
             <Button onClick={approve} isLoading={busy}>
               Approve
             </Button>

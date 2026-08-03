@@ -770,7 +770,7 @@ export default function AssessmentDetailPage() {
   };
 
   return (
-    <div className="max-w-7xl space-y-4">
+    <div className="space-y-4">
       <button
         type="button"
         onClick={() => router.push('/staff/assessments')}

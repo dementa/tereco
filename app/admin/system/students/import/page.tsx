@@ -227,7 +227,7 @@ export default function StudentImportPage() {
               {skippedCount > 0 && <Badge variant="muted">{skippedCount} already existed</Badge>}{' '}
               {errorCount > 0 && <Badge variant="muted" className="text-error">{errorCount} failed</Badge>}
             </h2>
-            <div className="flex gap-2 print:hidden">
+            <div className="flex flex-col xs:flex-row gap-2 print:hidden">
               <Button variant="outline" onClick={() => window.print()}>
                 <Printer className="w-4 h-4 mr-1.5" /> Print credential slips
               </Button>
@@ -245,7 +245,7 @@ export default function StudentImportPage() {
               from storage, so this is the only place they can be printed from. */}
           <div className="hidden print:block">
             <h2 className="text-lg font-semibold mb-4">Student login credentials</h2>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 xs:grid-cols-2 gap-3">
               {results.filter((r) => r.status === 'created').map((r) => (
                 <div key={r.row} className="border border-black rounded-lg p-3 break-inside-avoid">
                   <p className="font-medium">{r.name}</p>

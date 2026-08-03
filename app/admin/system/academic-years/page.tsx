@@ -194,7 +194,7 @@ export default function AcademicYearsPage() {
   const current = years.find((y) => y.isCurrent);
 
   return (
-    <div className="max-w-7xl space-y-4">
+    <div className="space-y-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-primary-900 mb-1">Academic years</h1>

@@ -47,7 +47,7 @@ function AuthPageContent() {
 
     return (
       <div className="min-h-screen bg-bg flex items-center justify-center px-4">
-        <div className="max-w-md text-center bg-bg-card rounded-2xl p-8 border border-border">
+        <div className="max-w-md text-center bg-bg-card rounded-2xl p-5 sm:p-8 border border-border">
           <h1 className="text-xl font-bold text-primary-900 mb-2">No portal available</h1>
           <p className="text-sm text-text-muted mb-6">
             Your account doesn&apos;t have a portal set up yet. Contact an administrator.
