@@ -24,9 +24,13 @@
 -- ─── Stop a reconcile from looking like an edit ──────────────────────────────
 -- The existing trigger bumps updated_at on every UPDATE. Backfilling term_id
 -- would therefore restamp every affected report as freshly edited, which is
--- false: a lesson report is never edited after filing, and updated_at is the
--- only evidence of that. Bump it only when the caller actually changed
--- something themselves — a term reconcile is bookkeeping, not an edit.
+-- false, and would destroy the only record of which reports genuinely were.
+--
+-- Staff do revise reports after filing — 11 of the 39 held on 2026-08-04 were
+-- updated hours after they were created — so updated_at carries real signal
+-- and clobbering it would erase a real distinction, not a theoretical one.
+-- Bump it only when the caller actually changed something themselves; a term
+-- reconcile is bookkeeping, not an edit.
 create or replace function public.set_lesson_report_term()
 returns trigger
 language plpgsql
