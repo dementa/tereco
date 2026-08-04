@@ -160,7 +160,13 @@ export default function MarkingPage() {
         const [scriptRes, responsesRes] = await Promise.all([
           fetch(`/api/assessments/${selected}/my-result?studentId=${result.studentId}`)
             .then((r) => r.json()),
-          fetch(`/api/admin/responses?assessmentId=${encodeURIComponent(selected)}`).then((r) => r.json()),
+          // This learner's paper only. Asking for the whole assessment meant
+          // downloading every script in the school to mark one of them, and
+          // discarding all but one on the next line.
+          fetch(
+            `/api/admin/responses?assessmentId=${encodeURIComponent(selected)}` +
+              `&submissionId=${encodeURIComponent(result.submissionId)}`
+          ).then((r) => r.json()),
         ]);
         if (!scriptRes.success) {
           toast.error(scriptRes.message ?? 'Could not open this paper.');
@@ -174,6 +180,14 @@ export default function MarkingPage() {
               .filter((r) => r.submissionId === result.submissionId)
               .map((r) => ({ id: r.id, questionId: r.questionId, submissionId: r.submissionId }))
           );
+        } else {
+          // Drop the previous paper's ids before saying so. Holding on to them
+          // would leave saveScore matching this learner's question against
+          // another learner's response id and marking the wrong script — and
+          // the marker would be told a question had no answer, which sends
+          // them looking at the learner rather than at the failed load.
+          setResponseRefs([]);
+          toast.error(responsesRes.message ?? 'Could not load this paper for marking.');
         }
       } catch {
         toast.error('Network error opening the paper.');
