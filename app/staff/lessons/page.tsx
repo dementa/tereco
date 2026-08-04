@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { LessonAnalyticsPanel } from '@/components/ui/LessonAnalyticsPanel';
 import { ChevronDown, ChevronUp, FileText, Plus } from 'lucide-react';
 
 interface Lesson {
@@ -76,6 +77,10 @@ export default function StaffLessonsPage() {
         </Link>
       </div>
       <p className="text-sm text-text-muted mb-6">Daily ICT lesson records you&apos;ve submitted.</p>
+
+      <div className="mb-6">
+        <LessonAnalyticsPanel endpoint="/api/staff/lessons/analytics" breakdownLabel="Class" />
+      </div>
 
       <div className="mb-4 max-w-sm">
         <Input

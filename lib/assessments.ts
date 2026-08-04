@@ -3,6 +3,7 @@ import type { TablesUpdate } from "./database.types";
 import { UserFacingError } from "./apiResponse";
 import { notify } from "./entities/notifications";
 import { computeCodes, isStemParent, type QuestionConfig } from "./questionGrouping";
+import { STUDENT_PLACEHOLDER_DOMAIN } from "./entities/accounts";
 
 // ─── Types ────────────────────────────────────────────────
 
@@ -1267,4 +1268,153 @@ export async function updateResponseScore(
     if (error.code === "P0001") throw new Error(error.message);
     throw new Error(error.message);
   }
+}
+
+// ─── Marking reminders ────────────────────────────────────
+
+/** An assessment with scripts sat but not finished being marked. */
+export interface AwaitingMarking {
+  id: string;
+  systemId: string;
+  title: string;
+  /**
+   * Submissions still sitting at 'submitted'. recalc_submission_score()
+   * (03-collection.sql) moves a submission to 'marked' only once every one of
+   * its answers has a score, and moves it back the moment one doesn't — so
+   * this cannot drift from what the marking screen shows.
+   *
+   * 'in_progress' is deliberately excluded: a script nobody has handed in is
+   * not waiting on a marker, and counting it would nag a teacher about work
+   * they cannot do.
+   */
+  pendingScripts: number;
+  createdBy: string | null;
+  collaboratorIds: string[];
+}
+
+/**
+ * Every assessment with marking outstanding, newest first.
+ *
+ * Released assessments are skipped without a query: releasing is refused until
+ * an assessment is fully marked (see releaseResults), so a released one has
+ * nothing pending by construction.
+ */
+export async function listAssessmentsAwaitingMarking(): Promise<AwaitingMarking[]> {
+  const supabase = getSupabaseAdmin();
+  const candidates = (await getAssessments()).filter((a) => !a.resultsReleasedAt);
+
+  const awaiting: AwaitingMarking[] = [];
+  for (const assessment of candidates) {
+    const { count, error } = await supabase
+      .from("assessment_submissions")
+      .select("id", { count: "exact", head: true })
+      .eq("assessment_id", assessment.id)
+      .eq("status", "submitted");
+    if (error) throw new Error(error.message);
+
+    if ((count ?? 0) > 0) {
+      awaiting.push({
+        id: assessment.id,
+        systemId: assessment.systemId,
+        title: assessment.title,
+        pendingScripts: count ?? 0,
+        createdBy: assessment.createdBy,
+        collaboratorIds: assessment.collaboratorIds,
+      });
+    }
+  }
+  return awaiting;
+}
+
+/** One assessment as it appears in a person's reminder. */
+export interface MarkingReminderItem {
+  systemId: string;
+  title: string;
+  pendingScripts: number;
+  /** They wrote the paper, rather than being added to it as a collaborator. */
+  isAuthor: boolean;
+}
+
+/** What one person is being reminded about. */
+export interface MarkingReminder {
+  staffId: string;
+  name: string;
+  /**
+   * Null when there is no real address on file — that person still gets the
+   * in-app notification, they just cannot be emailed.
+   */
+  email: string | null;
+  totalScripts: number;
+  /** Most outstanding first, so the email leads with the worst backlog. */
+  assessments: MarkingReminderItem[];
+}
+
+/**
+ * Who to remind, and about what.
+ *
+ * Addressed to the author and their collaborators specifically, rather than to
+ * every teacher who *could* mark the paper (getMarkableAssessments is wider —
+ * it also lets a school's teachers mark admin-authored papers aimed at their
+ * school). Those two are the people who own the marking; broadcasting to the
+ * rest would be nagging people about work that isn't theirs, and reminders
+ * that don't apply to you are the fastest way to teach a staff room to ignore
+ * the bell.
+ *
+ * Inactive profiles are dropped: someone who has left should not be chased,
+ * and their assessment's remaining recipients still get the reminder.
+ */
+export async function listMarkingReminders(): Promise<MarkingReminder[]> {
+  const awaiting = await listAssessmentsAwaitingMarking();
+
+  const byStaff = new Map<string, MarkingReminderItem[]>();
+  const add = (staffId: string, item: MarkingReminderItem) => {
+    const existing = byStaff.get(staffId);
+    if (existing) existing.push(item);
+    else byStaff.set(staffId, [item]);
+  };
+
+  for (const assessment of awaiting) {
+    const item = {
+      systemId: assessment.systemId,
+      title: assessment.title,
+      pendingScripts: assessment.pendingScripts,
+    };
+    if (assessment.createdBy) add(assessment.createdBy, { ...item, isAuthor: true });
+    for (const staffId of assessment.collaboratorIds) {
+      // An author who is also listed as a collaborator is reminded once, as
+      // the author.
+      if (staffId === assessment.createdBy) continue;
+      add(staffId, { ...item, isAuthor: false });
+    }
+  }
+
+  if (byStaff.size === 0) return [];
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, first_name, last_name, contact_email, email")
+    .in("id", [...byStaff.keys()])
+    .eq("is_active", true);
+  if (error) throw new Error(error.message);
+
+  return (data ?? [])
+    .map((profile) => {
+      const assessments = (byStaff.get(profile.id) ?? []).sort(
+        (a, b) => b.pendingScripts - a.pendingScripts
+      );
+      // contact_email is the human-facing address; email is Supabase Auth's
+      // identifier, which falls back to a placeholder for anyone created
+      // without a real one — so that placeholder is discarded, not mailed to.
+      const address = profile.contact_email || profile.email;
+      return {
+        staffId: profile.id,
+        name: [profile.first_name, profile.last_name].filter(Boolean).join(" ") || "there",
+        email:
+          address && !address.endsWith(`@${STUDENT_PLACEHOLDER_DOMAIN}`) ? address : null,
+        totalScripts: assessments.reduce((sum, a) => sum + a.pendingScripts, 0),
+        assessments,
+      };
+    })
+    .sort((a, b) => b.totalScripts - a.totalScripts);
 }

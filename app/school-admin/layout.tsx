@@ -19,6 +19,7 @@ import {
   TrendingUp,
   CalendarDays,
   Library,
+  NotebookPen,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -30,6 +31,7 @@ const NAV = [
   { href: '/school-admin/staff', label: 'Staff', icon: UserCog },
   { href: '/school-admin/students', label: 'Students', icon: GraduationCap },
   { href: '/school-admin/attendance', label: 'Attendance', icon: ClipboardCheck },
+  { href: '/school-admin/lessons', label: 'Lessons', icon: NotebookPen },
   { href: '/school-admin/assessments', label: 'Assessments', icon: ClipboardList },
   { href: '/school-admin/library', label: 'Library', icon: Library },
   { href: '/school-admin/performance', label: 'Performance', icon: TrendingUp },

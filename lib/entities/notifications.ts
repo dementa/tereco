@@ -9,7 +9,8 @@ export type NotificationType =
   | "new_student_request"
   | "lesson_digest"
   | "library_content_approved"
-  | "library_content_rejected";
+  | "library_content_rejected"
+  | "marking_reminder";
 
 export interface Notification {
   id: number;
