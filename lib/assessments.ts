@@ -926,19 +926,75 @@ async function getAssessmentById(assessmentId: string): Promise<Assessment | nul
   return data ? rowToAssessment(data as unknown as AssessmentRow) : null;
 }
 
-export async function getResponses(assessmentId: string): Promise<ResponseRecord[]> {
-  const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("responses")
-    .select(RESPONSE_COLUMNS)
-    .eq("submission.assessment_id", assessmentId);
+// PostgREST refuses to return more than max-rows (1000 on this project) from a
+// single request, and — this is the dangerous part — says nothing about having
+// truncated. You get 1000 rows back and error: null, indistinguishable from a
+// table that genuinely holds 1000 rows.
+//
+// That is what broke marking on ASS0025: 46 submissions x 25 questions = 1150
+// responses, of which the marking screen saw 1000. The 150 it could not see
+// had no response id to score against, so those answers failed with "That
+// question has no recorded answer to mark" and four learners could not be
+// marked at all.
+//
+// Raising max-rows is not the fix — it moves the same failure to a bigger
+// number and swaps a wrong answer for a timeout. Reads that grow with the
+// school either ask for less (see getResponses' submissionId) or come through
+// here.
+const PAGE_SIZE = 1000;
 
-  if (error) {
-    console.error("Error fetching responses:", error);
-    return [];
+/**
+ * Every row a query matches, read a page at a time.
+ *
+ * `page` must apply a total ordering — a sort with ties lets Postgres return
+ * tied rows in any order it likes per request, so pages overlap and drop rows.
+ * That would be the same truncation bug wearing a different hat, and just as
+ * quiet, so order by something unique or add a unique tiebreaker.
+ *
+ * Throws rather than returning what it managed to collect: a short list that
+ * reads as complete is exactly the failure this exists to prevent.
+ */
+async function readAllPages<T>(
+  page: (
+    from: number,
+    to: number
+  ) => PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>
+): Promise<T[]> {
+  const rows: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const batch = (data ?? []) as T[];
+    rows.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
   }
+  return rows;
+}
 
-  return (data as unknown as ResponseRow[]).map((row) => {
+export async function getResponses(
+  assessmentId: string,
+  submissionId?: string
+): Promise<ResponseRecord[]> {
+  const supabase = getSupabaseAdmin();
+
+  // Pass submissionId to read one learner's paper. Marking never needs more
+  // than that, and asking for one paper is what keeps this bounded by the
+  // question count (25 rows) rather than by the number of learners who sat the
+  // exam. The whole-assessment form remains for callers that genuinely want
+  // every paper.
+  const rows = await readAllPages<ResponseRow>((from, to) => {
+    let query = supabase
+      .from("responses")
+      .select(RESPONSE_COLUMNS)
+      // Kept even when submissionId is given: it constrains the submission to
+      // this assessment, so a submission id belonging to someone else's paper
+      // returns nothing rather than leaking it past the caller's authorisation.
+      .eq("submission.assessment_id", assessmentId);
+    if (submissionId) query = query.eq("submission_id", submissionId);
+    return query.order("id", { ascending: true }).range(from, to);
+  });
+
+  return rows.map((row) => {
     const student = row.submission?.student;
     const enrollment = row.submission?.enrollment;
     return {
@@ -1079,18 +1135,25 @@ const RESULT_COLUMNS =
  */
 export async function getAssessmentResults(assessmentId: string): Promise<AssessmentResult[]> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("assessment_submissions")
-    .select(RESULT_COLUMNS)
-    .eq("assessment_id", assessmentId)
-    .order("submitted_at", { ascending: true });
 
-  if (error) {
-    console.error("Error fetching results:", error);
-    return [];
-  }
+  // Grows with the number of learners who sat the exam, so it pages. An exam
+  // with more than 1000 sitters would otherwise return the first 1000 and look
+  // complete — markers would simply never see the rest of the register, with
+  // nothing on screen to suggest anyone was missing.
+  //
+  // submitted_at alone is not a total order (a class submitting together ties
+  // to the second), so id breaks the tie and keeps the pages from overlapping.
+  const rows = await readAllPages<ResultRow>((from, to) =>
+    supabase
+      .from("assessment_submissions")
+      .select(RESULT_COLUMNS)
+      .eq("assessment_id", assessmentId)
+      .order("submitted_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
 
-  return (data as unknown as ResultRow[]).map((row) => {
+  return rows.map((row) => {
     const student = row.student;
     const enrollment = row.enrollment;
     const total = row.total_score === null ? null : Number(row.total_score);
