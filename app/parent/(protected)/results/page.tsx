@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
@@ -70,23 +69,21 @@ export default function ParentResultsPage() {
   }, [selectedId, load]);
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Results</h1>
         <p className="text-sm text-text-muted">Every assessment your child has sat, newest first.</p>
       </div>
-      <Card>
-        <DataTable
-          rows={attempts}
-          columns={columns}
-          rowKey={(a) => a.assessmentSystemId}
-          loading={loading || childrenLoading}
-          initialSort={{ key: 'submittedAt', direction: 'desc' }}
-          searchPlaceholder="Search by assessment title…"
-          emptyMessage="No results yet."
-          exportFileName="child-results"
-        />
-      </Card>
+      <DataTable
+        rows={attempts}
+        columns={columns}
+        rowKey={(a) => a.assessmentSystemId}
+        loading={loading || childrenLoading}
+        initialSort={{ key: 'submittedAt', direction: 'desc' }}
+        searchPlaceholder="Search by assessment title…"
+        emptyMessage="No results yet."
+        exportFileName="child-results"
+      />
     </div>
   );
 }

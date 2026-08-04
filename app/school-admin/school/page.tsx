@@ -90,7 +90,7 @@ export default function SchoolAdminSchoolPage() {
                 {FIELDS.map(([label, value]) => (
                   <div key={label} className="flex justify-between gap-4 border-b border-[#FAFAFA] py-1.5">
                     <dt className="text-[#666666]">{label}</dt>
-                    <dd className="text-[#12333F] text-right">{value(school)}</dd>
+                    <dd className="text-[#12333F] text-right min-w-0 break-words">{value(school)}</dd>
                   </div>
                 ))}
               </dl>

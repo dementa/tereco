@@ -32,7 +32,7 @@ export function CredentialsCard({
   };
 
   return (
-    <div className="rounded-2xl border-2 border-primary-700/20 bg-primary-50 p-5 mb-6 print:border-black">
+    <div className="rounded-2xl border-2 border-primary-700/20 bg-primary-50 p-4 sm:p-5 mb-6 print:border-black">
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-semibold text-primary-900">Account created for {name}</p>
@@ -41,11 +41,11 @@ export function CredentialsCard({
         <button onClick={onDismiss} className="text-xs text-text-muted hover:text-primary-700 shrink-0">Dismiss</button>
       </div>
 
-      <div className="mt-4 grid grid-cols-2 gap-3">
+      <div className="mt-4 grid grid-cols-1 xs:grid-cols-2 gap-3">
         {systemId ? (
           <div className="bg-white rounded-xl p-3 border border-border">
             <p className="text-[10px] font-bold uppercase tracking-widest text-text-faint mb-1">System ID</p>
-            <p className="font-mono font-semibold text-primary-900">{systemId}</p>
+            <p className="font-mono font-semibold text-primary-900 break-all">{systemId}</p>
           </div>
         ) : (
           <div className="bg-white rounded-xl p-3 border border-border">
@@ -55,7 +55,7 @@ export function CredentialsCard({
         )}
         <div className="bg-white rounded-xl p-3 border border-border">
           <p className="text-[10px] font-bold uppercase tracking-widest text-text-faint mb-1">Temporary password</p>
-          <p className="font-mono font-semibold text-primary-900">{temporaryPassword}</p>
+          <p className="font-mono font-semibold text-primary-900 break-all">{temporaryPassword}</p>
         </div>
       </div>
 

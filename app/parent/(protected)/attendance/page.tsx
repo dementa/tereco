@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
@@ -58,23 +57,21 @@ export default function ParentAttendancePage() {
   }, [selectedId, load]);
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Attendance</h1>
         <p className="text-sm text-text-muted">Your child&apos;s attendance history, newest first.</p>
       </div>
-      <Card>
-        <DataTable
-          rows={records}
-          columns={columns}
-          rowKey={(a) => a.id}
-          loading={loading || childrenLoading}
-          initialSort={{ key: 'sessionDate', direction: 'desc' }}
-          searchPlaceholder="Search by class…"
-          emptyMessage="No attendance recorded yet."
-          exportFileName="child-attendance"
-        />
-      </Card>
+      <DataTable
+        rows={records}
+        columns={columns}
+        rowKey={(a) => a.id}
+        loading={loading || childrenLoading}
+        initialSort={{ key: 'sessionDate', direction: 'desc' }}
+        searchPlaceholder="Search by class…"
+        emptyMessage="No attendance recorded yet."
+        exportFileName="child-attendance"
+      />
     </div>
   );
 }

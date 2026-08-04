@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
@@ -136,6 +136,7 @@ function initials(name: string): string {
 
 export default function SystemStudentsPage() {
   const toast = useToast();
+  const router = useRouter();
   const [accounts, setAccounts] = useState<StudentAccount[]>([]);
   const [schools, setSchools] = useState<School[]>([]);
   const [classesForSchool, setClassesForSchool] = useState<SchoolClass[]>([]);
@@ -683,7 +684,7 @@ export default function SystemStudentsPage() {
   );
 
   return (
-    <div className="max-w-7xl space-y-4">
+    <div className="space-y-4">
       <div className="print:hidden">
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Student Accounts</h1>
         <p className="text-sm text-text-muted">
@@ -722,7 +723,7 @@ export default function SystemStudentsPage() {
                   </p>
                   {r.note && <p className="text-xs text-text-muted mt-0.5">&ldquo;{r.note}&rdquo;</p>}
                 </div>
-                <div className="flex gap-2 shrink-0">
+                <div className="flex flex-col xs:flex-row gap-2 shrink-0">
                   <Button
                     variant="outline"
                     disabled={requestBusyId === r.id}
@@ -905,23 +906,15 @@ export default function SystemStudentsPage() {
               v === 'active' ? a.isActive : v === 'inactive' ? !a.isActive : !a.className,
           },
         ]}
+        secondaryActions={[
+          { label: 'Import students', icon: Upload, onClick: () => router.push('/admin/system/students/import') },
+          { label: 'Reset passwords by class', icon: KeyRound, onClick: () => setResetByClassOpen(true) },
+        ]}
         actions={
-          <>
-            <Link href="/admin/system/students/import">
-              <Button variant="outline">
-                <Upload className="w-4 h-4 mr-1.5" aria-hidden />
-                Import
-              </Button>
-            </Link>
-            <Button variant="outline" onClick={() => setResetByClassOpen(true)}>
-              <KeyRound className="w-4 h-4 mr-1.5" aria-hidden />
-              Reset by class
-            </Button>
-            <Button onClick={() => setShowForm((v) => !v)}>
-              <UserPlus className="w-4 h-4 mr-1.5" aria-hidden />
-              New student
-            </Button>
-          </>
+          <Button onClick={() => setShowForm((v) => !v)}>
+            <UserPlus className="w-4 h-4 mr-1.5" aria-hidden />
+            New student
+          </Button>
         }
       />
 
@@ -944,7 +937,7 @@ export default function SystemStudentsPage() {
               {VIEW_FIELDS.map(([label, value]) => (
                 <div key={label} className="flex justify-between gap-4 border-b border-[#FAFAFA] py-1.5">
                   <dt className="text-[#666666]">{label}</dt>
-                  <dd className="text-[#12333F] text-right">{value(viewing) || '—'}</dd>
+                  <dd className="text-[#12333F] text-right min-w-0 break-words">{value(viewing) || '—'}</dd>
                 </div>
               ))}
             </dl>
@@ -1017,7 +1010,7 @@ export default function SystemStudentsPage() {
               enrolments, submissions and audit records. Use &ldquo;Move&rdquo; to change their school, class
               or stream — placement is a dated record, not a plain edit.
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-col xs:flex-row gap-2">
               <Button type="submit" isLoading={savingEdit}>
                 Save changes
               </Button>
@@ -1111,7 +1104,7 @@ export default function SystemStudentsPage() {
               is kept, so past lesson reports and results still show the class they were actually in.
             </p>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col xs:flex-row gap-2">
               <Button type="submit" isLoading={movingBusy}>
                 {moveForm.move === 'withdraw' ? 'Withdraw student' : 'Move student'}
               </Button>
@@ -1208,7 +1201,7 @@ export default function SystemStudentsPage() {
                   {resetMatches.length} active student{resetMatches.length === 1 ? '' : 's'} match this selection.
                 </p>
               )}
-              <div className="flex gap-2">
+              <div className="flex flex-col xs:flex-row gap-2">
                 <Button
                   type="button"
                   onClick={() => void performClassReset()}

@@ -9,17 +9,17 @@ const FORMS = [
 
 export default function StaffFormsPage() {
   return (
-    <div className="max-w-5xl">
+    <div className="w-full">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">Data Forms</h1>
       <p className="text-sm text-text-muted mb-6">Field forms you fill as a teacher.</p>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
         {FORMS.map((f) => {
           const Icon = f.icon;
           return (
             <Link key={f.href} href={f.href}>
               <Card hover className="p-5 h-full">
-                <div className="p-2.5 rounded-xl bg-bg-muted w-fit mb-3">
+                <div className="p-2 sm:p-2.5 rounded-xl bg-bg-muted w-fit mb-2 sm:mb-3">
                   <Icon className="w-5 h-5 text-primary-700" />
                 </div>
                 <p className="font-semibold text-primary-900">{f.label}</p>

@@ -22,7 +22,20 @@ export interface DropdownMenuItem {
  * absolutely-positioned menu, so the menu lives on document.body and is
  * pinned to the trigger's rect (flipping above when there's no room below).
  */
-export function DropdownMenu({ items, label = 'Actions' }: { items: DropdownMenuItem[]; label?: string }) {
+export function DropdownMenu({
+  items,
+  label = 'Actions',
+  triggerClassName,
+}: {
+  items: DropdownMenuItem[];
+  label?: string;
+  /**
+   * Overrides the bare icon-button trigger. Row menus want the borderless
+   * default; a menu sitting in a toolbar next to real buttons needs a border
+   * and their height, or the row stops reading as one row.
+   */
+  triggerClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
   const btnRef = useRef<HTMLButtonElement>(null);
@@ -76,9 +89,12 @@ export function DropdownMenu({ items, label = 'Actions' }: { items: DropdownMenu
           e.stopPropagation();
           setOpen((v) => !v);
         }}
-        className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#666666] transition-colors hover:bg-[#F5F5F5] hover:text-[#171717] ${
-          open ? 'bg-[#F5F5F5] text-[#171717]' : ''
-        }`}
+        className={
+          triggerClassName ??
+          `inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#666666] transition-colors hover:bg-[#F5F5F5] hover:text-[#171717] ${
+            open ? 'bg-[#F5F5F5] text-[#171717]' : ''
+          }`
+        }
       >
         <MoreHorizontal className="h-4 w-4" aria-hidden />
       </button>

@@ -33,7 +33,7 @@ export default function MyResultsPage() {
   }, []);
 
   return (
-    <div className="max-w-4xl">
+    <div className="w-full">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">My Results</h1>
       <p className="text-sm text-text-muted mb-6">
         Every assessment you&apos;ve sat, whether or not you noticed the notification.

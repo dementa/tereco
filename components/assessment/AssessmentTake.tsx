@@ -344,28 +344,33 @@ export function AssessmentTake() {
     : [];
 
   return (
-    <div className="min-h-screen bg-bg py-6 px-4">
-      <header className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-3 mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-primary-900">{assessmentTitle}</h1>
+    <div className="min-h-screen bg-bg py-4 sm:py-6 px-3 sm:px-4">
+      {/*
+        On a phone the timer is the thing a learner glances at mid-question, so
+        it and Submit stay on their own full-width line under the title rather
+        than competing with it for horizontal space.
+      */}
+      <header className="max-w-4xl mx-auto flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3 mb-4 sm:mb-6">
+        <div className="min-w-0">
+          <h1 className="text-lg sm:text-xl font-bold text-primary-900 break-words">{assessmentTitle}</h1>
           <p className="text-sm text-text-muted">
             Question {currentIndex + 1} of {total} • {answeredCount} answered
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
           {timeLimit > 0 && (
-            <div className={`flex items-center gap-2 px-4 py-2 rounded-xl ${isTimeLow ? 'bg-error-bg text-error' : 'bg-white text-primary-900'}`}>
-              <Clock className="w-4 h-4" />
-              <span className="font-mono font-bold text-lg">{timeStr}</span>
+            <div className={`flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl ${isTimeLow ? 'bg-error-bg text-error' : 'bg-white text-primary-900'}`}>
+              <Clock className="w-4 h-4 shrink-0" />
+              <span className="font-mono font-bold text-base sm:text-lg tabular-nums">{timeStr}</span>
             </div>
           )}
-          <Button variant="outline" onClick={submitAnswers} disabled={submitting} className="text-sm">
+          <Button inline variant="outline" onClick={submitAnswers} disabled={submitting} className="text-sm">
             Submit
           </Button>
         </div>
       </header>
 
-      <Card className="max-w-4xl mx-auto p-6">
+      <Card className="max-w-4xl mx-auto p-3.5 sm:p-6">
         <div className="mb-4">
           {q.config?.section && (
             <p className="text-[10px] font-semibold text-[#666666] uppercase tracking-wider mb-1">
@@ -389,7 +394,7 @@ export function AssessmentTake() {
               <img
                 src={currentGroup.groupImageUrl}
                 alt=""
-                className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#FAFAFA]"
+                className="mt-3 max-h-56 sm:max-h-72 max-w-full w-auto rounded-xl object-contain bg-[#FAFAFA]"
               />
             </>
           )}
@@ -407,7 +412,7 @@ export function AssessmentTake() {
                 <img
                   src={stemQuestion.imageUrl}
                   alt=""
-                  className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#FAFAFA]"
+                  className="mt-3 max-h-56 sm:max-h-72 max-w-full w-auto rounded-xl object-contain bg-[#FAFAFA]"
                 />
               )}
             </>
@@ -432,7 +437,7 @@ export function AssessmentTake() {
               <img
                 src={q.imageUrl}
                 alt=""
-                className="mt-3 max-h-72 w-auto rounded-xl object-contain bg-[#FAFAFA]"
+                className="mt-3 max-h-56 sm:max-h-72 max-w-full w-auto rounded-xl object-contain bg-[#FAFAFA]"
               />
             </>
           )}
@@ -498,18 +503,27 @@ export function AssessmentTake() {
         </div>
         )}
 
-        <div className="flex justify-between items-center mt-6 pt-4 border-t border-border">
-          <Button variant="outline" onClick={() => goToQuestion(currentIndex - 1)} disabled={isFirst}>
-            <ChevronLeft className="w-4 h-4 mr-1" /> Previous
+        {/*
+          `inline` on all three: these buttons share a row at every width, and
+          the default full-width-on-phones behaviour made Previous and Next each
+          claim the whole line and crush each other around the counter.
+        */}
+        <div className="flex justify-between items-center gap-2 mt-6 pt-4 border-t border-border">
+          <Button inline variant="outline" onClick={() => goToQuestion(currentIndex - 1)} disabled={isFirst}>
+            <ChevronLeft className="w-4 h-4 sm:mr-1" />
+            <span className="hidden xs:inline">Previous</span>
           </Button>
-          <span className="text-xs text-text-faint">{currentIndex + 1} of {total}</span>
+          <span className="text-xs text-text-faint tabular-nums shrink-0">{currentIndex + 1} of {total}</span>
           {isLast ? (
-            <Button variant="primary" onClick={submitAnswers} isLoading={submitting}>
-              Submit Assessment <CheckCircle className="w-4 h-4 ml-1" />
+            <Button inline variant="primary" onClick={submitAnswers} isLoading={submitting}>
+              <span className="xs:hidden">Submit</span>
+              <span className="hidden xs:inline">Submit Assessment</span>
+              <CheckCircle className="w-4 h-4 sm:ml-1" />
             </Button>
           ) : (
-            <Button variant="primary" onClick={() => goToQuestion(currentIndex + 1)}>
-              Next <ChevronRight className="w-4 h-4 ml-1" />
+            <Button inline variant="primary" onClick={() => goToQuestion(currentIndex + 1)}>
+              <span className="hidden xs:inline">Next</span>
+              <ChevronRight className="w-4 h-4 sm:ml-1" />
             </Button>
           )}
         </div>

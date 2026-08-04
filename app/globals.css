@@ -56,7 +56,16 @@
   --color-error-bg:   #FDECEA;
 
   /* ── Fonts ── */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Note: next/font sets --font-sans to Quicksand on <html> (app/layout.tsx),
+     which overrides this. This value is only the fallback if that ever goes. */
+  --font-sans: 'Quicksand', -apple-system, BlinkMacSystemFont, sans-serif;
+
+  /* ── Breakpoints ── */
+  /* Real phones are 360–430px, but the smallest breakpoint Tailwind ships is
+     `sm` at 640px — so every "mobile" layout in this app was actually authored
+     for a screen almost twice the width of the device it runs on. `xs` gives
+     multi-column layouts somewhere to turn back into a single column. */
+  --breakpoint-xs: 30rem; /* 480px */
 }
 
 /*

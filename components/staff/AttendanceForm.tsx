@@ -309,18 +309,18 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
     1: (
       <div className="space-y-4">
         {activeRoster.length > 0 && (
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-4 py-3.5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Present</p>
-              <p className="text-2xl font-bold text-[#011E28] tabular-nums">{presentCount}</p>
+          <div className="grid grid-cols-3 gap-2 xs:gap-3">
+            <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-2.5 py-2.5 xs:px-4 xs:py-3.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide xs:tracking-widest text-[#0489AE] mb-0.5">Present</p>
+              <p className="text-xl xs:text-2xl font-bold text-[#011E28] tabular-nums">{presentCount}</p>
             </div>
-            <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-4 py-3.5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Absent</p>
-              <p className="text-2xl font-bold text-[#011E28] tabular-nums">{absentCount}</p>
+            <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-2.5 py-2.5 xs:px-4 xs:py-3.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide xs:tracking-widest text-[#0489AE] mb-0.5">Absent</p>
+              <p className="text-xl xs:text-2xl font-bold text-[#011E28] tabular-nums">{absentCount}</p>
             </div>
-            <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-4 py-3.5">
-              <p className="text-[10px] font-bold uppercase tracking-widest text-[#0489AE] mb-0.5">Rate</p>
-              <p className="text-2xl font-bold text-[#011E28] tabular-nums">
+            <div className="rounded-xl bg-[#F5F5F5] border border-[#02465B]/08 px-2.5 py-2.5 xs:px-4 xs:py-3.5">
+              <p className="text-[10px] font-bold uppercase tracking-wide xs:tracking-widest text-[#0489AE] mb-0.5">Rate</p>
+              <p className="text-xl xs:text-2xl font-bold text-[#011E28] tabular-nums">
                 {activeRoster.length > 0 ? `${Math.round((presentCount / activeRoster.length) * 100)}%` : '—'}
               </p>
             </div>

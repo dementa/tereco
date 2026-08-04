@@ -159,7 +159,7 @@ export default function AdminAssessments() {
   );
 
   return (
-    <div className="max-w-7xl space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Assessments</h1>
         <p className="text-sm text-text-muted">

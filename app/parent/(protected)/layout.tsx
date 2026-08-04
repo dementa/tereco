@@ -107,7 +107,7 @@ function ParentShell({ children: nodes }: { children: React.ReactNode }) {
           </div>
           <ChildSwitcher />
         </div>
-        <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-x-hidden">{nodes}</main>
+        <main className="flex-1 p-3 sm:p-6 md:p-8">{nodes}</main>
       </div>
     </div>
   );

@@ -5,6 +5,7 @@ import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, 
 import { Card } from '@/components/ui/Card';
 import { Leaderboard, type LeaderboardRowData } from '@/components/ui/Leaderboard';
 import { useToast } from '@/components/ui/ToastProvider';
+import { useIsPhone } from '@/lib/useMediaQuery';
 
 // Keep in sync with --color-accent-dark in app/globals.css — Recharts fills
 // need a resolved color, not a CSS custom property reference.
@@ -43,6 +44,7 @@ export default function AdminPerformancePage() {
   const [benchmark, setBenchmark] = useState<SchoolBenchmarkEntry[]>([]);
   const [benchmarkLoading, setBenchmarkLoading] = useState(true);
   const [view, setView] = useState<'chart' | 'table'>('chart');
+  const isPhone = useIsPhone();
 
   const [schoolId, setSchoolId] = useState('');
   const [drillDown, setDrillDown] = useState<LeaderboardEntry[]>([]);
@@ -99,7 +101,7 @@ export default function AdminPerformancePage() {
   const chartHeight = Math.max(120, benchmark.length * 44);
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Performance</h1>
         <p className="text-sm text-text-muted">Schools ranked by average student performance this academic year.</p>
@@ -131,50 +133,67 @@ export default function AdminPerformancePage() {
         ) : view === 'chart' ? (
           <div style={{ width: '100%', height: chartHeight }}>
             <ResponsiveContainer>
-              <BarChart data={benchmark} layout="vertical" margin={{ left: 8, right: 32 }}>
+              {/*
+                Axis width and right margin are numeric props, so they cannot be
+                done with a breakpoint. At 120px the category axis was taking
+                most of a 360px screen and leaving the bars almost no room, so
+                phones get a narrower axis, a smaller label and no room reserved
+                for the value label (which is hidden there anyway).
+              */}
+              <BarChart data={benchmark} layout="vertical" margin={{ left: 8, right: isPhone ? 8 : 32 }}>
                 <CartesianGrid horizontal={false} stroke="var(--color-bg-muted)" />
-                <XAxis type="number" domain={[0, 100]} tick={{ fill: 'var(--color-text-muted)', fontSize: 12 }} />
+                <XAxis type="number" domain={[0, 100]} tick={{ fill: 'var(--color-text-muted)', fontSize: isPhone ? 10 : 12 }} />
                 <YAxis
                   type="category"
                   dataKey="schoolName"
-                  width={120}
-                  tick={{ fill: 'var(--color-text-secondary)', fontSize: 12 }}
+                  width={isPhone ? 76 : 120}
+                  tick={{ fill: 'var(--color-text-secondary)', fontSize: isPhone ? 10 : 12 }}
                 />
                 <Tooltip
                   formatter={(value) => [`${value}%`, 'Average']}
                   contentStyle={{ borderRadius: 8, borderColor: 'var(--color-primary-100)', fontSize: 12 }}
                 />
-                <Bar dataKey="averagePercentage" fill={ACCENT_DARK} radius={[0, 4, 4, 0]} barSize={18}>
-                  <LabelList dataKey="averagePercentage" position="right" formatter={(v) => `${v}%`} style={{ fill: 'var(--color-text-secondary)', fontSize: 12 }} />
+                <Bar dataKey="averagePercentage" fill={ACCENT_DARK} radius={[0, 4, 4, 0]} barSize={isPhone ? 14 : 18}>
+                  {!isPhone && (
+                    <LabelList dataKey="averagePercentage" position="right" formatter={(v) => `${v}%`} style={{ fill: 'var(--color-text-secondary)', fontSize: 12 }} />
+                  )}
                 </Bar>
               </BarChart>
             </ResponsiveContainer>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="text-left text-text-muted border-b border-border">
-                  <th className="py-2 pr-4">Rank</th>
-                  <th className="py-2 pr-4">School</th>
-                  <th className="py-2 pr-4">Students assessed</th>
-                  <th className="py-2 pr-4">Average</th>
-                  <th className="py-2 pr-4">Median</th>
+          // Five columns will not fit a phone, and sideways-scrolling a table on
+          // one is unusable — so the two supporting columns drop out below `sm`
+          // and fold into the school cell instead, the same trade DataTable makes.
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-text-muted border-b border-border">
+                <th className="py-2 pr-2 sm:pr-4">Rank</th>
+                <th className="py-2 pr-2 sm:pr-4">School</th>
+                <th className="py-2 pr-4 hidden sm:table-cell">Students assessed</th>
+                <th className="py-2 pr-2 sm:pr-4 text-right sm:text-left">Average</th>
+                <th className="py-2 pr-4 hidden sm:table-cell">Median</th>
+              </tr>
+            </thead>
+            <tbody>
+              {benchmark.map((row) => (
+                <tr key={row.schoolId} className="border-b border-primary-50 align-top">
+                  <td className="py-2 pr-2 sm:pr-4 text-text-primary tabular-nums">{row.rank}</td>
+                  <td className="py-2 pr-2 sm:pr-4 text-text-primary">
+                    {row.schoolName}
+                    <span className="block sm:hidden text-xs text-text-muted">
+                      {row.studentsAssessed} assessed · median {row.medianPercentage}%
+                    </span>
+                  </td>
+                  <td className="py-2 pr-4 text-text-secondary hidden sm:table-cell">{row.studentsAssessed}</td>
+                  <td className="py-2 pr-2 sm:pr-4 text-text-secondary tabular-nums text-right sm:text-left">
+                    {row.averagePercentage}%
+                  </td>
+                  <td className="py-2 pr-4 text-text-secondary hidden sm:table-cell">{row.medianPercentage}%</td>
                 </tr>
-              </thead>
-              <tbody>
-                {benchmark.map((row) => (
-                  <tr key={row.schoolId} className="border-b border-primary-50">
-                    <td className="py-2 pr-4 text-text-primary">{row.rank}</td>
-                    <td className="py-2 pr-4 text-text-primary">{row.schoolName}</td>
-                    <td className="py-2 pr-4 text-text-secondary">{row.studentsAssessed}</td>
-                    <td className="py-2 pr-4 text-text-secondary">{row.averagePercentage}%</td>
-                    <td className="py-2 pr-4 text-text-secondary">{row.medianPercentage}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
         )}
       </Card>
 

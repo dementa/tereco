@@ -319,7 +319,7 @@ export default function MarkingPage() {
   const unmarked = results.filter((r) => r.percentage === null).length;
 
   return (
-    <div className="max-w-7xl space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Marking</h1>
         <p className="text-sm text-text-muted">
@@ -433,7 +433,7 @@ export default function MarkingPage() {
                       title={`Open page ${scan.pageNumber} full size`}
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img src={scan.url} alt={`Page ${scan.pageNumber}`} className="h-40 w-auto object-contain bg-[#FAFAFA]" />
+                      <img src={scan.url} alt={`Page ${scan.pageNumber}`} className="h-40 w-auto max-w-[70vw] sm:max-w-none object-contain bg-[#FAFAFA]" />
                       <span className="block text-center text-xs text-[#666666] py-1">
                         Page {scan.pageNumber}
                       </span>

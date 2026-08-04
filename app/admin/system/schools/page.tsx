@@ -482,7 +482,7 @@ export default function SystemSchoolsPage() {
   );
 
   return (
-    <div className="max-w-7xl space-y-4">
+    <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Schools</h1>
         <p className="text-sm text-text-muted">
@@ -688,7 +688,7 @@ export default function SystemSchoolsPage() {
             <p className="text-xs text-text-muted">
               The contact person is set from a staff account at this school, on the Staff page.
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-col xs:flex-row gap-2">
               <Button type="submit" isLoading={savingEdit}>
                 Save changes
               </Button>

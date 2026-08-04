@@ -174,7 +174,7 @@ export default function StudentResultPage() {
           {new Date(script.submittedAt).toLocaleDateString('en-GB')}
         </p>
 
-        <div className="grid grid-cols-2 gap-3 mt-4">
+        <div className="grid grid-cols-1 xs:grid-cols-2 gap-3 mt-4">
           {/* The mark out of 100 leads — a paper out of 65 or 40 marks still
               reads the way Ugandan report cards do, with the raw score as a
               reference line underneath rather than the headline number. */}

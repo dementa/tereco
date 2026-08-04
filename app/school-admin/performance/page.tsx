@@ -115,7 +115,7 @@ export default function SchoolAdminPerformancePage() {
   const selectedClass = classes.find((c) => c.id === classId);
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Performance</h1>
         <p className="text-sm text-text-muted">Ranked by average marked-assessment percentage this academic year.</p>

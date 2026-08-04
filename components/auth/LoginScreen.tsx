@@ -153,7 +153,7 @@ export const LoginScreen: React.FC<{
               </div>
               <Button
                 variant="primary"
-                className="w-full justify-center text-base py-3"
+                className="w-full justify-center text-base h-11"
                 type="submit"
                 isLoading={forgotLoading}
               >
@@ -267,7 +267,7 @@ export const LoginScreen: React.FC<{
 
           <Button
             variant="primary"
-            className="w-full justify-center text-base py-3"
+            className="w-full justify-center text-base h-11"
             type="submit"
             isLoading={isLoading}
             disabled={isLocked}
