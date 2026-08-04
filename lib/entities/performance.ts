@@ -183,20 +183,35 @@ interface StudentTrendRow {
   total_score: number | null;
   max_score: number | null;
   status: string;
-  assessment: {
-    deleted_at: string | null;
-    term: { id: string; number: number; academic_year_id: string } | null;
-  } | null;
+  submitted_at: string;
+  enrollment: { school_id: string; academic_year_id: string } | null;
+  assessment: { deleted_at: string | null } | null;
 }
 
 const STUDENT_TREND_COLUMNS =
-  "total_score, max_score, status, assessment:assessments!inner(deleted_at, term:terms(id, number, academic_year_id))";
+  "total_score, max_score, status, submitted_at, " +
+  "enrollment:enrollments!inner(school_id, academic_year_id), " +
+  "assessment:assessments!inner(deleted_at)";
 
 /**
  * A student's own average percentage per term, oldest first — their own
  * data only, already fully visible to them today via "My Results", so this
  * is not a new privacy surface. Used to build a term-over-term encouragement
  * message for students outside the top 3, never a comparison to classmates.
+ *
+ * The term is resolved from the SUBMISSION, not from assessments.term_id.
+ * That column has never been populated on any row and cannot be: an
+ * assessment is targeted via assessment_targets and may span several schools
+ * (or none at all, meaning every school), while terms are per-school, so a
+ * multi-school assessment has no single correct term. Reading it meant this
+ * function returned an empty array for every student and the encouragement
+ * message was permanently stuck on its "no marked results yet" branch.
+ *
+ * A submission is unambiguous by comparison — enrollment_id resolves to
+ * exactly one school, and submitted_at to one date — so the term is looked up
+ * the same way term_for_date() does it in SQL: containment between starts_on
+ * and ends_on. Resolving per submission also keeps a student who transferred
+ * mid-year attributed to the term of the school they actually sat in.
  */
 export async function getStudentTermAverages(studentId: string, academicYearId?: string): Promise<TermAverage[]> {
   let yearId = academicYearId;
@@ -216,11 +231,32 @@ export async function getStudentTermAverages(studentId: string, academicYearId?:
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as unknown as StudentTrendRow[];
+  const scored = rows.filter(
+    (row) => isRankable(row) && row.enrollment && row.enrollment.academic_year_id === yearId
+  );
+  if (scored.length === 0) return [];
+
+  // One lookup for every school this student sat in, rather than one per
+  // submission — a transfer makes that more than one school, but never many.
+  const schoolIds = Array.from(new Set(scored.map((row) => row.enrollment!.school_id)));
+  const { data: termRows, error: termError } = await supabase
+    .from("terms")
+    .select("id, number, school_id, starts_on, ends_on")
+    .in("school_id", schoolIds)
+    .eq("academic_year_id", yearId);
+  if (termError) throw new Error(termError.message);
+
+  const terms = termRows ?? [];
   const byTerm = new Map<string, { number: number; percentages: number[] }>();
-  for (const row of rows) {
-    const term = row.assessment?.term;
-    if (!term || term.academic_year_id !== yearId) continue;
-    if (!isRankable(row)) continue;
+  for (const row of scored) {
+    const submittedOn = row.submitted_at.slice(0, 10);
+    const term = terms.find(
+      (t) => t.school_id === row.enrollment!.school_id && t.starts_on <= submittedOn && submittedOn <= t.ends_on
+    );
+    // A submission outside every defined term is dropped rather than lumped
+    // into the nearest one — a school that has not defined its terms yet
+    // should show no term trend, not a fabricated one.
+    if (!term) continue;
     const percentage = percentOf(row.total_score as number, row.max_score as number);
     const existing = byTerm.get(term.id);
     if (existing) existing.percentages.push(percentage);
