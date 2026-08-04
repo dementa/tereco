@@ -32,11 +32,67 @@ interface SubmissionAggRow {
   status: string;
   total_score: number | null;
   max_score: number | null;
+  submitted_at: string;
   student: { system_id: string | null; first_name: string; middle_name: string | null; last_name: string } | null;
 }
 
 const LEADERBOARD_COLUMNS =
-  "student_id, total_score, max_score, status, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments!inner(school_id, class_id, stream_id, academic_year_id), assessment:assessments!inner(id, term_id, deleted_at)";
+  "student_id, total_score, max_score, status, submitted_at, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments!inner(school_id, class_id, stream_id, academic_year_id), assessment:assessments!inner(id, deleted_at)";
+
+interface TermWindow {
+  id: string;
+  number: number;
+  school_id: string;
+  starts_on: string;
+  ends_on: string;
+}
+
+/**
+ * Whether a submission falls inside a term, by the date it was submitted.
+ *
+ * Nothing here filters on assessments.term_id, and nothing should. That column
+ * has never held a value on any row and cannot: an assessment is targeted
+ * through assessment_targets and may span several schools — or none at all,
+ * meaning every school — while terms are per-school, so a multi-school
+ * assessment has no single correct term. Filtering on it silently matched
+ * nothing, which is a worse failure than an error: picking "Term II" emptied
+ * the leaderboard, the honour roll and the cross-school benchmark, and each
+ * read as "nobody has done any work" rather than "this filter is broken".
+ *
+ * A submission is unambiguous by comparison — enrollment_id resolves to one
+ * school, submitted_at to one date — so containment is checked the same way
+ * term_for_date() does it in SQL.
+ */
+function inTerm(term: TermWindow, submittedAt: string): boolean {
+  const on = submittedAt.slice(0, 10);
+  return term.starts_on <= on && on <= term.ends_on;
+}
+
+/**
+ * The day after `date`, as an exclusive upper bound.
+ *
+ * submitted_at is a timestamp and ends_on is a date, so `submitted_at <=
+ * ends_on` would compare against midnight and silently drop everything
+ * submitted during the term's last day — the day an end-of-term paper is most
+ * likely to be sat.
+ */
+function nextDay(date: string): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + 1);
+  return d.toISOString().slice(0, 10);
+}
+
+/** One school's term, used to turn a termId into a date window. */
+async function getTermWindow(termId: string): Promise<TermWindow | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("terms")
+    .select("id, number, school_id, starts_on, ends_on")
+    .eq("id", termId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return (data as TermWindow | null) ?? null;
+}
 
 /**
  * A submission only has a meaningful percentage once marking is finished.
@@ -87,8 +143,18 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
 
   if (classId) query = query.eq("enrollment.class_id", classId);
   if (streamId) query = query.eq("enrollment.stream_id", streamId);
-  if (termId) query = query.eq("assessment.term_id", termId);
   if (assessmentId) query = query.eq("assessment_id", assessmentId);
+
+  // The term narrows by submission date, not by assessment.term_id — see
+  // inTerm(). A term belonging to another school is treated as matching
+  // nothing rather than ignored, so a mismatched filter cannot quietly widen
+  // the result to the whole year.
+  let term: TermWindow | null = null;
+  if (termId) {
+    term = await getTermWindow(termId);
+    if (!term || term.school_id !== schoolId) return [];
+    query = query.gte("submitted_at", term.starts_on).lt("submitted_at", nextDay(term.ends_on));
+  }
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
@@ -98,6 +164,7 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
   const byStudent = new Map<string, { name: string; systemId: string | null; percentages: number[] }>();
   for (const row of rows) {
     if (!isRankable(row)) continue;
+    if (term && !inTerm(term, row.submitted_at)) continue;
     const percentage = percentOf(row.total_score as number, row.max_score as number);
     const existing = byStudent.get(row.student_id);
     if (existing) {
@@ -376,6 +443,7 @@ interface BenchmarkRow {
   status: string;
   total_score: number | null;
   max_score: number | null;
+  submitted_at: string;
   enrollment: { school_id: string; school: { name: string } | null } | null;
 }
 
@@ -383,7 +451,7 @@ interface BenchmarkRow {
 // doesn't need any student's name, so the query can't return one. This is the
 // actual privacy boundary for the cross-school view, not a later field-strip.
 const BENCHMARK_COLUMNS =
-  "student_id, total_score, max_score, status, enrollment:enrollments!inner(school_id, academic_year_id, school:schools(name)), assessment:assessments!inner(id, term_id, deleted_at)";
+  "student_id, total_score, max_score, status, submitted_at, enrollment:enrollments!inner(school_id, academic_year_id, school:schools(name)), assessment:assessments!inner(id, deleted_at)";
 
 function median(sorted: number[]): number {
   const mid = Math.floor(sorted.length / 2);
@@ -418,8 +486,36 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
     .eq("enrollment.academic_year_id", academicYearId)
     .is("assessment.deleted_at", null);
 
-  if (termId) query = query.eq("assessment.term_id", termId);
   if (assessmentId) query = query.eq("assessment_id", assessmentId);
+
+  // "Term II" means each school's OWN Term II, not one school's dates imposed
+  // on everyone. The schools do not sit their terms on the same days —
+  // Ebenezer's Term 2 ends 12 August and Little Pine's on the 21st — so a
+  // single date window would judge one school on nine days of work the other
+  // never had, in a view whose entire purpose is comparing them fairly.
+  //
+  // So the selected term is resolved to its NUMBER, and every school is then
+  // matched against its own term of that number. A school that has not defined
+  // that term contributes nothing rather than being compared on a guess.
+  let termsByNumber: TermWindow[] = [];
+  if (termId) {
+    const selected = await getTermWindow(termId);
+    if (!selected) return [];
+    const { data: peers, error: termError } = await supabase
+      .from("terms")
+      .select("id, number, school_id, starts_on, ends_on")
+      .eq("academic_year_id", academicYearId)
+      .eq("number", selected.number);
+    if (termError) throw new Error(termError.message);
+    termsByNumber = (peers ?? []) as TermWindow[];
+    if (termsByNumber.length === 0) return [];
+
+    // Narrow in SQL to the widest window any school uses, so the row count
+    // stays bounded; the per-school check below is what makes it exact.
+    const earliest = termsByNumber.reduce((a, t) => (t.starts_on < a ? t.starts_on : a), termsByNumber[0].starts_on);
+    const latest = termsByNumber.reduce((a, t) => (t.ends_on > a ? t.ends_on : a), termsByNumber[0].ends_on);
+    query = query.gte("submitted_at", earliest).lt("submitted_at", nextDay(latest));
+  }
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
@@ -431,6 +527,10 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
   const byStudent = new Map<string, { schoolId: string; schoolName: string; percentages: number[] }>();
   for (const row of rows) {
     if (!isRankable(row) || !row.enrollment) continue;
+    if (termId) {
+      const own = termsByNumber.find((t) => t.school_id === row.enrollment!.school_id);
+      if (!own || !inTerm(own, row.submitted_at)) continue;
+    }
     const percentage = percentOf(row.total_score as number, row.max_score as number);
     const existing = byStudent.get(row.student_id);
     if (existing) {
