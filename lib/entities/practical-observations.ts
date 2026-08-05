@@ -787,11 +787,267 @@ export async function getPracticalTermScoreForStudent(
   return scores[0] ?? null;
 }
 
+// ─── Contribution to performance ────────────────────────────────────────────
+
+export interface BlendedPerformance {
+  /** Mean of marked assessment percentages, 0-100, or null when nothing is marked. */
+  written: number | null;
+  /** Practical score, 0-100, or null below MINIMUM_ROUNDS. */
+  practical: number | null;
+  /** Share of the overall figure taken from practical, 0..1. */
+  weight: number;
+  /** What goes on the report. Equals `written` whenever weight is 0 or practical is null. */
+  overall: number | null;
+}
+
+/**
+ * How much practical skills actually move a learner's performance figure.
+ *
+ * ─── The rule that matters ──────────────────────────────────────────────────
+ * A learner with NO practical score is never penalised. If practical is null —
+ * fewer than MINIMUM_ROUNDS observed rounds — the overall figure is simply the
+ * written one, not the written one scaled down by (1 - weight). Blending a
+ * missing value as though it were zero would quietly punish a child for lessons
+ * their teacher did not score, which is not something the child did.
+ *
+ * The same applies in reverse: practical alone is not a performance figure. A
+ * learner with observations but no marked papers keeps a null overall rather
+ * than being ranked on lab skills alone.
+ *
+ * At weight 0 this returns the written figure untouched, which is the shipped
+ * state. The mechanism exists so that turning it on later is a settings change,
+ * not a release — and so the weight can be chosen against real distributions
+ * rather than guessed at now.
+ */
+export function blendPerformance(
+  written: number | null,
+  practical: number | null,
+  weight: number
+): BlendedPerformance {
+  const w = Math.min(1, Math.max(0, weight));
+  const overall =
+    written === null
+      ? null
+      : practical === null || w === 0
+        ? written
+        : Math.round((written * (1 - w) + practical * w) * 10) / 10;
+
+  return { written, practical, weight: w, overall };
+}
+
+/** A school's configured weight. Missing school or missing row reads as 0, never as a guess. */
+export async function getPracticalWeight(schoolId: string | null): Promise<number> {
+  if (!schoolId) return 0;
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("schools")
+    .select("practical_weight")
+    .eq("id", schoolId)
+    .maybeSingle();
+  if (error) {
+    console.error("Could not read practical weight:", error.message);
+    return 0;
+  }
+  return Number(data?.practical_weight ?? 0);
+}
+
+// ─── Attached to a lesson, or to a paper ────────────────────────────────────
+
+export interface RoundContext {
+  sessionId: string;
+  kind: SessionKind;
+  scoredAt: string | null;
+  learners: number;
+  aspects: ClassAspectSummary[];
+}
+
+/**
+ * The practical picture for one lesson report, for whoever is reviewing it.
+ *
+ * A reviewer looking at a lesson currently sees what the teacher wrote about the
+ * class as a whole. This says what was actually observed about the learners in
+ * it — and, just as usefully, says nothing at all when the lesson was not a lab
+ * lesson or was never scored, so an empty panel is never mistaken for a good one.
+ */
+export async function getPracticalForLessonReport(
+  lessonReportId: string
+): Promise<RoundContext | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("attendance_sessions")
+    .select("id, kind, is_practical, practical_scored_at, practical_rubric_version")
+    .eq("lesson_report_id", lessonReportId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Could not resolve the lesson's register:", error.message);
+    return null;
+  }
+  // No attached register, or an ordinary lesson: there is nothing to report and
+  // saying so with silence is more honest than an empty chart.
+  if (!data?.is_practical) return null;
+
+  return buildRoundContext(data.id, (data.kind ?? "lesson") as SessionKind, data.practical_scored_at);
+}
+
+/**
+ * How one learner handled the machine while sitting a particular paper.
+ *
+ * Deliberately scoped to THIS assessment rather than the learner's whole term.
+ * A marker's question is not "how is this child generally" — it is "was this
+ * child struggling while they sat the script in front of me". A learner who
+ * needed constant support and never finished on time is context for a low mark
+ * that a raw percentage cannot give.
+ */
+export async function getPracticalForAssessmentSitting(
+  assessmentId: string,
+  studentId: string
+): Promise<{ bands: { aspect: PracticalAspect; label: string; band: PracticalBand }[] } | null> {
+  const supabase = getSupabaseAdmin();
+  const { data: sessions, error } = await supabase
+    .from("attendance_sessions")
+    .select("id")
+    .eq("assessment_id", assessmentId)
+    .eq("kind", "assessment");
+
+  if (error || !sessions?.length) return null;
+
+  const { data: attendance } = await supabase
+    .from("lesson_attendance")
+    .select("id")
+    .in("attendance_session_id", sessions.map((s) => s.id))
+    .eq("student_id", studentId)
+    .eq("is_present", true);
+
+  if (!attendance?.length) return null;
+
+  const observations = await fetchObservations(attendance.map((a) => a.id));
+  if (observations.length === 0) return null;
+
+  return {
+    bands: observations
+      .map((o) => ({
+        aspect: o.aspect,
+        label: PRACTICAL_ASPECTS.find((a) => a.code === o.aspect)?.label ?? o.aspect,
+        band: o.band,
+      }))
+      .sort(
+        (a, b) =>
+          PRACTICAL_ASPECTS.findIndex((x) => x.code === a.aspect) -
+          PRACTICAL_ASPECTS.findIndex((x) => x.code === b.aspect)
+      ),
+  };
+}
+
+async function buildRoundContext(
+  sessionId: string,
+  kind: SessionKind,
+  scoredAt: string | null
+): Promise<RoundContext> {
+  const supabase = getSupabaseAdmin();
+  const { data: attendance } = await supabase
+    .from("lesson_attendance")
+    .select("id, student_id")
+    .eq("attendance_session_id", sessionId)
+    .eq("is_present", true);
+
+  const rows = (attendance ?? []) as { id: string; student_id: string }[];
+  if (rows.length === 0) return { sessionId, kind, scoredAt, learners: 0, aspects: [] };
+
+  const observations = await fetchObservations(rows.map((r) => r.id));
+  const studentByAttendance = new Map(rows.map((r) => [r.id, r.student_id]));
+
+  const facts: ObservationFact[] = observations.map((o) => ({
+    studentId: studentByAttendance.get(o.lesson_attendance_id) ?? o.lesson_attendance_id,
+    studentName: "",
+    systemId: null,
+    roundId: sessionId,
+    rubricVersion: null,
+    aspect: o.aspect,
+    band: o.band,
+  }));
+
+  return {
+    sessionId,
+    kind,
+    scoredAt,
+    learners: rows.length,
+    aspects: summariseClass(summarisePractical(facts)),
+  };
+}
+
+// ─── Class roll-up ──────────────────────────────────────────────────────────
+
+export interface ClassAspectSummary {
+  aspect: PracticalAspect;
+  label: string;
+  /** Learners whose most common band on this aspect is Outstanding. */
+  doingWell: number;
+  moderate: number;
+  /** The number that matters: learners who most often need support here. */
+  needsSupport: number;
+  learners: number;
+}
+
+/**
+ * A class rolled up by skill, which is what actually makes scoring worth a
+ * teacher's time.
+ *
+ * An individual learner's bands tell a teacher something they largely already
+ * know. "18 of 30 most often need support on two-hand typing" is different in
+ * kind — it is a teaching instruction, and it is the only output of this whole
+ * feature that changes what happens in the next lesson.
+ *
+ * Counts learners by their MODAL band per aspect rather than thresholding an
+ * average. A threshold would need a cutoff nobody has evidence for; the mode is
+ * just "what this learner usually gets", which needs no defending. Ties fall to
+ * the worse band deliberately — a learner split evenly between Moderate and
+ * Needs support is one a teacher should look at, not one to round up.
+ */
+export function summariseClass(scores: PracticalTermScore[]): ClassAspectSummary[] {
+  const byAspect = new Map<PracticalAspect, ClassAspectSummary>();
+
+  for (const learner of scores) {
+    for (const rate of learner.perAspect) {
+      const row =
+        byAspect.get(rate.aspect) ??
+        {
+          aspect: rate.aspect,
+          label: rate.label,
+          doingWell: 0,
+          moderate: 0,
+          needsSupport: 0,
+          learners: 0,
+        };
+
+      // Worst-wins on a tie: needs_support first, then moderate.
+      if (rate.needsSupport >= rate.moderate && rate.needsSupport >= rate.outstanding) {
+        row.needsSupport += 1;
+      } else if (rate.moderate >= rate.outstanding) {
+        row.moderate += 1;
+      } else {
+        row.doingWell += 1;
+      }
+      row.learners += 1;
+      byAspect.set(rate.aspect, row);
+    }
+  }
+
+  // Weakest first. A teacher opening this should see what to reteach, not have
+  // to scan for it.
+  return Array.from(byAspect.values()).sort(
+    (a, b) => b.needsSupport / b.learners - a.needsSupport / a.learners
+  );
+}
+
 // ─── The teacher's own queue ────────────────────────────────────────────────
 
 export interface StaffRound {
   sessionId: string;
   kind: SessionKind;
+  classId: string;
+  className: string;
+  streamId: string | null;
   /** class + stream + date + period. Two sessions sharing this are one lesson. */
   slotKey: string;
   sessionDate: string;
@@ -822,7 +1078,8 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
   const { data: sessionRows, error } = await supabase
     .from("attendance_sessions")
     .select(
-      "id, class_id, stream_id, session_date, period, kind, practical_scored_at, practical_rubric_version, term:terms(ends_on)"
+      "id, class_id, stream_id, session_date, period, kind, practical_scored_at, practical_rubric_version, " +
+        "term:terms(ends_on), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name)"
     )
     .eq("staff_id", staffId)
     // Lab lessons only. Without this the queue offered every register in every
@@ -884,6 +1141,9 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
       return {
         sessionId: session.id,
         kind: (session.kind ?? "lesson") as SessionKind,
+        classId: session.class_id,
+        className: classNameOf(session),
+        streamId: session.stream_id,
         slotKey: slotKeyOf(session),
         sessionDate: session.session_date,
         period: session.period,
@@ -1063,6 +1323,14 @@ interface StaffRoundRow {
   practical_scored_at: string | null;
   practical_rubric_version: number | null;
   term: { ends_on: string } | null;
+  class: { alias: string | null; grade_level: { code: string } | null } | null;
+  stream: { name: string } | null;
+}
+
+/** Display name, same coalesce(alias, grade_levels.code) rule the rest of the app uses. */
+function classNameOf(row: StaffRoundRow): string {
+  const base = row.class?.alias ?? row.class?.grade_level?.code ?? "Class";
+  return row.stream?.name ? `${base} ${row.stream.name}` : base;
 }
 
 interface ReminderSessionRow {

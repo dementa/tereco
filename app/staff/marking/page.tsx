@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/ToastProvider';
 import { ArrowLeft, Check, CheckSquare, Download, FileText, Minus, Plus, X } from 'lucide-react';
 import { groupQuestions, formatQuestionLabel, isStemParent, type QuestionConfig } from '@/lib/questionGrouping';
 import { MarkingGuidance } from '@/components/MarkingGuidance';
+import { ScriptPracticalPanel } from '@/components/ui/PracticalContextPanel';
 
 interface AssessmentOption {
   id: string;
@@ -394,6 +395,20 @@ export default function MarkingPage() {
                 {openScript.studentSystemId}
                 {openScript.className ? ` · ${openScript.className}` : ''}
               </p>
+
+              {/* Only renders when this paper was sat under a register that was
+                  actually scored. Context for a low mark that a percentage
+                  cannot give: a learner who needed constant support and never
+                  finished on time is a different story from one who simply did
+                  not know the material. */}
+              {openStudentId && selected && (
+                <div className="mt-3 max-w-lg">
+                  <ScriptPracticalPanel
+                    assessmentSystemId={selected}
+                    studentId={openStudentId}
+                  />
+                </div>
+              )}
             </div>
             <div className="flex items-center gap-2">
               <span className="text-sm font-semibold text-primary-900">

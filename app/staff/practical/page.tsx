@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
-import { Check, Laptop, Users } from 'lucide-react';
+import { Check, Laptop, TrendingDown, Users } from 'lucide-react';
 
 /**
  * The teacher's practical scoring queue.
@@ -16,9 +16,21 @@ import { Check, Laptop, Users } from 'lucide-react';
  * school would have read "not enough observations yet" forever while the whole
  * thing looked like it was working.
  */
+interface ClassAspect {
+  aspect: string;
+  label: string;
+  doingWell: number;
+  moderate: number;
+  needsSupport: number;
+  learners: number;
+}
+
 interface StaffRound {
   sessionId: string;
   kind: 'lesson' | 'assessment';
+  classId: string;
+  className: string;
+  streamId: string | null;
   sessionDate: string;
   period: number;
   learners: number;
@@ -47,6 +59,12 @@ export default function PracticalRoundsPage() {
   const pending = rounds.filter((r) => !r.scoredAt);
   const done = rounds.filter((r) => r.scoredAt);
 
+  // Only classes with a finished round: a summary built on nothing would read as
+  // "your class is fine" rather than "nobody has scored this yet".
+  const classes = Array.from(
+    new Map(done.map((r) => [`${r.classId}|${r.streamId ?? ''}`, r])).values()
+  );
+
   return (
     <div className="w-full">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">Practical Skills</h1>
@@ -72,6 +90,7 @@ export default function PracticalRoundsPage() {
           {pending.length > 0 && (
             <Section title="Waiting to be scored" rounds={pending} router={router} />
           )}
+          {classes.length > 0 && <ClassSummary classes={classes} />}
           {done.length > 0 && (
             <Section title="Finished" rounds={done} router={router} muted />
           )}
@@ -145,6 +164,124 @@ function Section({
           </Card>
         ))}
       </div>
+    </div>
+  );
+}
+
+
+/**
+ * What to reteach next week.
+ *
+ * The only thing this feature gives back to the teacher who carries its cost.
+ * Individual bands mostly confirm what they already know; "18 of 30 need support
+ * on two-hand typing" is a different kind of statement, and it is the reason
+ * scoring 287 judgements is worth anyone's afternoon.
+ */
+function ClassSummary({ classes }: { classes: StaffRound[] }) {
+  const [selected, setSelected] = useState(classes[0]);
+  // Tagged with the class it belongs to rather than cleared on switch. Deriving
+  // "is this the selected class's?" at render makes showing the previous class's
+  // numbers impossible by construction, and avoids a synchronous setState in an
+  // effect (react-hooks/set-state-in-effect).
+  const [loaded, setLoaded] = useState<{
+    key: string;
+    aspects: ClassAspect[];
+    learners: number;
+  } | null>(null);
+
+  const key = selected ? `${selected.classId}|${selected.streamId ?? ''}` : '';
+  const current = loaded?.key === key ? loaded : null;
+  const loading = !!selected && !current;
+
+  useEffect(() => {
+    if (!selected) return;
+    let cancelled = false;
+    const qs = new URLSearchParams({ classId: selected.classId });
+    if (selected.streamId) qs.set('streamId', selected.streamId);
+    fetch(`/api/practical/class?${qs}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled || !d.success) return;
+        setLoaded({ key, aspects: d.data.aspects, learners: d.data.learners });
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [selected, key]);
+
+  const aspects = current?.aspects ?? [];
+  const learners = current?.learners ?? 0;
+
+  return (
+    <div>
+      <p className="text-xs font-semibold uppercase tracking-wide text-text-faint mb-2">
+        How your class is doing
+      </p>
+
+      {classes.length > 1 && (
+        <div className="flex flex-wrap gap-1.5 mb-2.5">
+          {classes.map((c) => (
+            <button
+              key={`${c.classId}|${c.streamId ?? ''}`}
+              type="button"
+              onClick={() => setSelected(c)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
+                selected?.classId === c.classId && selected?.streamId === c.streamId
+                  ? 'bg-[#02465B] text-white'
+                  : 'bg-bg-muted text-text-secondary hover:bg-[#EAEAEA]'
+              }`}
+            >
+              {c.className}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <Card className="p-4">
+        {loading ? (
+          <p className="text-sm text-text-muted">Loading…</p>
+        ) : aspects.length === 0 ? (
+          <p className="text-sm text-text-muted">
+            Nothing scored for {selected?.className} this term yet.
+          </p>
+        ) : (
+          <>
+            <p className="text-xs text-text-muted mb-3">
+              {selected?.className} · {learners} learner{learners === 1 ? '' : 's'} scored this term.
+              Weakest skill first.
+            </p>
+            <div className="space-y-2.5">
+              {aspects.map((a) => {
+                const pct = a.learners > 0 ? Math.round((a.needsSupport / a.learners) * 100) : 0;
+                return (
+                  <div key={a.aspect}>
+                    <div className="flex items-baseline justify-between gap-3 mb-1">
+                      <span className="text-sm text-text-primary">{a.label}</span>
+                      <span className="text-xs text-text-muted shrink-0 tabular-nums">
+                        {a.needsSupport} of {a.learners} need support
+                      </span>
+                    </div>
+                    {/* One bar, showing the thing worth acting on. A stacked
+                        three-band chart looks richer and answers a question
+                        nobody asked. */}
+                    <div className="h-1.5 rounded-full bg-bg-muted overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${pct >= 50 ? 'bg-[#C47B0A]' : 'bg-[#0489AE]'}`}
+                        style={{ width: `${Math.max(pct, 2)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            {aspects[0] && aspects[0].needsSupport > 0 && (
+              <p className="flex items-start gap-1.5 text-xs text-text-secondary mt-3 pt-3 border-t border-[#EAEAEA]">
+                <TrendingDown className="w-3.5 h-3.5 text-[#C47B0A] mt-0.5 shrink-0" aria-hidden />
+                Most worth reteaching: {aspects[0].label.toLowerCase()}.
+              </p>
+            )}
+          </>
+        )}
+      </Card>
     </div>
   );
 }

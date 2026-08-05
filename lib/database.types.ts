@@ -1524,6 +1524,7 @@ export type Database = {
           logo_url: string | null
           name: string
           phone: string
+          practical_weight: number
           system_id: string
         }
         Insert: {
@@ -1539,6 +1540,7 @@ export type Database = {
           logo_url?: string | null
           name: string
           phone?: string
+          practical_weight?: number
           system_id: string
         }
         Update: {
@@ -1554,6 +1556,7 @@ export type Database = {
           logo_url?: string | null
           name?: string
           phone?: string
+          practical_weight?: number
           system_id?: string
         }
         Relationships: [

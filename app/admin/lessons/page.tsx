@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
+import { LessonPracticalPanel } from '@/components/ui/PracticalContextPanel';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { LessonAnalyticsPanel } from '@/components/ui/LessonAnalyticsPanel';
@@ -182,6 +183,13 @@ export default function AdminLessonsPage() {
                         <Detail label="Support required" value={l.supportRequired} />
                       </div>
                     )}
+
+                    {/* Only renders when the lesson was a lab lesson. An
+                        ordinary lesson shows nothing, which is the truth rather
+                        than an empty chart that reads as a bad result. */}
+                    <div className="col-span-2 sm:col-span-3">
+                      <LessonPracticalPanel lessonReportId={l.id} />
+                    </div>
 
                     {attendance[l.id] && attendance[l.id].length > 0 && (
                       <div className="col-span-2 sm:col-span-3">

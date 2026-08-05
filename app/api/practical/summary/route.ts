@@ -1,5 +1,11 @@
 import { NextRequest } from "next/server";
-import { getPracticalTermScoreForStudent } from "@/lib/entities/practical-observations";
+import {
+  blendPerformance,
+  getPracticalTermScoreForStudent,
+  getPracticalWeight,
+} from "@/lib/entities/practical-observations";
+import { getStudentTermAverages } from "@/lib/entities/performance";
+import { getSupabaseAdmin } from "@/lib/supabase";
 import { isLinkedToParent } from "@/lib/entities/parents";
 import { getCurrentProfile } from "@/lib/auth/session";
 import { errorResponse, handleApiError, successResponse } from "@/lib/apiResponse";
@@ -41,7 +47,25 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await getPracticalTermScoreForStudent(studentId);
-    return successResponse({ data });
+
+    // The learner's school decides the weight, not the caller's — a parent has
+    // no school of their own, and a learner who transfers is judged by where
+    // they actually are.
+    const supabase = getSupabaseAdmin();
+    const { data: enrollment } = await supabase
+      .from("current_enrollments")
+      .select("school_id")
+      .eq("student_id", studentId)
+      .maybeSingle();
+
+    const weight = await getPracticalWeight(enrollment?.school_id ?? null);
+    const terms = await getStudentTermAverages(studentId);
+    const written = terms.length > 0 ? terms[terms.length - 1].averagePercentage : null;
+
+    return successResponse({
+      data,
+      performance: blendPerformance(written, data?.score ?? null, weight),
+    });
   } catch (error) {
     return handleApiError(error, "Could not load practical skills.");
   }

@@ -2,7 +2,9 @@ import { describe, it, expect } from 'vitest';
 import {
   aspectsFor,
   aspectsForVersion,
+  blendPerformance,
   dedupeSlots,
+  summariseClass,
   summarisePractical,
   CURRENT_RUBRIC_VERSION,
   MINIMUM_ROUNDS,
@@ -241,6 +243,9 @@ describe('dedupeSlots — retakes are one lesson, not two', () => {
   const round = (over: Partial<StaffRound>): StaffRound => ({
     sessionId: 's',
     kind: 'lesson',
+    classId: 'c1',
+    className: 'J1',
+    streamId: null,
     slotKey: 'J1|-|2026-07-27|1',
     sessionDate: '2026-07-27',
     period: 1,
@@ -344,17 +349,100 @@ describe('a round knows which rubric it is judged against', () => {
   it('keeps lesson and assessment rounds in the same queue', () => {
     const result = dedupeSlots([
       {
-        sessionId: 'lesson', kind: 'lesson', slotKey: 'J1|-|2026-08-05|1',
+        sessionId: 'lesson', kind: 'lesson', classId: 'c1', className: 'J1', streamId: null,
+        slotKey: 'J1|-|2026-08-05|1',
         sessionDate: '2026-08-05', period: 1, learners: 30,
         scoredAt: null, aspectsDone: 0, aspectsTotal: 7,
       },
       {
-        sessionId: 'paper', kind: 'assessment', slotKey: 'J1|-|2026-08-05|2',
+        sessionId: 'paper', kind: 'assessment', classId: 'c1', className: 'J1', streamId: null,
+        slotKey: 'J1|-|2026-08-05|2',
         sessionDate: '2026-08-05', period: 2, learners: 30,
         scoredAt: null, aspectsDone: 0, aspectsTotal: 6,
       },
     ]);
     expect(result).toHaveLength(2);
     expect(result.map((r) => r.aspectsTotal).sort()).toEqual([6, 7]);
+  });
+});
+
+describe('summariseClass — what to reteach next week', () => {
+  const learnerOn = (name: string, aspect: PracticalAspect, bands: PracticalBand[]) =>
+    bands.map((band, i) => ({
+      studentId: name, studentName: name, systemId: null,
+      roundId: `r${i}`, rubricVersion: CURRENT_RUBRIC_VERSION, aspect, band,
+    })) as ObservationFact[];
+
+  it('counts learners by their usual band, not by an averaged threshold', () => {
+    const facts = [
+      ...learnerOn('amina', 'types_two_hands', ['needs_support', 'needs_support', 'moderate']),
+      ...learnerOn('brian', 'types_two_hands', ['outstanding', 'outstanding', 'moderate']),
+      ...learnerOn('cynthia', 'types_two_hands', ['moderate', 'moderate', 'needs_support']),
+    ];
+    const [typing] = summariseClass(summarisePractical(facts));
+    expect(typing).toMatchObject({
+      aspect: 'types_two_hands',
+      needsSupport: 1,
+      moderate: 1,
+      doingWell: 1,
+      learners: 3,
+    });
+  });
+
+  it('breaks a tie toward the worse band', () => {
+    // A learner split evenly between Moderate and Needs support is one the
+    // teacher should look at, not one to round up.
+    const facts = learnerOn('amina', 'helps_others', ['moderate', 'needs_support']);
+    const [helps] = summariseClass(summarisePractical(facts));
+    expect(helps.needsSupport).toBe(1);
+    expect(helps.moderate).toBe(0);
+  });
+
+  it('puts the weakest skill first, so the teaching signal leads', () => {
+    const facts = [
+      ...learnerOn('amina', 'types_two_hands', ['needs_support', 'needs_support']),
+      ...learnerOn('amina', 'finishes_on_time', ['outstanding', 'outstanding']),
+    ];
+    expect(summariseClass(summarisePractical(facts)).map((a) => a.aspect)).toEqual([
+      'types_two_hands',
+      'finishes_on_time',
+    ]);
+  });
+
+  it('returns nothing for a class nobody has scored', () => {
+    expect(summariseClass([])).toEqual([]);
+  });
+});
+
+describe('blendPerformance — what practical actually adds', () => {
+  it('changes nothing at weight 0, which is how it ships', () => {
+    expect(blendPerformance(68, 86, 0).overall).toBe(68);
+  });
+
+  it('moves the figure once the school gives it a share', () => {
+    // 68 written, 86 practical, counted at 25% -> 72.5
+    expect(blendPerformance(68, 86, 0.25).overall).toBe(72.5);
+  });
+
+  it('NEVER penalises a learner with no practical score', () => {
+    // The important one. A learner below MINIMUM_ROUNDS has practical = null.
+    // Blending null as zero would drag them to 51 for lessons their teacher
+    // simply did not score — something the child did not do.
+    expect(blendPerformance(68, null, 0.25).overall).toBe(68);
+  });
+
+  it('does not rank a learner on lab skills alone', () => {
+    // Observations but no marked papers is not a performance figure.
+    expect(blendPerformance(null, 86, 0.25).overall).toBeNull();
+  });
+
+  it('clamps a nonsense weight rather than trusting it', () => {
+    expect(blendPerformance(68, 86, 5).weight).toBe(1);
+    expect(blendPerformance(68, 86, -2).weight).toBe(0);
+    expect(blendPerformance(68, 86, 5).overall).toBe(86);
+  });
+
+  it('rounds to one decimal, like every other percentage here', () => {
+    expect(blendPerformance(67, 84, 0.3).overall).toBe(72.1);
   });
 });
