@@ -182,6 +182,7 @@ export function PracticalScoringGrid({
         }
 
         const confirmed: outbox.PendingEntry[] = []
+        let latest: SessionView | null = null
         for (const [aspectKey, group] of byAspect) {
           const res = await fetch('/api/practical', {
             method: 'POST',
@@ -201,9 +202,19 @@ export function PracticalScoringGrid({
             }),
           })
           if (!res.ok) throw new Error('save failed')
+          // The route returns the round as it now stands, and this used to throw
+          // that away. Draining the outbox without it made every successful save
+          // LOOK like a failure: the band was only on screen because the outbox
+          // held it, so the instant the server confirmed, the overlay emptied and
+          // fell back to the stale `session` — and the button went blank.
+          const saved = await res.json()
+          if (saved?.success && saved.data) latest = saved.data as SessionView
           confirmed.push(...group)
         }
 
+        // Server state first, then drain. Both land in one React batch, so the
+        // band never flickers between the two sources of truth.
+        if (latest) setSession(latest)
         // Drain against the CURRENT outbox, not the snapshot we sent — a tap
         // made while the request was in flight must survive.
         commitOutbox(outbox.drain(pendingRef.current, confirmed))
