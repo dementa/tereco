@@ -851,6 +851,131 @@ export async function getPracticalWeight(schoolId: string | null): Promise<numbe
   return Number(data?.practical_weight ?? 0);
 }
 
+// ─── Attached to a lesson, or to a paper ────────────────────────────────────
+
+export interface RoundContext {
+  sessionId: string;
+  kind: SessionKind;
+  scoredAt: string | null;
+  learners: number;
+  aspects: ClassAspectSummary[];
+}
+
+/**
+ * The practical picture for one lesson report, for whoever is reviewing it.
+ *
+ * A reviewer looking at a lesson currently sees what the teacher wrote about the
+ * class as a whole. This says what was actually observed about the learners in
+ * it — and, just as usefully, says nothing at all when the lesson was not a lab
+ * lesson or was never scored, so an empty panel is never mistaken for a good one.
+ */
+export async function getPracticalForLessonReport(
+  lessonReportId: string
+): Promise<RoundContext | null> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("attendance_sessions")
+    .select("id, kind, is_practical, practical_scored_at, practical_rubric_version")
+    .eq("lesson_report_id", lessonReportId)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Could not resolve the lesson's register:", error.message);
+    return null;
+  }
+  // No attached register, or an ordinary lesson: there is nothing to report and
+  // saying so with silence is more honest than an empty chart.
+  if (!data?.is_practical) return null;
+
+  return buildRoundContext(data.id, (data.kind ?? "lesson") as SessionKind, data.practical_scored_at);
+}
+
+/**
+ * How one learner handled the machine while sitting a particular paper.
+ *
+ * Deliberately scoped to THIS assessment rather than the learner's whole term.
+ * A marker's question is not "how is this child generally" — it is "was this
+ * child struggling while they sat the script in front of me". A learner who
+ * needed constant support and never finished on time is context for a low mark
+ * that a raw percentage cannot give.
+ */
+export async function getPracticalForAssessmentSitting(
+  assessmentId: string,
+  studentId: string
+): Promise<{ bands: { aspect: PracticalAspect; label: string; band: PracticalBand }[] } | null> {
+  const supabase = getSupabaseAdmin();
+  const { data: sessions, error } = await supabase
+    .from("attendance_sessions")
+    .select("id")
+    .eq("assessment_id", assessmentId)
+    .eq("kind", "assessment");
+
+  if (error || !sessions?.length) return null;
+
+  const { data: attendance } = await supabase
+    .from("lesson_attendance")
+    .select("id")
+    .in("attendance_session_id", sessions.map((s) => s.id))
+    .eq("student_id", studentId)
+    .eq("is_present", true);
+
+  if (!attendance?.length) return null;
+
+  const observations = await fetchObservations(attendance.map((a) => a.id));
+  if (observations.length === 0) return null;
+
+  return {
+    bands: observations
+      .map((o) => ({
+        aspect: o.aspect,
+        label: PRACTICAL_ASPECTS.find((a) => a.code === o.aspect)?.label ?? o.aspect,
+        band: o.band,
+      }))
+      .sort(
+        (a, b) =>
+          PRACTICAL_ASPECTS.findIndex((x) => x.code === a.aspect) -
+          PRACTICAL_ASPECTS.findIndex((x) => x.code === b.aspect)
+      ),
+  };
+}
+
+async function buildRoundContext(
+  sessionId: string,
+  kind: SessionKind,
+  scoredAt: string | null
+): Promise<RoundContext> {
+  const supabase = getSupabaseAdmin();
+  const { data: attendance } = await supabase
+    .from("lesson_attendance")
+    .select("id, student_id")
+    .eq("attendance_session_id", sessionId)
+    .eq("is_present", true);
+
+  const rows = (attendance ?? []) as { id: string; student_id: string }[];
+  if (rows.length === 0) return { sessionId, kind, scoredAt, learners: 0, aspects: [] };
+
+  const observations = await fetchObservations(rows.map((r) => r.id));
+  const studentByAttendance = new Map(rows.map((r) => [r.id, r.student_id]));
+
+  const facts: ObservationFact[] = observations.map((o) => ({
+    studentId: studentByAttendance.get(o.lesson_attendance_id) ?? o.lesson_attendance_id,
+    studentName: "",
+    systemId: null,
+    roundId: sessionId,
+    rubricVersion: null,
+    aspect: o.aspect,
+    band: o.band,
+  }));
+
+  return {
+    sessionId,
+    kind,
+    scoredAt,
+    learners: rows.length,
+    aspects: summariseClass(summarisePractical(facts)),
+  };
+}
+
 // ─── Class roll-up ──────────────────────────────────────────────────────────
 
 export interface ClassAspectSummary {
