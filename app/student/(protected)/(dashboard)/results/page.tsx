@@ -4,7 +4,9 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { PracticalCard } from '@/components/ui/PracticalCard';
 import { Award, Clock } from 'lucide-react';
+import type { PracticalTermScore } from '@/lib/entities/practical-observations';
 
 interface Attempt {
   assessmentSystemId: string;
@@ -18,6 +20,7 @@ interface Attempt {
 
 export default function MyResultsPage() {
   const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [practical, setPractical] = useState<PracticalTermScore | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -32,12 +35,31 @@ export default function MyResultsPage() {
       .finally(() => setLoading(false));
   }, []);
 
+  // Fetched separately and failing quietly on purpose: practical skills are a
+  // supplement to this page, not its subject. A learner must still see every
+  // assessment they sat even if the practical lookup is unavailable.
+  useEffect(() => {
+    fetch('/api/practical/summary')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setPractical(d.data);
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="w-full">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">My Results</h1>
       <p className="text-sm text-text-muted mb-6">
         Every assessment you&apos;ve sat, whether or not you noticed the notification.
       </p>
+
+      {/* Above the assessment list, and visually separate from it: practical
+          skills are observed in the lab, not sat as a paper, and the two must
+          not read as one combined mark. */}
+      <div className="mb-6">
+        <PracticalCard score={practical} />
+      </div>
 
       {loading ? (
         <p className="text-text-muted">Loading…</p>

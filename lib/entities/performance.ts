@@ -349,7 +349,7 @@ export async function getStudentTermAverages(studentId: string, academicYearId?:
  * agreeing with the rest of the app (e.g. lesson_reports.term_id) about what
  * "the current term" means.
  */
-async function getCurrentTermId(schoolId: string): Promise<string | null> {
+export async function getCurrentTermId(schoolId: string): Promise<string | null> {
   const supabase = getSupabaseAdmin();
   const today = new Date().toISOString().slice(0, 10);
   const { data, error } = await supabase
