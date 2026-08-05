@@ -379,10 +379,12 @@ export type Database = {
       }
       attendance_sessions: {
         Row: {
+          assessment_id: string | null
           class_id: string
           created_at: string
           id: string
           is_practical: boolean
+          kind: string
           lesson_report_id: string | null
           period: number
           practical_rubric_version: number | null
@@ -395,10 +397,12 @@ export type Database = {
           term_id: string | null
         }
         Insert: {
+          assessment_id?: string | null
           class_id: string
           created_at?: string
           id?: string
           is_practical?: boolean
+          kind?: string
           lesson_report_id?: string | null
           period: number
           practical_rubric_version?: number | null
@@ -411,10 +415,12 @@ export type Database = {
           term_id?: string | null
         }
         Update: {
+          assessment_id?: string | null
           class_id?: string
           created_at?: string
           id?: string
           is_practical?: boolean
+          kind?: string
           lesson_report_id?: string | null
           period?: number
           practical_rubric_version?: number | null
@@ -427,6 +433,13 @@ export type Database = {
           term_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "attendance_sessions_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "attendance_sessions_class_id_fkey"
             columns: ["class_id"]

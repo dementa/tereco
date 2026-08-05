@@ -34,10 +34,13 @@ import { ArrowLeft, Check, CloudOff, Loader2, Search, RefreshCw } from 'lucide-r
 import { useAuth } from '@/components/auth/AuthContext'
 import { cn, ProgressPill } from '@/components/staff/wizardPrimitives'
 import {
+  aspectsFor,
+  CURRENT_RUBRIC_VERSION,
   PRACTICAL_ASPECTS,
   PRACTICAL_BANDS,
   type PracticalAspect,
   type PracticalBand,
+  type SessionKind,
 } from '@/lib/entities/practical-observations'
 import * as outbox from '@/lib/practical-outbox'
 
@@ -52,6 +55,8 @@ interface Learner {
 
 interface SessionView {
   sessionId: string
+  kind: SessionKind
+  rubricVersion: number
   sessionDate: string
   period: number
   scoredAt: string | null
@@ -83,7 +88,20 @@ export function PracticalScoringGrid({
   const [completeError, setCompleteError] = useState('')
 
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const aspect = PRACTICAL_ASPECTS[pass].code
+
+  /**
+   * The aspects THIS round is judged against — six for an assessment, seven for
+   * a lesson. Rendering the full list on an assessment would ask the teacher to
+   * score "helps others" mid-paper, which is malpractice, and would make the
+   * round impossible to finish because the server's gate never asks for it.
+   */
+  const aspects = useMemo(
+    () => aspectsFor(session?.rubricVersion ?? CURRENT_RUBRIC_VERSION, session?.kind ?? 'lesson'),
+    [session]
+  )
+  const labelFor = (code: PracticalAspect) =>
+    PRACTICAL_ASPECTS.find((a) => a.code === code)?.label ?? code
+  const aspect = aspects[Math.min(pass, Math.max(0, aspects.length - 1))]
 
   /**
    * The live outbox, readable synchronously.
@@ -159,7 +177,7 @@ export function PracticalScoringGrid({
   const unscoredThisPass = learners.length - scoredThisPass
   const passComplete = learners.length > 0 && unscoredThisPass === 0
   const allPassesComplete =
-    learners.length > 0 && PRACTICAL_ASPECTS.every((a) => learners.every((l) => l.bands[a.code]))
+    learners.length > 0 && aspects.every((a) => learners.every((l) => l.bands[a]))
   const outstandingCells = outbox.size(pendingCells)
 
   /* ── Send one pass's pending taps ──────────────────────────────────────── */
@@ -410,7 +428,7 @@ export function PracticalScoringGrid({
         <SyncBadge syncing={syncing} failed={syncFailed} outstanding={outstandingCells} />
       </div>
 
-      <ProgressPill current={pass} total={PRACTICAL_ASPECTS.length} />
+      <ProgressPill current={pass} total={aspects.length} />
 
       {/* Offline notice: never a modal, never disables the grid. The teacher
           keeps working; the outbox is what makes that safe. */}
@@ -436,10 +454,10 @@ export function PracticalScoringGrid({
       {/* The question for this pass */}
       <div className="mt-5 mb-4">
         <p className="text-xs font-semibold uppercase tracking-wide text-[#A3A3A3] mb-1">
-          Skill {pass + 1} of {PRACTICAL_ASPECTS.length}
+          Skill {pass + 1} of {aspects.length}
         </p>
         <h2 className="text-lg font-semibold text-[#171717] leading-snug">
-          {PRACTICAL_ASPECTS[pass].label}
+          {labelFor(aspect)}
         </h2>
         <p className="text-sm text-[#666666] mt-1">
           {scoredThisPass} of {learners.length} scored
@@ -460,7 +478,7 @@ export function PracticalScoringGrid({
       </div>
 
       {/* Roster */}
-      <div role="group" aria-label={PRACTICAL_ASPECTS[pass].label}>
+      <div role="group" aria-label={labelFor(aspect)}>
         {visible.map((learner) => (
           <BandRow
             key={learner.lessonAttendanceId}
@@ -500,7 +518,7 @@ export function PracticalScoringGrid({
               Back
             </button>
 
-            {pass < PRACTICAL_ASPECTS.length - 1 ? (
+            {pass < aspects.length - 1 ? (
               <button
                 type="button"
                 onClick={() => { setPass((p) => p + 1); setQuery('') }}

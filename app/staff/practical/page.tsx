@@ -18,6 +18,7 @@ import { Check, Laptop, Users } from 'lucide-react';
  */
 interface StaffRound {
   sessionId: string;
+  kind: 'lesson' | 'assessment';
   sessionDate: string;
   period: number;
   learners: number;
@@ -50,7 +51,8 @@ export default function PracticalRoundsPage() {
     <div className="w-full">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">Practical Skills</h1>
       <p className="text-sm text-text-muted mb-6">
-        Score the learners you had in the lab. Take the register first — the roster comes from it.
+        Score the learners you had in the lab, and the ones you invigilated. Take the
+        register first — the roster comes from it.
       </p>
 
       {loading ? (
@@ -113,9 +115,19 @@ function Section({
                 <p className="font-semibold text-primary-900">
                   {new Date(round.sessionDate).toLocaleDateString('en-GB')} · Period {round.period}
                 </p>
-                <div className="flex items-center gap-1 mt-1 text-xs text-text-muted">
-                  <Users className="w-3.5 h-3.5" />
-                  {round.learners} learner{round.learners === 1 ? '' : 's'} present
+                <div className="flex items-center gap-2 mt-1 text-xs text-text-muted">
+                  <span className="flex items-center gap-1">
+                    <Users className="w-3.5 h-3.5" />
+                    {round.learners} learner{round.learners === 1 ? '' : 's'} present
+                  </span>
+                  {/* An assessment round is judged on six skills, not seven —
+                      "helps others" is malpractice mid-paper. Say so here so the
+                      shorter list is expected rather than looking like a bug. */}
+                  {round.kind === 'assessment' && (
+                    <span className="px-1.5 py-0.5 rounded bg-bg-muted text-text-secondary font-medium">
+                      Assessment · 6 skills
+                    </span>
+                  )}
                 </div>
               </div>
 

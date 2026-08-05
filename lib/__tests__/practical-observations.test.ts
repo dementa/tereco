@@ -240,6 +240,7 @@ describe('dedupeSlots — retakes are one lesson, not two', () => {
   // which to score.
   const round = (over: Partial<StaffRound>): StaffRound => ({
     sessionId: 's',
+    kind: 'lesson',
     slotKey: 'J1|-|2026-07-27|1',
     sessionDate: '2026-07-27',
     period: 1,
@@ -328,5 +329,32 @@ describe('aspectsFor — assessments use a narrower rubric', () => {
   it('still does not throw for an unknown version in either context', () => {
     expect(() => aspectsFor(99, 'assessment')).not.toThrow();
     expect(aspectsFor(99, 'assessment')).toHaveLength(6);
+  });
+});
+
+describe('a round knows which rubric it is judged against', () => {
+  it('an assessment round needs six aspects to be complete, not seven', () => {
+    // The completeness gate asks aspectsFor(version, kind). If it asked for the
+    // full seven on an assessment, the round could never be finished: the grid
+    // does not offer helps_others there, so the seventh would never arrive.
+    expect(aspectsFor(CURRENT_RUBRIC_VERSION, 'assessment')).toHaveLength(6);
+    expect(aspectsFor(CURRENT_RUBRIC_VERSION, 'lesson')).toHaveLength(7);
+  });
+
+  it('keeps lesson and assessment rounds in the same queue', () => {
+    const result = dedupeSlots([
+      {
+        sessionId: 'lesson', kind: 'lesson', slotKey: 'J1|-|2026-08-05|1',
+        sessionDate: '2026-08-05', period: 1, learners: 30,
+        scoredAt: null, aspectsDone: 0, aspectsTotal: 7,
+      },
+      {
+        sessionId: 'paper', kind: 'assessment', slotKey: 'J1|-|2026-08-05|2',
+        sessionDate: '2026-08-05', period: 2, learners: 30,
+        scoredAt: null, aspectsDone: 0, aspectsTotal: 6,
+      },
+    ]);
+    expect(result).toHaveLength(2);
+    expect(result.map((r) => r.aspectsTotal).sort()).toEqual([6, 7]);
   });
 });

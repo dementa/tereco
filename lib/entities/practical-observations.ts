@@ -185,6 +185,9 @@ export interface ScorableLearner {
 
 export interface ScorableSession {
   sessionId: string;
+  /** Decides which aspects the round is judged against. */
+  kind: SessionKind;
+  assessmentId: string | null;
   sessionDate: string;
   period: number;
   /** Null until the school defines the term containing this date; reconcile_terms() backfills it. */
@@ -219,7 +222,9 @@ export async function getScorableSession(
 
   const { data: session, error: sessionError } = await supabase
     .from("attendance_sessions")
-    .select("id, staff_id, session_date, period, term_id, is_practical, practical_scored_at, practical_rubric_version")
+    .select(
+      "id, staff_id, session_date, period, term_id, is_practical, kind, assessment_id, practical_scored_at, practical_rubric_version"
+    )
     .eq("id", sessionId)
     .maybeSingle();
 
@@ -275,7 +280,11 @@ export async function getScorableSession(
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const rubricVersion = session.practical_rubric_version ?? CURRENT_RUBRIC_VERSION;
-  const required = aspectsForVersion(rubricVersion);
+  const kind = (session.kind ?? "lesson") as SessionKind;
+  // Six aspects for an assessment, seven for a lesson: helps_others is
+  // malpractice mid-paper, so the gate must not demand it or the round could
+  // never complete.
+  const required = aspectsFor(rubricVersion, kind);
 
   const progress = Object.fromEntries(
     required.map((aspect) => [aspect, learners.filter((l) => l.bands[aspect]).length])
@@ -283,6 +292,8 @@ export async function getScorableSession(
 
   return {
     sessionId: session.id,
+    kind,
+    assessmentId: session.assessment_id,
     sessionDate: session.session_date,
     period: session.period,
     termId: session.term_id,
@@ -429,7 +440,7 @@ export async function completeRound(sessionId: string, staffId: string): Promise
   }
 
   if (!session.complete) {
-    const required = aspectsForVersion(session.rubricVersion);
+    const required = aspectsFor(session.rubricVersion, session.kind);
     const missing = required
       .filter((aspect) => session.progress[aspect] < session.learners.length)
       .map((aspect) => {
@@ -780,6 +791,7 @@ export async function getPracticalTermScoreForStudent(
 
 export interface StaffRound {
   sessionId: string;
+  kind: SessionKind;
   /** class + stream + date + period. Two sessions sharing this are one lesson. */
   slotKey: string;
   sessionDate: string;
@@ -810,7 +822,7 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
   const { data: sessionRows, error } = await supabase
     .from("attendance_sessions")
     .select(
-      "id, class_id, stream_id, session_date, period, practical_scored_at, practical_rubric_version, term:terms(ends_on)"
+      "id, class_id, stream_id, session_date, period, kind, practical_scored_at, practical_rubric_version, term:terms(ends_on)"
     )
     .eq("staff_id", staffId)
     // Lab lessons only. Without this the queue offered every register in every
@@ -860,7 +872,10 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
   const rounds = open
     .map((session) => {
       const attendanceIds = bySession.get(session.id) ?? [];
-      const required = aspectsForVersion(session.practical_rubric_version ?? CURRENT_RUBRIC_VERSION);
+      const required = aspectsFor(
+        session.practical_rubric_version ?? CURRENT_RUBRIC_VERSION,
+        (session.kind ?? "lesson") as SessionKind
+      );
       const aspectsDone = required.filter((aspect) =>
         attendanceIds.length > 0 &&
         attendanceIds.every((id) => scoredByAttendance.get(id)?.has(aspect))
@@ -868,6 +883,7 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
 
       return {
         sessionId: session.id,
+        kind: (session.kind ?? "lesson") as SessionKind,
         slotKey: slotKeyOf(session),
         sessionDate: session.session_date,
         period: session.period,
@@ -1039,6 +1055,7 @@ interface SlotSessionRow {
 
 interface StaffRoundRow {
   id: string;
+  kind: string | null;
   class_id: string;
   stream_id: string | null;
   session_date: string;
