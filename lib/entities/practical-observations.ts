@@ -568,30 +568,77 @@ export async function getPracticalTermScores(
     bandsByAttendance.set(o.lesson_attendance_id, list);
   }
 
-  const byStudent = new Map<string, StudentAccumulator>();
+  const facts: ObservationFact[] = [];
   for (const row of attendance) {
     const rows = bandsByAttendance.get(row.id);
     if (!rows || rows.length === 0) continue;
-
-    const acc =
-      byStudent.get(row.student_id) ??
-      {
-        name: fullName(row.student),
+    for (const o of rows) {
+      facts.push({
+        studentId: row.student_id,
+        studentName: fullName(row.student),
         systemId: row.student?.system_id ?? null,
-        rounds: 0,
+        roundId: row.id,
+        rubricVersion: versionBySession.get(row.attendance_session_id) ?? null,
+        aspect: o.aspect,
+        band: o.band,
+      });
+    }
+  }
+
+  return summarisePractical(facts);
+}
+
+/** One observation, flattened with the learner and round it belongs to. */
+export interface ObservationFact {
+  studentId: string;
+  studentName: string;
+  systemId: string | null;
+  /** Distinct values per learner give roundsScored — one round is one lesson_attendance row. */
+  roundId: string;
+  rubricVersion: number | null;
+  aspect: PracticalAspect;
+  band: PracticalBand;
+}
+
+/**
+ * The arithmetic, separated from the queries so it can actually be tested.
+ *
+ * This is the part that produces the figure attached to a child, and it was
+ * previously buried inside a function that made three database calls, which meant
+ * none of it could be exercised without a live Supabase. Everything here is pure.
+ *
+ * ⚠ Two known properties, both covered by tests in __tests__/ so that changing
+ * them has to be deliberate rather than accidental:
+ *
+ *   1. The overall score is the mean of the per-aspect means, NOT the mean of all
+ *      observations. Aspects therefore weigh equally regardless of how many times
+ *      each was observed — so an aspect seen once carries the same weight as one
+ *      seen seven times. That is defensible for comparing learners across a rubric
+ *      change and indefensible as a confidence-weighted average. It is a choice,
+ *      not an accident.
+ *   2. Attendance is not a denominator. A learner present for 3 lessons and rated
+ *      Outstanding in all 3 scores higher than one present for 20 who slipped
+ *      once. The instrument rewards being absent on your bad days. MINIMUM_ROUNDS
+ *      blunts this at the low end and does not fix it.
+ */
+export function summarisePractical(facts: ObservationFact[]): PracticalTermScore[] {
+  const byStudent = new Map<string, StudentAccumulator>();
+
+  for (const fact of facts) {
+    const acc =
+      byStudent.get(fact.studentId) ??
+      {
+        name: fact.studentName,
+        systemId: fact.systemId,
+        rounds: new Set<string>(),
         versions: new Set<number>(),
         bands: new Map<PracticalAspect, PracticalBand[]>(),
       };
 
-    acc.rounds += 1;
-    const version = versionBySession.get(row.attendance_session_id);
-    if (version != null) acc.versions.add(version);
-    for (const o of rows) {
-      const list = acc.bands.get(o.aspect) ?? [];
-      list.push(o.band);
-      acc.bands.set(o.aspect, list);
-    }
-    byStudent.set(row.student_id, acc);
+    acc.rounds.add(fact.roundId);
+    if (fact.rubricVersion != null) acc.versions.add(fact.rubricVersion);
+    acc.bands.set(fact.aspect, [...(acc.bands.get(fact.aspect) ?? []), fact.band]);
+    byStudent.set(fact.studentId, acc);
   }
 
   const scores = Array.from(byStudent.entries()).map(([studentId, acc]) => {
@@ -613,14 +660,15 @@ export async function getPracticalTermScores(
           PRACTICAL_ASPECTS.findIndex((x) => x.code === b.aspect)
       );
 
+    const rounds = acc.rounds.size;
     return {
       studentId,
       studentName: acc.name,
       systemId: acc.systemId,
-      roundsScored: acc.rounds,
+      roundsScored: rounds,
       observations: perAspect.reduce((sum, a) => sum + a.observations, 0),
       score:
-        acc.rounds >= MINIMUM_ROUNDS && perAspect.length > 0
+        rounds >= MINIMUM_ROUNDS && perAspect.length > 0
           ? round1(perAspect.reduce((sum, a) => sum + a.score, 0) / perAspect.length)
           : null,
       perAspect,
@@ -908,7 +956,8 @@ interface ScopedAttendanceRow extends AttendanceRow {
 interface StudentAccumulator {
   name: string;
   systemId: string | null;
-  rounds: number;
+  /** A set, not a counter — the same round must never be counted twice. */
+  rounds: Set<string>;
   versions: Set<number>;
   bands: Map<PracticalAspect, PracticalBand[]>;
 }
