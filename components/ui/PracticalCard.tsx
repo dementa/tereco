@@ -3,6 +3,7 @@
 import { Card } from '@/components/ui/Card';
 import { Laptop } from 'lucide-react';
 import type {
+  BlendedPerformance,
   PracticalAspectRate,
   PracticalTermScore,
 } from '@/lib/entities/practical-observations';
@@ -31,11 +32,14 @@ import type {
  */
 export function PracticalCard({
   score,
+  performance,
   heading = 'Practical skills',
   /** Second person for the learner's own view, third for a parent reading about their child. */
   voice = 'self',
 }: {
   score: PracticalTermScore | null;
+  /** Present once the school gives practical a non-zero share of performance. */
+  performance?: BlendedPerformance | null;
   heading?: string;
   voice?: 'self' | 'parent';
 }) {
@@ -117,10 +121,28 @@ export function PracticalCard({
         </p>
       )}
 
-      <p className="text-xs text-text-faint mt-4 pt-3 border-t border-[#EAEAEA]">
-        Practical skills are observed in the lab. They are recorded separately and are not part
-        of the written average.
-      </p>
+      {/* Shown only once the school has actually given practical a share. At a
+          weight of 0 the overall figure IS the written one, and printing them
+          side by side as though they were different numbers would be noise. */}
+      {performance && performance.weight > 0 && performance.overall !== null ? (
+        <div className="mt-4 pt-3 border-t border-[#EAEAEA]">
+          <div className="flex items-baseline justify-between gap-3">
+            <span className="text-sm text-text-secondary">Overall</span>
+            <span className="text-lg font-bold text-primary-900 tabular-nums">
+              {performance.overall}%
+            </span>
+          </div>
+          <p className="text-xs text-text-faint mt-1">
+            Written {performance.written}% and practical skills, counted at{' '}
+            {Math.round(performance.weight * 100)}%.
+          </p>
+        </div>
+      ) : (
+        <p className="text-xs text-text-faint mt-4 pt-3 border-t border-[#EAEAEA]">
+          Practical skills are observed in the lab. They are recorded separately and are not part
+          of the written average.
+        </p>
+      )}
     </Card>
   );
 }

@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   aspectsFor,
   aspectsForVersion,
+  blendPerformance,
   dedupeSlots,
   summariseClass,
   summarisePractical,
@@ -410,5 +411,38 @@ describe('summariseClass — what to reteach next week', () => {
 
   it('returns nothing for a class nobody has scored', () => {
     expect(summariseClass([])).toEqual([]);
+  });
+});
+
+describe('blendPerformance — what practical actually adds', () => {
+  it('changes nothing at weight 0, which is how it ships', () => {
+    expect(blendPerformance(68, 86, 0).overall).toBe(68);
+  });
+
+  it('moves the figure once the school gives it a share', () => {
+    // 68 written, 86 practical, counted at 25% -> 72.5
+    expect(blendPerformance(68, 86, 0.25).overall).toBe(72.5);
+  });
+
+  it('NEVER penalises a learner with no practical score', () => {
+    // The important one. A learner below MINIMUM_ROUNDS has practical = null.
+    // Blending null as zero would drag them to 51 for lessons their teacher
+    // simply did not score — something the child did not do.
+    expect(blendPerformance(68, null, 0.25).overall).toBe(68);
+  });
+
+  it('does not rank a learner on lab skills alone', () => {
+    // Observations but no marked papers is not a performance figure.
+    expect(blendPerformance(null, 86, 0.25).overall).toBeNull();
+  });
+
+  it('clamps a nonsense weight rather than trusting it', () => {
+    expect(blendPerformance(68, 86, 5).weight).toBe(1);
+    expect(blendPerformance(68, 86, -2).weight).toBe(0);
+    expect(blendPerformance(68, 86, 5).overall).toBe(86);
+  });
+
+  it('rounds to one decimal, like every other percentage here', () => {
+    expect(blendPerformance(67, 84, 0.3).overall).toBe(72.1);
   });
 });

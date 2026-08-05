@@ -6,7 +6,7 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useParentChildren } from '@/components/parent/ParentChildrenContext';
 import { PracticalCard } from '@/components/ui/PracticalCard';
-import type { PracticalTermScore } from '@/lib/entities/practical-observations';
+import type { BlendedPerformance, PracticalTermScore } from '@/lib/entities/practical-observations';
 
 interface Attempt {
   assessmentSystemId: string;
@@ -52,6 +52,7 @@ export default function ParentResultsPage() {
   const [practical, setPractical] = useState<{
     studentId: string;
     score: PracticalTermScore | null;
+    performance: BlendedPerformance | null;
   } | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -87,7 +88,8 @@ export default function ParentResultsPage() {
     fetch(`/api/practical/summary?studentId=${selectedId}`)
       .then((r) => r.json())
       .then((d) => {
-        if (!cancelled && d.success) setPractical({ studentId: selectedId, score: d.data });
+        if (!cancelled && d.success)
+          setPractical({ studentId: selectedId, score: d.data, performance: d.performance ?? null });
       })
       .catch(() => {});
     return () => {
@@ -107,6 +109,7 @@ export default function ParentResultsPage() {
           as one combined mark with the written results below. */}
       <PracticalCard
         score={practical?.studentId === selectedId ? practical.score : null}
+        performance={practical?.studentId === selectedId ? practical.performance : null}
         voice="parent"
       />
 

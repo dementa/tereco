@@ -787,6 +787,70 @@ export async function getPracticalTermScoreForStudent(
   return scores[0] ?? null;
 }
 
+// ─── Contribution to performance ────────────────────────────────────────────
+
+export interface BlendedPerformance {
+  /** Mean of marked assessment percentages, 0-100, or null when nothing is marked. */
+  written: number | null;
+  /** Practical score, 0-100, or null below MINIMUM_ROUNDS. */
+  practical: number | null;
+  /** Share of the overall figure taken from practical, 0..1. */
+  weight: number;
+  /** What goes on the report. Equals `written` whenever weight is 0 or practical is null. */
+  overall: number | null;
+}
+
+/**
+ * How much practical skills actually move a learner's performance figure.
+ *
+ * ─── The rule that matters ──────────────────────────────────────────────────
+ * A learner with NO practical score is never penalised. If practical is null —
+ * fewer than MINIMUM_ROUNDS observed rounds — the overall figure is simply the
+ * written one, not the written one scaled down by (1 - weight). Blending a
+ * missing value as though it were zero would quietly punish a child for lessons
+ * their teacher did not score, which is not something the child did.
+ *
+ * The same applies in reverse: practical alone is not a performance figure. A
+ * learner with observations but no marked papers keeps a null overall rather
+ * than being ranked on lab skills alone.
+ *
+ * At weight 0 this returns the written figure untouched, which is the shipped
+ * state. The mechanism exists so that turning it on later is a settings change,
+ * not a release — and so the weight can be chosen against real distributions
+ * rather than guessed at now.
+ */
+export function blendPerformance(
+  written: number | null,
+  practical: number | null,
+  weight: number
+): BlendedPerformance {
+  const w = Math.min(1, Math.max(0, weight));
+  const overall =
+    written === null
+      ? null
+      : practical === null || w === 0
+        ? written
+        : Math.round((written * (1 - w) + practical * w) * 10) / 10;
+
+  return { written, practical, weight: w, overall };
+}
+
+/** A school's configured weight. Missing school or missing row reads as 0, never as a guess. */
+export async function getPracticalWeight(schoolId: string | null): Promise<number> {
+  if (!schoolId) return 0;
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("schools")
+    .select("practical_weight")
+    .eq("id", schoolId)
+    .maybeSingle();
+  if (error) {
+    console.error("Could not read practical weight:", error.message);
+    return 0;
+  }
+  return Number(data?.practical_weight ?? 0);
+}
+
 // ─── Class roll-up ──────────────────────────────────────────────────────────
 
 export interface ClassAspectSummary {
