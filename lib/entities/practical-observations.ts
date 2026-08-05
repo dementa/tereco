@@ -787,11 +787,78 @@ export async function getPracticalTermScoreForStudent(
   return scores[0] ?? null;
 }
 
+// ─── Class roll-up ──────────────────────────────────────────────────────────
+
+export interface ClassAspectSummary {
+  aspect: PracticalAspect;
+  label: string;
+  /** Learners whose most common band on this aspect is Outstanding. */
+  doingWell: number;
+  moderate: number;
+  /** The number that matters: learners who most often need support here. */
+  needsSupport: number;
+  learners: number;
+}
+
+/**
+ * A class rolled up by skill, which is what actually makes scoring worth a
+ * teacher's time.
+ *
+ * An individual learner's bands tell a teacher something they largely already
+ * know. "18 of 30 most often need support on two-hand typing" is different in
+ * kind — it is a teaching instruction, and it is the only output of this whole
+ * feature that changes what happens in the next lesson.
+ *
+ * Counts learners by their MODAL band per aspect rather than thresholding an
+ * average. A threshold would need a cutoff nobody has evidence for; the mode is
+ * just "what this learner usually gets", which needs no defending. Ties fall to
+ * the worse band deliberately — a learner split evenly between Moderate and
+ * Needs support is one a teacher should look at, not one to round up.
+ */
+export function summariseClass(scores: PracticalTermScore[]): ClassAspectSummary[] {
+  const byAspect = new Map<PracticalAspect, ClassAspectSummary>();
+
+  for (const learner of scores) {
+    for (const rate of learner.perAspect) {
+      const row =
+        byAspect.get(rate.aspect) ??
+        {
+          aspect: rate.aspect,
+          label: rate.label,
+          doingWell: 0,
+          moderate: 0,
+          needsSupport: 0,
+          learners: 0,
+        };
+
+      // Worst-wins on a tie: needs_support first, then moderate.
+      if (rate.needsSupport >= rate.moderate && rate.needsSupport >= rate.outstanding) {
+        row.needsSupport += 1;
+      } else if (rate.moderate >= rate.outstanding) {
+        row.moderate += 1;
+      } else {
+        row.doingWell += 1;
+      }
+      row.learners += 1;
+      byAspect.set(rate.aspect, row);
+    }
+  }
+
+  // Weakest first. A teacher opening this should see what to reteach, not have
+  // to scan for it.
+  return Array.from(byAspect.values()).sort(
+    (a, b) => b.needsSupport / b.learners - a.needsSupport / a.learners
+  );
+}
+
 // ─── The teacher's own queue ────────────────────────────────────────────────
 
 export interface StaffRound {
   sessionId: string;
   kind: SessionKind;
+  classId: string;
+  className: string;
+  streamId: string | null;
   /** class + stream + date + period. Two sessions sharing this are one lesson. */
   slotKey: string;
   sessionDate: string;
@@ -822,7 +889,8 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
   const { data: sessionRows, error } = await supabase
     .from("attendance_sessions")
     .select(
-      "id, class_id, stream_id, session_date, period, kind, practical_scored_at, practical_rubric_version, term:terms(ends_on)"
+      "id, class_id, stream_id, session_date, period, kind, practical_scored_at, practical_rubric_version, " +
+        "term:terms(ends_on), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name)"
     )
     .eq("staff_id", staffId)
     // Lab lessons only. Without this the queue offered every register in every
@@ -884,6 +952,9 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
       return {
         sessionId: session.id,
         kind: (session.kind ?? "lesson") as SessionKind,
+        classId: session.class_id,
+        className: classNameOf(session),
+        streamId: session.stream_id,
         slotKey: slotKeyOf(session),
         sessionDate: session.session_date,
         period: session.period,
@@ -1063,6 +1134,14 @@ interface StaffRoundRow {
   practical_scored_at: string | null;
   practical_rubric_version: number | null;
   term: { ends_on: string } | null;
+  class: { alias: string | null; grade_level: { code: string } | null } | null;
+  stream: { name: string } | null;
+}
+
+/** Display name, same coalesce(alias, grade_levels.code) rule the rest of the app uses. */
+function classNameOf(row: StaffRoundRow): string {
+  const base = row.class?.alias ?? row.class?.grade_level?.code ?? "Class";
+  return row.stream?.name ? `${base} ${row.stream.name}` : base;
 }
 
 interface ReminderSessionRow {
