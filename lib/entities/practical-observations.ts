@@ -183,7 +183,7 @@ export async function getScorableSession(
 
   const { data: session, error: sessionError } = await supabase
     .from("attendance_sessions")
-    .select("id, staff_id, session_date, period, term_id, practical_scored_at, practical_rubric_version")
+    .select("id, staff_id, session_date, period, term_id, is_practical, practical_scored_at, practical_rubric_version")
     .eq("id", sessionId)
     .maybeSingle();
 
@@ -196,6 +196,12 @@ export async function getScorableSession(
   if (!session) throw new UserFacingError("That lesson could not be found.", 404);
   if (session.staff_id !== staffId) {
     throw new UserFacingError("That lesson belongs to another teacher.", 403);
+  }
+  // Checked by id rather than trusting the queue to have filtered it out — a
+  // filtered list still leaves this reachable by URL, the same reasoning
+  // canManageAssessment carries in lib/auth/access.ts.
+  if (!session.is_practical) {
+    throw new UserFacingError("That lesson was not marked as a computer-lab lesson.", 409);
   }
 
   const { data: attendance, error: attendanceError } = await supabase
@@ -771,6 +777,10 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
       "id, class_id, stream_id, session_date, period, practical_scored_at, practical_rubric_version, term:terms(ends_on)"
     )
     .eq("staff_id", staffId)
+    // Lab lessons only. Without this the queue offered every register in every
+    // subject — 33 outstanding rounds on the live database on day one, most of
+    // which nobody should ever have been asked to score.
+    .eq("is_practical", true)
     .order("session_date", { ascending: false })
     .limit(limit);
 
@@ -908,6 +918,9 @@ export async function listPracticalReminders(): Promise<PracticalReminder[]> {
         "term:terms(ends_on)"
     )
     .is("practical_scored_at", null)
+    .eq("is_practical", true)
+    // Strictly before today: a round is not overdue an hour after the bell, and
+    // scoring happens after the lesson by design.
     .lt("session_date", today)
     .order("session_date", { ascending: true });
 

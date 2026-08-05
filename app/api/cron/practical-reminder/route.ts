@@ -95,6 +95,28 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ─── The backlog, for super_admin only ──────────────────────────────
+    // Deliberately narrower than the lesson digest, which goes to admin and
+    // super_admin: approval-shaped powers here are super_admin only, the same
+    // line canApproveLibraryContent draws in lib/auth/access.ts.
+    //
+    // One notification naming the teachers, not one per outstanding round. A
+    // digest that lists 40 lessons is a report nobody reads; the point is to
+    // show who has stopped scoring, so someone can ask them why.
+    if (reminders.length > 0) {
+      const totalRounds = reminders.reduce((sum, r) => sum + r.rounds.length, 0);
+      await notify({
+        type: "practical_reminder",
+        title: `${totalRounds} lab lesson${totalRounds === 1 ? "" : "s"} not yet scored`,
+        body: `${reminders.length} teacher${reminders.length === 1 ? "" : "s"} with practical scoring outstanding: ${reminders
+          .map((r) => `${r.name} (${r.rounds.length})`)
+          .join(", ")}.`,
+        audience: { role: "super_admin" },
+        entityType: "attendance_sessions",
+        link: "/admin/lessons",
+      });
+    }
+
     return NextResponse.json({ success: true, reminders: reminders.length, notified, emailed });
   } catch (error) {
     console.error("Practical reminder cron error:", error);

@@ -249,6 +249,8 @@ export async function createAttendanceSession(input: {
   streamId: string | null;
   date: string;
   period: number;
+  /** True when this was a computer-lab lesson, so it gets practical scoring afterwards. */
+  isPractical: boolean;
   attendance: AttendanceEntryInput[];
 }): Promise<{ id: string; present: number; absent: number }> {
   const supabase = getSupabaseAdmin();
@@ -262,6 +264,7 @@ export async function createAttendanceSession(input: {
       stream_id: input.streamId,
       session_date: input.date,
       period: input.period,
+      is_practical: input.isPractical,
     })
     .select("id")
     .single();

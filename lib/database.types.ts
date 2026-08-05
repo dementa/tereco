@@ -382,6 +382,7 @@ export type Database = {
           class_id: string
           created_at: string
           id: string
+          is_practical: boolean
           lesson_report_id: string | null
           period: number
           practical_rubric_version: number | null
@@ -397,6 +398,7 @@ export type Database = {
           class_id: string
           created_at?: string
           id?: string
+          is_practical?: boolean
           lesson_report_id?: string | null
           period: number
           practical_rubric_version?: number | null
@@ -412,6 +414,7 @@ export type Database = {
           class_id?: string
           created_at?: string
           id?: string
+          is_practical?: boolean
           lesson_report_id?: string | null
           period?: number
           practical_rubric_version?: number | null

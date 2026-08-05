@@ -31,6 +31,7 @@ interface FormData {
   stream: string
   date: string
   period: string
+  isPractical: boolean
 }
 
 interface FieldError { [key: string]: string }
@@ -60,7 +61,7 @@ const STEPS = [
 ]
 
 const INITIAL: FormData = {
-  school: '', className: '', stream: '', date: new Date().toISOString().split('T')[0], period: '',
+  school: '', className: '', stream: '', date: new Date().toISOString().split('T')[0], period: '', isPractical: false,
 }
 
 function validateStep(step: number, data: FormData, selectedClassHasStreams: boolean): FieldError {
@@ -238,7 +239,7 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           schoolId: selectedSchool?.id, classId: selectedClass?.id, streamId: selectedStream?.id,
-          date: data.date, period: data.period, attendance,
+          date: data.date, period: data.period, isPractical: data.isPractical, attendance,
         }),
       })
       const json = await res.json()
@@ -303,6 +304,29 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
             required
           />
         </div>
+
+        {/* Asked here, at register time, because this is the only moment the
+            person who knows is in front of the form. lesson_reports.computer_access
+            is filed afterwards and may never be filed at all, and there is no
+            timetable to consult. Unticked means an ordinary lesson: no practical
+            scoring is asked for, and the nightly reminder ignores it. */}
+        <label className="flex items-start gap-3 p-3.5 rounded-xl border border-[#EAEAEA] bg-[#FAFAFA] cursor-pointer hover:border-[#0489AE] transition-colors">
+          <input
+            type="checkbox"
+            checked={data.isPractical}
+            onChange={e => set('isPractical', e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-[#02465B] cursor-pointer"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-[#171717]">
+              This was a computer-lab lesson
+            </span>
+            <span className="block text-xs text-[#666666] mt-0.5">
+              Tick it and you&apos;ll be asked to score practical skills for these learners
+              afterwards. Leave it unticked for an ordinary lesson.
+            </span>
+          </span>
+        </label>
       </div>
     ),
 
