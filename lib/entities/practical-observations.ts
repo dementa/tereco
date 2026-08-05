@@ -107,9 +107,33 @@ export const CURRENT_RUBRIC_VERSION = 1;
  * against a gate demanding eight, and their work is permanently stuck.
  */
 export function aspectsForVersion(version: number): readonly PracticalAspect[] {
-  if (version === CURRENT_RUBRIC_VERSION) return PRACTICAL_ASPECTS.map((a) => a.code);
-  throw new UserFacingError(`Unknown practical rubric version ${version}.`, 500);
+  const known = RUBRIC_VERSIONS[version];
+  if (known) return known;
+
+  // Never throw. An earlier draft raised here for any unrecognised version, and
+  // getScorableSession calls this with the version stored ON THE ROW — so the
+  // first time CURRENT_RUBRIC_VERSION was bumped to 2, every round already in
+  // the database would have 500'd on open. The mechanism built to survive a
+  // rubric change could not itself survive one, and nothing would have caught it
+  // because v1 is the only branch that does not throw.
+  //
+  // Falling back to the current set degrades a round scored under a version this
+  // deployment does not know about into one judged by today's rubric. That can
+  // mark such a round incomplete, which is visible and recoverable. Throwing made
+  // it unopenable, which is neither.
+  console.warn(`Unknown practical rubric version ${version}; judging by v${CURRENT_RUBRIC_VERSION}.`);
+  return RUBRIC_VERSIONS[CURRENT_RUBRIC_VERSION];
 }
+
+/**
+ * Every rubric that has existed, by version.
+ *
+ * Add the OLD set here when bumping CURRENT_RUBRIC_VERSION — that is the whole
+ * job, and forgetting it is now a degraded round rather than a 500.
+ */
+const RUBRIC_VERSIONS: Record<number, readonly PracticalAspect[]> = {
+  1: PRACTICAL_ASPECTS.map((a) => a.code),
+};
 
 // ─── Shapes ─────────────────────────────────────────────────────────────────
 
@@ -236,7 +260,15 @@ export async function getScorableSession(
 export interface BandEntry {
   lessonAttendanceId: string;
   band: PracticalBand;
+  /**
+   * 'bulk' when this cell came from the remainder button rather than a decision
+   * about this learner. Defaults to 'tap', so the stronger claim is only ever
+   * recorded when a caller actually makes it.
+   */
+  source?: ObservationSource;
 }
+
+export type ObservationSource = "tap" | "bulk";
 
 /**
  * Record one pass: the teacher's explicit taps for a single aspect across the
@@ -278,6 +310,7 @@ export async function saveObservations(input: {
       lesson_attendance_id: e.lessonAttendanceId,
       aspect: input.aspect,
       band: e.band,
+      source: e.source ?? "tap",
       updated_at: new Date().toISOString(),
     })),
     { onConflict: "lesson_attendance_id,aspect" }
@@ -321,6 +354,7 @@ export async function bulkAffirmRemainder(input: {
         lesson_attendance_id: l.lessonAttendanceId,
         aspect: input.aspect,
         band: input.band,
+        source: "bulk" as const,
       })),
       { onConflict: "lesson_attendance_id,aspect", ignoreDuplicates: true }
     )
@@ -642,6 +676,103 @@ export async function getPracticalTermScoreForStudent(
   return scores[0] ?? null;
 }
 
+// ─── The teacher's own queue ────────────────────────────────────────────────
+
+export interface StaffRound {
+  sessionId: string;
+  sessionDate: string;
+  period: number;
+  learners: number;
+  scoredAt: string | null;
+  /** How many of the required aspects have every present learner recorded. */
+  aspectsDone: number;
+  aspectsTotal: number;
+}
+
+/**
+ * Every round this teacher can still work on, newest first.
+ *
+ * Without this there is no way into the scoring screen at all: /staff/practical/[id]
+ * needs a session id, and nothing in the app knew one. A feature nobody can reach
+ * is the same as a feature that does not exist, and the parent-facing card would
+ * have sat empty in all four schools indefinitely while looking like it worked.
+ *
+ * Deliberately includes rounds already completed (capped, recent) rather than
+ * hiding them: rounds stay editable until the term closes, and a teacher who
+ * spots a mistake needs a route back to it.
+ */
+export async function listStaffRounds(staffId: string, limit = 30): Promise<StaffRound[]> {
+  const supabase = getSupabaseAdmin();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data: sessionRows, error } = await supabase
+    .from("attendance_sessions")
+    .select("id, session_date, period, practical_scored_at, practical_rubric_version, term:terms(ends_on)")
+    .eq("staff_id", staffId)
+    .order("session_date", { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    console.error("Could not list this teacher's rounds:", error.message);
+    throw new Error(error.message);
+  }
+
+  const sessions = (sessionRows ?? []) as unknown as StaffRoundRow[];
+  // A round in a closed term can no longer be written to at all
+  // (trg_validate_practical_term_open), so offering it would be a dead end.
+  const open = sessions.filter((s) => !s.term?.ends_on || s.term.ends_on >= today);
+  if (open.length === 0) return [];
+
+  const ids = open.map((s) => s.id);
+
+  const { data: attendanceRows, error: attendanceError } = await supabase
+    .from("lesson_attendance")
+    .select("id, attendance_session_id")
+    .in("attendance_session_id", ids)
+    .eq("is_present", true);
+  if (attendanceError) throw new Error(attendanceError.message);
+
+  const attendance = (attendanceRows ?? []) as { id: string; attendance_session_id: string }[];
+  const bySession = new Map<string, string[]>();
+  for (const row of attendance) {
+    bySession.set(row.attendance_session_id, [
+      ...(bySession.get(row.attendance_session_id) ?? []),
+      row.id,
+    ]);
+  }
+
+  const observations = attendance.length ? await fetchObservations(attendance.map((a) => a.id)) : [];
+  const scoredByAttendance = new Map<string, Set<PracticalAspect>>();
+  for (const o of observations) {
+    const set = scoredByAttendance.get(o.lesson_attendance_id) ?? new Set<PracticalAspect>();
+    set.add(o.aspect);
+    scoredByAttendance.set(o.lesson_attendance_id, set);
+  }
+
+  return open
+    .map((session) => {
+      const attendanceIds = bySession.get(session.id) ?? [];
+      const required = aspectsForVersion(session.practical_rubric_version ?? CURRENT_RUBRIC_VERSION);
+      const aspectsDone = required.filter((aspect) =>
+        attendanceIds.length > 0 &&
+        attendanceIds.every((id) => scoredByAttendance.get(id)?.has(aspect))
+      ).length;
+
+      return {
+        sessionId: session.id,
+        sessionDate: session.session_date,
+        period: session.period,
+        learners: attendanceIds.length,
+        scoredAt: session.practical_scored_at,
+        aspectsDone,
+        aspectsTotal: required.length,
+      };
+    })
+    // Nobody present means nothing to score and completeRound refuses it, so it
+    // would be an item the teacher could never clear.
+    .filter((round) => round.learners > 0);
+}
+
 // ─── Reminders ──────────────────────────────────────────────────────────────
 
 export interface PendingRound {
@@ -746,6 +877,15 @@ export async function listPracticalReminders(): Promise<PracticalReminder[]> {
 }
 
 // ─── Internals ──────────────────────────────────────────────────────────────
+
+interface StaffRoundRow {
+  id: string;
+  session_date: string;
+  period: number;
+  practical_scored_at: string | null;
+  practical_rubric_version: number | null;
+  term: { ends_on: string } | null;
+}
 
 interface ReminderSessionRow {
   id: string;

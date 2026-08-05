@@ -6,6 +6,7 @@ import {
   bulkAffirmRemainder,
   completeRound,
   getScorableSession,
+  listStaffRounds,
   saveObservations,
   PRACTICAL_ASPECTS,
   PRACTICAL_BANDS,
@@ -46,6 +47,10 @@ const SaveSchema = z.object({
       z.object({
         lessonAttendanceId: z.string().uuid(),
         band: z.enum(bandCodes),
+        // Whether the teacher chose this band for this learner, or swept it in
+        // with the remainder button. Optional and defaulting to 'tap' so the
+        // stronger claim is only recorded when a caller actually makes it.
+        source: z.enum(["tap", "bulk"]).optional(),
       })
     )
     .min(1, "Nothing to save"),
@@ -73,7 +78,14 @@ export async function GET(request: NextRequest) {
     if (profile.role !== "staff") return errorResponse("Forbidden", 403);
 
     const sessionId = request.nextUrl.searchParams.get("sessionId");
-    if (!sessionId) return errorResponse("A lesson must be identified.", 400);
+
+    // No sessionId means "what have I got to score?". Without this there was no
+    // way into the scoring screen at all — it needs a session id and nothing in
+    // the app knew one.
+    if (!sessionId) {
+      const rounds = await listStaffRounds(profile.id);
+      return successResponse({ data: rounds });
+    }
 
     const data = await getScorableSession(sessionId, profile.id);
     return successResponse({ data });

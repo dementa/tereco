@@ -1,10 +1,15 @@
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
-import { ClipboardCheck, FileText } from 'lucide-react';
+import { ClipboardCheck, FileText, Laptop } from 'lucide-react';
 
+// Listed in the order a teacher actually works: register at the start of the
+// lesson, report and practical skills after it. Practical scoring reads its
+// roster from the attendance session, so it deliberately sits last — it has
+// nothing to show until the register exists.
 const FORMS = [
   { href: '/staff/attendance', label: 'Attendance', description: 'Mark the roster at the start of a lesson.', icon: ClipboardCheck },
   { href: '/staff/lessons',    label: 'Lesson Reports', description: 'File what happened after the lesson.', icon: FileText },
+  { href: '/staff/practical',  label: 'Practical Skills', description: 'Score lab skills for the learners you had.', icon: Laptop },
 ];
 
 export default function StaffFormsPage() {

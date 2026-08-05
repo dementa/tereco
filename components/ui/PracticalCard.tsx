@@ -41,15 +41,24 @@ export function PracticalCard({
 }) {
   const subject = voice === 'self' ? 'You have' : 'They have';
 
-  if (!score || score.score === null) {
+  // Nothing observed at all: render NOTHING, not an explanation.
+  //
+  // Until a teacher has actually scored a round, every learner in every school
+  // would otherwise carry a permanent card reading "not enough observations
+  // yet" — on a page parents read, for a feature they have never been told
+  // about, with no way to tell that from a system that is quietly broken. An
+  // absent card says the same thing honestly and says it to nobody.
+  if (!score || score.roundsScored === 0) return null;
+
+  // Observed, but not enough to publish a summary. Worth showing, because now
+  // there IS something happening and the count explains itself.
+  if (score.score === null) {
     return (
       <Card className="p-5">
         <Header heading={heading} />
         <p className="text-sm text-text-muted mt-3">
-          Not enough observations yet.{' '}
-          {score
-            ? `${subject} been observed in ${roundWord(score.roundsScored)} so far this term.`
-            : 'Practical skills are recorded during lab lessons.'}
+          Not enough observations yet. {subject} been observed in{' '}
+          {roundWord(score.roundsScored)} so far this term.
         </p>
       </Card>
     );

@@ -203,6 +203,29 @@ create table if not exists public.practical_observations (
   aspect               public.practical_aspect not null,
   band                 public.practical_band   not null,
 
+  -- HOW this band was arrived at, and the reason this column exists at all.
+  --
+  -- The scoring screen offers "mark the remaining 29 as Moderate" so a teacher
+  -- is not forced through 287 individual taps. That is deliberate. But it means
+  -- seven presses of that button produce a round that passes every completeness
+  -- check, sets practical_scored_at, and is otherwise INDISTINGUISHABLE from 287
+  -- real observations. Without this column there is no query that can tell the
+  -- two apart, and every other guard here protects against too LITTLE data, not
+  -- against data that arrived in one press.
+  --
+  -- 'tap'  — the teacher chose this band for this learner specifically.
+  -- 'bulk' — swept in by the remainder button, a real judgement about the group
+  --          rather than the individual.
+  --
+  -- Defaults to 'tap' so any caller that does not set it records the stronger
+  -- claim only when it is actually true... which is why the scoring path sets
+  -- 'bulk' explicitly rather than relying on a default going the other way.
+  --
+  -- This is only addable now, before the table holds anything. Once real rounds
+  -- exist there is no way to backfill which cells were swept, and the question
+  -- "are teachers actually observing?" becomes permanently unanswerable.
+  source               text not null default 'tap' check (source in ('tap','bulk')),
+
   created_at           timestamptz not null default now(),
   -- Rounds stay editable until the term closes, so a revision is an ordinary
   -- event here and worth being able to see. Staff already revise filed work:

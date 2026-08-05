@@ -1,4 +1,8 @@
-import type { PracticalAspect, PracticalBand } from "@/lib/entities/practical-observations";
+import type {
+  ObservationSource,
+  PracticalAspect,
+  PracticalBand,
+} from "@/lib/entities/practical-observations";
 
 /**
  * Unsynced practical scoring, held on the device until the server confirms it.
@@ -22,13 +26,21 @@ import type { PracticalAspect, PracticalBand } from "@/lib/entities/practical-ob
  * tested without a DOM once Vitest lands (T3).
  */
 
-/** lessonAttendanceId -> aspect -> band, for cells not yet confirmed by the server. */
-export type Outbox = Record<string, Partial<Record<PracticalAspect, PracticalBand>>>;
+/**
+ * lessonAttendanceId -> aspect -> the cell, for cells not yet confirmed.
+ *
+ * A cell is band + source, not a bare band: `source` has to survive the round
+ * trip through localStorage, or a bulk-filled remainder replayed after a power
+ * cut would come back looking like 41 individual judgements.
+ */
+export type Cell = { band: PracticalBand; source: ObservationSource };
+export type Outbox = Record<string, Partial<Record<PracticalAspect, Cell>>>;
 
 export interface PendingEntry {
   lessonAttendanceId: string;
   aspect: PracticalAspect;
   band: PracticalBand;
+  source: ObservationSource;
 }
 
 // ─── Pure ───────────────────────────────────────────────────────────────────
@@ -39,7 +51,7 @@ export function stage(outbox: Outbox, entries: PendingEntry[]): Outbox {
   for (const entry of entries) {
     next[entry.lessonAttendanceId] = {
       ...next[entry.lessonAttendanceId],
-      [entry.aspect]: entry.band,
+      [entry.aspect]: { band: entry.band, source: entry.source },
     };
   }
   return next;
@@ -56,12 +68,12 @@ export function stage(outbox: Outbox, entries: PendingEntry[]): Outbox {
 export function drain(outbox: Outbox, confirmed: PendingEntry[]): Outbox {
   const next: Outbox = {};
   for (const [attendanceId, aspects] of Object.entries(outbox)) {
-    const remaining: Partial<Record<PracticalAspect, PracticalBand>> = {};
-    for (const [aspect, band] of Object.entries(aspects) as [PracticalAspect, PracticalBand][]) {
+    const remaining: Partial<Record<PracticalAspect, Cell>> = {};
+    for (const [aspect, cell] of Object.entries(aspects) as [PracticalAspect, Cell][]) {
       const wasConfirmed = confirmed.some(
-        (c) => c.lessonAttendanceId === attendanceId && c.aspect === aspect && c.band === band
+        (c) => c.lessonAttendanceId === attendanceId && c.aspect === aspect && c.band === cell.band
       );
-      if (!wasConfirmed) remaining[aspect] = band;
+      if (!wasConfirmed) remaining[aspect] = cell;
     }
     if (Object.keys(remaining).length > 0) next[attendanceId] = remaining;
   }
@@ -71,10 +83,11 @@ export function drain(outbox: Outbox, confirmed: PendingEntry[]): Outbox {
 /** Everything still waiting to reach the server, flattened for sending. */
 export function pending(outbox: Outbox): PendingEntry[] {
   return Object.entries(outbox).flatMap(([lessonAttendanceId, aspects]) =>
-    (Object.entries(aspects) as [PracticalAspect, PracticalBand][]).map(([aspect, band]) => ({
+    (Object.entries(aspects) as [PracticalAspect, Cell][]).map(([aspect, cell]) => ({
       lessonAttendanceId,
       aspect,
-      band,
+      band: cell.band,
+      source: cell.source,
     }))
   );
 }
@@ -102,7 +115,11 @@ export function overlay<T extends { lessonAttendanceId: string; bands: Partial<R
   return learners.map((learner) => {
     const staged = outbox[learner.lessonAttendanceId];
     if (!staged) return learner;
-    return { ...learner, bands: { ...learner.bands, ...staged } };
+    const bands = { ...learner.bands };
+    for (const [aspect, cell] of Object.entries(staged) as [PracticalAspect, Cell][]) {
+      bands[aspect] = cell.band;
+    }
+    return { ...learner, bands };
   });
 }
 

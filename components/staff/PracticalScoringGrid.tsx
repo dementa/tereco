@@ -85,6 +85,30 @@ export function PracticalScoringGrid({
   const flushTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const aspect = PRACTICAL_ASPECTS[pass].code
 
+  /**
+   * The live outbox, readable synchronously.
+   *
+   * `pendingCells` drives rendering, but it is a value captured per render, so
+   * anything that reads it AFTER an await sees the pre-await snapshot. That bug
+   * was real and on the most likely path: complete() awaited flush(), then
+   * checked the closed-over `pendingCells`, found it non-empty, and told the
+   * teacher "Some scoring has not saved yet" on a flush that had just succeeded.
+   * The ref is what makes a post-await read see what actually happened.
+   */
+  const pendingRef = useRef<outbox.Outbox>({})
+  /** Guards against two flushes for the same aspect racing; the loser could persist an older band. */
+  const flushing = useRef(false)
+
+  /** Single place the outbox changes: state for render, ref for logic, storage for the power cut. */
+  const commitOutbox = useCallback(
+    (next: outbox.Outbox) => {
+      pendingRef.current = next
+      setPendingCells(next)
+      outbox.write(staffId, sessionId, next)
+    },
+    [staffId, sessionId]
+  )
+
   /* ── Load, then lay any unsynced taps over the top ─────────────────────── */
   useEffect(() => {
     let cancelled = false
@@ -102,7 +126,9 @@ export function PracticalScoringGrid({
           return
         }
         setSession(body.data as SessionView)
-        setPendingCells(outbox.read(staffId, sessionId))
+        const restored = outbox.read(staffId, sessionId)
+        pendingRef.current = restored
+        setPendingCells(restored)
       } catch {
         if (!cancelled) setLoadError('Could not reach the server. Check your connection and try again.')
       } finally {
@@ -137,10 +163,15 @@ export function PracticalScoringGrid({
   const outstandingCells = outbox.size(pendingCells)
 
   /* ── Send one pass's pending taps ──────────────────────────────────────── */
-  const flush = useCallback(
-    async (current: outbox.Outbox) => {
-      const entries = outbox.pending(current)
+  const flush = useCallback(async () => {
+      // Always the live outbox, never a captured snapshot, and never two at once.
+      // Without the guard, a second debounce firing while the first request is
+      // open lets both POST the same aspect: whichever LANDS last wins rather
+      // than whichever was TAPPED last, and a corrected band silently reverts.
+      if (flushing.current) return
+      const entries = outbox.pending(pendingRef.current)
       if (entries.length === 0) return
+      flushing.current = true
       setSyncing(true)
       try {
         // Grouped by aspect: the server records a pass at a time, and a teacher
@@ -159,7 +190,14 @@ export function PracticalScoringGrid({
               sessionId,
               action: 'save',
               aspect: aspectKey,
-              entries: group.map((e) => ({ lessonAttendanceId: e.lessonAttendanceId, band: e.band })),
+              entries: group.map((e) => ({
+                lessonAttendanceId: e.lessonAttendanceId,
+                band: e.band,
+                // Carried through so the database can tell a decision about this
+                // learner from one swept in with the remainder button. Nothing
+                // else can distinguish them after the fact.
+                source: e.source,
+              })),
             }),
           })
           if (!res.ok) throw new Error('save failed')
@@ -168,41 +206,47 @@ export function PracticalScoringGrid({
 
         // Drain against the CURRENT outbox, not the snapshot we sent — a tap
         // made while the request was in flight must survive.
-        setPendingCells((live) => {
-          const next = outbox.drain(live, confirmed)
-          outbox.write(staffId, sessionId, next)
-          return next
-        })
+        commitOutbox(outbox.drain(pendingRef.current, confirmed))
         setSyncFailed(false)
       } catch {
         // Nothing is dropped. The taps stay in the outbox and go again on the
         // next tap, on Retry, or when the round is completed.
         setSyncFailed(true)
       } finally {
+        flushing.current = false
         setSyncing(false)
       }
     },
-    [sessionId, staffId]
+    [sessionId, commitOutbox]
   )
 
-  const scheduleFlush = useCallback(
-    (next: outbox.Outbox) => {
+  const scheduleFlush = useCallback(() => {
+    if (flushTimer.current) clearTimeout(flushTimer.current)
+    flushTimer.current = setTimeout(() => void flush(), FLUSH_DELAY_MS)
+  }, [flush])
+
+  // Send on the way out, do not just cancel the timer. Leaving within the debounce
+  // window used to defer those taps to localStorage indefinitely: the round stayed
+  // incomplete, and the nightly reminder nagged about work the teacher believed
+  // they had done.
+  useEffect(
+    () => () => {
       if (flushTimer.current) clearTimeout(flushTimer.current)
-      flushTimer.current = setTimeout(() => void flush(next), FLUSH_DELAY_MS)
+      if (outbox.size(pendingRef.current) > 0) void flush()
     },
     [flush]
   )
 
-  useEffect(() => () => { if (flushTimer.current) clearTimeout(flushTimer.current) }, [])
-
   /* ── Taps ──────────────────────────────────────────────────────────────── */
   function tap(lessonAttendanceId: string, band: PracticalBand) {
-    setPendingCells((current) => {
-      const next = outbox.stage(current, [{ lessonAttendanceId, aspect, band }])
-      outbox.write(staffId, sessionId, next)
-      scheduleFlush(next)
-      return next
-    })
+    // Side effects live here, not inside a setState updater. React may invoke an
+    // updater more than once — StrictMode does so deliberately in dev — and a
+    // double-invoked updater that also writes storage and arms a timer is a
+    // source of duplicated work that is very hard to see.
+    commitOutbox(
+      outbox.stage(pendingRef.current, [{ lessonAttendanceId, aspect, band, source: 'tap' }])
+    )
+    scheduleFlush()
   }
 
   /**
@@ -215,17 +259,26 @@ export function PracticalScoringGrid({
    * accepted.
    */
   function affirmRemainder() {
-    const remaining = learners.filter((l) => !l.bands[aspect])
+    // `visible`, NOT `learners`. This used to sweep the whole class regardless of
+    // the search box, so a teacher who filtered to two names, saw two rows, and
+    // pressed a button reading "Mark the remaining 29 as Moderate" scored 29
+    // learners they could not see, with no confirm and no undo.
+    const remaining = visible.filter((l) => !l.bands[aspect])
     if (remaining.length === 0) return
-    setPendingCells((current) => {
-      const next = outbox.stage(
-        current,
-        remaining.map((l) => ({ lessonAttendanceId: l.lessonAttendanceId, aspect, band: 'moderate' as const }))
+    commitOutbox(
+      outbox.stage(
+        pendingRef.current,
+        remaining.map((l) => ({
+          lessonAttendanceId: l.lessonAttendanceId,
+          aspect,
+          band: 'moderate' as const,
+          // Recorded as swept, not chosen. Without this the database cannot tell
+          // seven presses of this button from 287 real observations.
+          source: 'bulk' as const,
+        }))
       )
-      outbox.write(staffId, sessionId, next)
-      scheduleFlush(next)
-      return next
-    })
+    )
+    scheduleFlush()
   }
 
   async function complete() {
@@ -234,8 +287,12 @@ export function PracticalScoringGrid({
       // Completing with unsynced taps would have the server judge a round it
       // cannot see all of, and the teacher would get "missing aspects" when the
       // real answer is "still syncing" — which reads as work lost.
-      await flush(pendingCells)
-      if (outbox.size(pendingCells) > 0) {
+      if (flushTimer.current) clearTimeout(flushTimer.current)
+      await flush()
+      // Read the REF, not the render-time value. Checking `pendingCells` here
+      // saw the pre-flush snapshot and reported failure on a flush that had just
+      // succeeded — every time the last tap landed inside the debounce window.
+      if (outbox.size(pendingRef.current) > 0) {
         setCompleteError('Some scoring has not saved yet. Reconnect and try again.')
         return
       }
@@ -255,6 +312,8 @@ export function PracticalScoringGrid({
         setCompleteError(body.message ?? 'Could not finish this round.')
         return
       }
+      pendingRef.current = {}
+      setPendingCells({})
       outbox.clear(staffId, sessionId)
       setSession(body.data as SessionView)
     } catch {
@@ -355,7 +414,7 @@ export function PracticalScoringGrid({
           </div>
           <button
             type="button"
-            onClick={() => void flush(pendingCells)}
+            onClick={() => void flush()}
             className="ml-auto shrink-0 text-xs font-semibold text-[#C47B0A] underline cursor-pointer"
           >
             Retry
