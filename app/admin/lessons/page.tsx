@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
+import { LessonAnalyticsPanel } from '@/components/ui/LessonAnalyticsPanel';
 import { ChevronDown, ChevronUp, FileText, CheckCircle2 } from 'lucide-react';
 
 interface Lesson {
@@ -104,6 +105,10 @@ export default function AdminLessonsPage() {
     <div className="w-full">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">Lesson Submissions</h1>
       <p className="text-sm text-text-muted mb-6">All daily ICT lesson records submitted by teachers.</p>
+
+      <div className="mb-6">
+        <LessonAnalyticsPanel endpoint="/api/admin/system/lessons/analytics" breakdownLabel="School" />
+      </div>
 
       <div className="mb-4 max-w-sm">
         <Input

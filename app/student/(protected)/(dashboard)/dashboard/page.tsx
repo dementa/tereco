@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { TopPerformersCard } from '@/components/ui/TopPerformersCard';
+import { ClassLessonFeed } from '@/components/ui/ClassLessonFeed';
 import { useAuth } from '@/components/auth/AuthContext';
 import { Award, ClipboardList } from 'lucide-react';
 
@@ -46,6 +47,10 @@ export default function StudentDashboardPage() {
 
       <div className="mb-6">
         <TopPerformersCard data={topPerformers} loading={loading} />
+      </div>
+
+      <div className="mb-6">
+        <ClassLessonFeed />
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
