@@ -379,42 +379,67 @@ export type Database = {
       }
       attendance_sessions: {
         Row: {
+          assessment_id: string | null
           class_id: string
           created_at: string
           id: string
+          is_practical: boolean
+          kind: string
           lesson_report_id: string | null
           period: number
+          practical_rubric_version: number | null
+          practical_scored_at: string | null
           school_id: string
           session_date: string
           staff_id: string
           stream_id: string | null
           taken_at: string
+          term_id: string | null
         }
         Insert: {
+          assessment_id?: string | null
           class_id: string
           created_at?: string
           id?: string
+          is_practical?: boolean
+          kind?: string
           lesson_report_id?: string | null
           period: number
+          practical_rubric_version?: number | null
+          practical_scored_at?: string | null
           school_id: string
           session_date: string
           staff_id: string
           stream_id?: string | null
           taken_at?: string
+          term_id?: string | null
         }
         Update: {
+          assessment_id?: string | null
           class_id?: string
           created_at?: string
           id?: string
+          is_practical?: boolean
+          kind?: string
           lesson_report_id?: string | null
           period?: number
+          practical_rubric_version?: number | null
+          practical_scored_at?: string | null
           school_id?: string
           session_date?: string
           staff_id?: string
           stream_id?: string | null
           taken_at?: string
+          term_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "attendance_sessions_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "attendance_sessions_class_id_fkey"
             columns: ["class_id"]
@@ -448,6 +473,13 @@ export type Database = {
             columns: ["stream_id"]
             isOneToOne: false
             referencedRelation: "streams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_term_id_fkey"
+            columns: ["term_id"]
+            isOneToOne: false
+            referencedRelation: "terms"
             referencedColumns: ["id"]
           },
         ]
@@ -1236,6 +1268,44 @@ export type Database = {
           },
         ]
       }
+      practical_observations: {
+        Row: {
+          aspect: Database["public"]["Enums"]["practical_aspect"]
+          band: Database["public"]["Enums"]["practical_band"]
+          created_at: string
+          id: string
+          lesson_attendance_id: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          aspect: Database["public"]["Enums"]["practical_aspect"]
+          band: Database["public"]["Enums"]["practical_band"]
+          created_at?: string
+          id?: string
+          lesson_attendance_id: string
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          aspect?: Database["public"]["Enums"]["practical_aspect"]
+          band?: Database["public"]["Enums"]["practical_band"]
+          created_at?: string
+          id?: string
+          lesson_attendance_id?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practical_observations_lesson_attendance_id_fkey"
+            columns: ["lesson_attendance_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_attendance"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           contact_email: string | null
@@ -1969,6 +2039,7 @@ export type Database = {
           type: string
         }[]
       }
+      reconcile_terms: { Args: { p_school_id?: string }; Returns: number }
       set_current_academic_year: {
         Args: { p_year_id: string }
         Returns: undefined
@@ -1979,7 +2050,15 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      practical_aspect:
+        | "uses_lab_properly"
+        | "types_two_hands"
+        | "maintains_order"
+        | "navigates_independently"
+        | "tries_before_asking"
+        | "helps_others"
+        | "finishes_on_time"
+      practical_band: "outstanding" | "moderate" | "needs_support"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2106,7 +2185,18 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      practical_aspect: [
+        "uses_lab_properly",
+        "types_two_hands",
+        "maintains_order",
+        "navigates_independently",
+        "tries_before_asking",
+        "helps_others",
+        "finishes_on_time",
+      ],
+      practical_band: ["outstanding", "moderate", "needs_support"],
+    },
   },
 } as const
 

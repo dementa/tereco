@@ -31,6 +31,9 @@ interface FormData {
   stream: string
   date: string
   period: string
+  isPractical: boolean
+  kind: 'lesson' | 'assessment'
+  assessmentId: string
 }
 
 interface FieldError { [key: string]: string }
@@ -60,7 +63,7 @@ const STEPS = [
 ]
 
 const INITIAL: FormData = {
-  school: '', className: '', stream: '', date: new Date().toISOString().split('T')[0], period: '',
+  school: '', className: '', stream: '', date: new Date().toISOString().split('T')[0], period: '', isPractical: false, kind: 'lesson', assessmentId: '',
 }
 
 function validateStep(step: number, data: FormData, selectedClassHasStreams: boolean): FieldError {
@@ -71,6 +74,8 @@ function validateStep(step: number, data: FormData, selectedClassHasStreams: boo
     if (selectedClassHasStreams && !data.stream) err.stream = 'Select a stream'
     if (!data.date) err.date = 'Enter the date'
     if (!data.period) err.period = 'Select a session'
+    if (data.kind === 'assessment' && !data.assessmentId)
+      err.assessmentId = 'Choose which assessment they are sitting'
   }
   return err
 }
@@ -97,6 +102,7 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
   const [addLearnerError, setAddLearnerError] = useState('')
   const [pendingLearners, setPendingLearners] = useState<string[]>([])
   const [rosterQuery, setRosterQuery] = useState('')
+  const [assessments, setAssessments] = useState<{ id: string; title: string; systemId: string }[]>([])
 
   useEffect(() => {
     fetch('/api/directory/schools')
@@ -104,6 +110,16 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
       .then(d => { if (d.success) setDirectory(d.data) })
       .catch(() => {})
   }, [])
+
+  // Only fetched once the teacher says this register is for an assessment —
+  // there is no reason to load the paper list for an ordinary lesson.
+  useEffect(() => {
+    if (data.kind !== 'assessment' || assessments.length > 0) return
+    fetch('/api/assessments')
+      .then(r => r.json())
+      .then(d => { if (d.success) setAssessments(d.data) })
+      .catch(() => {})
+  }, [data.kind, assessments.length])
 
   const set = <K extends keyof FormData>(key: K, value: FormData[K]) =>
     setData(p => ({ ...p, [key]: value }))
@@ -238,7 +254,8 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           schoolId: selectedSchool?.id, classId: selectedClass?.id, streamId: selectedStream?.id,
-          date: data.date, period: data.period, attendance,
+          date: data.date, period: data.period, isPractical: data.isPractical,
+          kind: data.kind, assessmentId: data.assessmentId || undefined, attendance,
         }),
       })
       const json = await res.json()
@@ -303,6 +320,68 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
             required
           />
         </div>
+
+        {/* What this register is FOR. An assessment register is always scored —
+            that is why it is taken — so the practical question below only applies
+            to ordinary lessons. */}
+        <div className="grid grid-cols-2 gap-2">
+          {(['lesson', 'assessment'] as const).map(k => (
+            <button
+              key={k}
+              type="button"
+              onClick={() => { set('kind', k); clearErr('assessmentId') }}
+              aria-pressed={data.kind === k}
+              className={cn(
+                'py-2.5 rounded-xl text-sm font-semibold border transition-colors cursor-pointer',
+                data.kind === k
+                  ? 'border-[#02465B] bg-[#02465B] text-white'
+                  : 'border-[#EAEAEA] bg-white text-[#404040] hover:border-[#0489AE]'
+              )}
+            >
+              {k === 'lesson' ? 'A lesson' : 'An assessment'}
+            </button>
+          ))}
+        </div>
+
+        {data.kind === 'assessment' ? (
+          <FloatingSelect
+            label="Which assessment"
+            options={assessments.map(a => `${a.title} (${a.systemId})`)}
+            value={assessments.find(a => a.id === data.assessmentId)
+              ? `${assessments.find(a => a.id === data.assessmentId)!.title} (${assessments.find(a => a.id === data.assessmentId)!.systemId})`
+              : ''}
+            onChange={v => {
+              const picked = assessments.find(a => `${a.title} (${a.systemId})` === v)
+              set('assessmentId', picked?.id ?? '')
+              clearErr('assessmentId')
+            }}
+            error={errors.assessmentId}
+            required
+          />
+        ) : (
+        /* Asked here, at register time, because this is the only moment the
+            person who knows is in front of the form. lesson_reports.computer_access
+            is filed afterwards and may never be filed at all, and there is no
+            timetable to consult. Unticked means an ordinary lesson: no practical
+            scoring is asked for, and the nightly reminder ignores it. */
+        <label className="flex items-start gap-3 p-3.5 rounded-xl border border-[#EAEAEA] bg-[#FAFAFA] cursor-pointer hover:border-[#0489AE] transition-colors">
+          <input
+            type="checkbox"
+            checked={data.isPractical}
+            onChange={e => set('isPractical', e.target.checked)}
+            className="mt-0.5 w-4 h-4 accent-[#02465B] cursor-pointer"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-[#171717]">
+              This was a computer-lab lesson
+            </span>
+            <span className="block text-xs text-[#666666] mt-0.5">
+              Tick it and you&apos;ll be asked to score practical skills for these learners
+              afterwards. Leave it unticked for an ordinary lesson.
+            </span>
+          </span>
+        </label>
+        )}
       </div>
     ),
 

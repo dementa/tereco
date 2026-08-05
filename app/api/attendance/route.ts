@@ -12,6 +12,16 @@ import { createAttendanceSession, getAttendanceSessions } from "@/lib/attendance
 const AttendanceSchema = z
   .object({
     schoolId: z.string().uuid("A school must be selected"),
+    // Whether this register was for a computer-lab lesson. Only practical
+    // lessons get scored afterwards, and only they appear in the reminder —
+    // otherwise every register in every subject asks the teacher for 7 passes.
+    // Defaults false: an unmarked lesson is an ordinary one.
+    isPractical: z.boolean().optional().default(false),
+    // 'assessment' when this register is for learners sitting a paper under
+    // supervision. The database rejects an assessment register with no
+    // assessment, so this pairing is guaranteed, not merely expected.
+    kind: z.enum(["lesson", "assessment"]).optional().default("lesson"),
+    assessmentId: z.string().uuid().optional(),
     classId: z.string().uuid("A class must be selected"),
     streamId: z.string().uuid().optional(),
 
@@ -65,6 +75,9 @@ export async function POST(request: NextRequest) {
       streamId: validated.streamId ?? null,
       date: validated.date,
       period: validated.period,
+      isPractical: validated.isPractical,
+      kind: validated.kind,
+      assessmentId: validated.assessmentId ?? null,
       attendance: validated.attendance,
     });
 

@@ -5,6 +5,8 @@ import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useParentChildren } from '@/components/parent/ParentChildrenContext';
+import { PracticalCard } from '@/components/ui/PracticalCard';
+import type { PracticalTermScore } from '@/lib/entities/practical-observations';
 
 interface Attempt {
   assessmentSystemId: string;
@@ -43,6 +45,14 @@ export default function ParentResultsPage() {
   const toast = useToast();
   const { selectedId, loading: childrenLoading } = useParentChildren();
   const [attempts, setAttempts] = useState<Attempt[]>([]);
+  // Tagged with the child it belongs to rather than cleared on switch. Deriving
+  // "is this the selected child's?" at render time makes showing the previous
+  // child's standing impossible by construction, and avoids a synchronous
+  // setState in an effect (react-hooks/set-state-in-effect).
+  const [practical, setPractical] = useState<{
+    studentId: string;
+    score: PracticalTermScore | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (studentId: string) => {
@@ -68,12 +78,38 @@ export default function ParentResultsPage() {
     return () => controller.abort();
   }, [selectedId, load]);
 
+  // Fetched separately and failing quietly on purpose: practical skills are a
+  // supplement to this page, not its subject. A parent must still see every
+  // assessment their child sat even if this lookup is unavailable.
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    fetch(`/api/practical/summary?studentId=${selectedId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d.success) setPractical({ studentId: selectedId, score: d.data });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
   return (
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Results</h1>
         <p className="text-sm text-text-muted">Every assessment your child has sat, newest first.</p>
       </div>
+
+      {/* Kept above and visually separate from the assessment table: practical
+          skills are observed in the lab, not sat as a paper, and must not read
+          as one combined mark with the written results below. */}
+      <PracticalCard
+        score={practical?.studentId === selectedId ? practical.score : null}
+        voice="parent"
+      />
+
       <DataTable
         rows={attempts}
         columns={columns}
