@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  aspectsFor,
   aspectsForVersion,
   dedupeSlots,
   summarisePractical,
@@ -289,5 +290,43 @@ describe('summarisePractical — a retaken register is still one round', () => {
       ...fullRound('amina', 'outstanding', 'J1|-|2026-07-28|1'),
     ];
     expect(summarisePractical(facts)[0].roundsScored).toBe(2);
+  });
+});
+
+describe('aspectsFor — assessments use a narrower rubric', () => {
+  it('gives a lesson all seven skills', () => {
+    expect(aspectsFor(CURRENT_RUBRIC_VERSION, 'lesson')).toHaveLength(7);
+  });
+
+  it('gives an assessment six, dropping only "helps others"', () => {
+    const assessment = aspectsFor(CURRENT_RUBRIC_VERSION, 'assessment');
+    expect(assessment).toHaveLength(6);
+    expect(assessment).not.toContain('helps_others');
+  });
+
+  it('excludes helps_others because it inverts, not because it is minor', () => {
+    // In a lesson, helping a neighbour is a virtue. Mid-paper it is malpractice.
+    // Scoring it Outstanding during an assessment would record cheating as a
+    // strength and feed it into the learner's performance. It is the only aspect
+    // that flips meaning, which is why it is the only one excluded.
+    const lesson = aspectsFor(CURRENT_RUBRIC_VERSION, 'lesson');
+    const assessment = aspectsFor(CURRENT_RUBRIC_VERSION, 'assessment');
+    const dropped = lesson.filter((a) => !assessment.includes(a));
+    expect(dropped).toEqual(['helps_others']);
+  });
+
+  it('defaults to the lesson rubric when no context is given', () => {
+    expect(aspectsFor(CURRENT_RUBRIC_VERSION)).toEqual(aspectsFor(CURRENT_RUBRIC_VERSION, 'lesson'));
+  });
+
+  it('keeps the six shared skills identical across both, so scores stay comparable', () => {
+    const assessment = aspectsFor(CURRENT_RUBRIC_VERSION, 'assessment');
+    const lesson = aspectsFor(CURRENT_RUBRIC_VERSION, 'lesson');
+    expect(assessment.every((a) => lesson.includes(a))).toBe(true);
+  });
+
+  it('still does not throw for an unknown version in either context', () => {
+    expect(() => aspectsFor(99, 'assessment')).not.toThrow();
+    expect(aspectsFor(99, 'assessment')).toHaveLength(6);
   });
 });

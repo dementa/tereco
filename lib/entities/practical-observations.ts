@@ -23,6 +23,9 @@ import { getCurrentTermId } from "@/lib/entities/performance";
 
 // ─── The rubric ─────────────────────────────────────────────────────────────
 
+const LESSON_AND_ASSESSMENT = ["lesson", "assessment"] as const;
+const LESSON_ONLY = ["lesson"] as const;
+
 /**
  * Codes are stored; sentences are not. This map is the ONLY place a teacher-
  * facing wording lives, which is what makes the change most likely to be asked
@@ -55,16 +58,33 @@ import { getCurrentTermId } from "@/lib/entities/performance";
  * confidence problem from a teaching one.
  */
 export const PRACTICAL_ASPECTS = [
-  { code: "uses_lab_properly", label: "Uses the lab properly" },
-  { code: "types_two_hands", label: "Types using two hands" },
-  { code: "maintains_order", label: "Maintains order while in class" },
-  { code: "navigates_independently", label: "Finds their way around the computer on their own" },
-  { code: "tries_before_asking", label: "Tries first before asking for help" },
-  { code: "helps_others", label: "Helps others when they are stuck" },
-  { code: "finishes_on_time", label: "Finishes work in time" },
+  { code: "uses_lab_properly", label: "Uses the lab properly", contexts: LESSON_AND_ASSESSMENT },
+  { code: "types_two_hands", label: "Types using two hands", contexts: LESSON_AND_ASSESSMENT },
+  { code: "maintains_order", label: "Maintains order while in class", contexts: LESSON_AND_ASSESSMENT },
+  { code: "navigates_independently", label: "Finds their way around the computer on their own", contexts: LESSON_AND_ASSESSMENT },
+  { code: "tries_before_asking", label: "Tries first before asking for help", contexts: LESSON_AND_ASSESSMENT },
+  {
+    code: "helps_others",
+    label: "Helps others when they are stuck",
+    // LESSON ONLY. This is the one aspect that does not merely become less
+    // relevant during an assessment — it inverts. Helping a neighbour mid-paper
+    // is malpractice, so scoring a learner "Outstanding" here would record
+    // cheating as a virtue and feed it into their performance. Excluded from
+    // assessments rather than left to a teacher to interpret.
+    contexts: LESSON_ONLY,
+  },
+  { code: "finishes_on_time", label: "Finishes work in time", contexts: LESSON_AND_ASSESSMENT },
 ] as const;
 
 export type PracticalAspect = (typeof PRACTICAL_ASPECTS)[number]["code"];
+
+/**
+ * Where a round was observed.
+ *
+ * Not every skill means the same thing in both. See `helps_others` above for the
+ * one that flips outright.
+ */
+export type SessionKind = "lesson" | "assessment";
 
 /**
  * Bands, in the order a teacher reads them. Three rather than a seven-point
@@ -106,9 +126,12 @@ export const CURRENT_RUBRIC_VERSION = 1;
  * teacher who begins under v1 and finishes after v2 ships holds seven aspects
  * against a gate demanding eight, and their work is permanently stuck.
  */
-export function aspectsForVersion(version: number): readonly PracticalAspect[] {
+export function aspectsFor(
+  version: number,
+  kind: SessionKind = "lesson"
+): readonly PracticalAspect[] {
   const known = RUBRIC_VERSIONS[version];
-  if (known) return known;
+  if (known) return filterByContext(known, kind);
 
   // Never throw. An earlier draft raised here for any unrecognised version, and
   // getScorableSession calls this with the version stored ON THE ROW — so the
@@ -122,8 +145,21 @@ export function aspectsForVersion(version: number): readonly PracticalAspect[] {
   // mark such a round incomplete, which is visible and recoverable. Throwing made
   // it unopenable, which is neither.
   console.warn(`Unknown practical rubric version ${version}; judging by v${CURRENT_RUBRIC_VERSION}.`);
-  return RUBRIC_VERSIONS[CURRENT_RUBRIC_VERSION];
+  return filterByContext(RUBRIC_VERSIONS[CURRENT_RUBRIC_VERSION], kind);
 }
+
+function filterByContext(
+  codes: readonly PracticalAspect[],
+  kind: SessionKind
+): readonly PracticalAspect[] {
+  return codes.filter((code) => {
+    const aspect = PRACTICAL_ASPECTS.find((a) => a.code === code);
+    return aspect ? (aspect.contexts as readonly SessionKind[]).includes(kind) : false;
+  });
+}
+
+/** Kept as a name the old call sites still read well under; lessons use the full set. */
+export const aspectsForVersion = (version: number) => aspectsFor(version, "lesson");
 
 /**
  * Every rubric that has existed, by version.
