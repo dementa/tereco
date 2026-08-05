@@ -1,11 +1,13 @@
 import { describe, it, expect } from 'vitest';
 import {
   aspectsForVersion,
+  dedupeSlots,
   summarisePractical,
   CURRENT_RUBRIC_VERSION,
   MINIMUM_ROUNDS,
   PRACTICAL_ASPECTS,
   type ObservationFact,
+  type StaffRound,
   type PracticalAspect,
   type PracticalBand,
 } from '@/lib/entities/practical-observations';
@@ -227,5 +229,65 @@ describe('summarisePractical — documented weaknesses', () => {
       ...observe('amina', { types_two_hands: 'moderate' }, { roundId: 'r3', rubricVersion: 2 }),
     ];
     expect(summarisePractical(facts)[0].rubricVersions).toEqual([1, 2]);
+  });
+});
+
+describe('dedupeSlots — retakes are one lesson, not two', () => {
+  // Not hypothetical. The live database has three slots with two sessions each
+  // and identical rosters (27/27, 32/32, 18/18): the register taken twice for one
+  // lesson. Shown raw, a teacher sees the same lesson twice with no way to tell
+  // which to score.
+  const round = (over: Partial<StaffRound>): StaffRound => ({
+    sessionId: 's',
+    slotKey: 'J1|-|2026-07-27|1',
+    sessionDate: '2026-07-27',
+    period: 1,
+    learners: 27,
+    scoredAt: null,
+    aspectsDone: 0,
+    aspectsTotal: 7,
+    ...over,
+  });
+
+  it('collapses two sessions for the same slot into one', () => {
+    const result = dedupeSlots([round({ sessionId: 'a' }), round({ sessionId: 'b' })]);
+    expect(result).toHaveLength(1);
+  });
+
+  it('keeps different lessons apart', () => {
+    const result = dedupeSlots([
+      round({ sessionId: 'a', slotKey: 'J1|-|2026-07-27|1' }),
+      round({ sessionId: 'b', slotKey: 'J2|-|2026-07-27|1' }),
+    ]);
+    expect(result).toHaveLength(2);
+  });
+
+  it('prefers the copy that is already finished', () => {
+    const result = dedupeSlots([
+      round({ sessionId: 'unscored' }),
+      round({ sessionId: 'done', scoredAt: '2026-07-27T16:00:00Z' }),
+    ]);
+    expect(result[0].sessionId).toBe('done');
+  });
+
+  it('prefers the copy furthest through when neither is finished', () => {
+    // Never strand a teacher's partial work behind an empty duplicate.
+    const result = dedupeSlots([
+      round({ sessionId: 'empty', aspectsDone: 0 }),
+      round({ sessionId: 'partial', aspectsDone: 4 }),
+    ]);
+    expect(result[0].sessionId).toBe('partial');
+  });
+});
+
+describe('summarisePractical — a retaken register is still one round', () => {
+  it('does not bank two rounds for one lesson', () => {
+    // Both copies of a retaken slot share a roundId, because roundId is the SLOT.
+    const facts = [
+      ...fullRound('amina', 'outstanding', 'J1|-|2026-07-27|1'),
+      ...fullRound('amina', 'outstanding', 'J1|-|2026-07-27|1'),
+      ...fullRound('amina', 'outstanding', 'J1|-|2026-07-28|1'),
+    ];
+    expect(summarisePractical(facts)[0].roundsScored).toBe(2);
   });
 });

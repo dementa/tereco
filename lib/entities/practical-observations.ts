@@ -521,7 +521,7 @@ export async function getPracticalTermScores(
   //    number, so a partial round must never reach the arithmetic at all.
   let sessionQuery = supabase
     .from("attendance_sessions")
-    .select("id, practical_rubric_version")
+    .select("id, class_id, stream_id, session_date, period, practical_rubric_version")
     .eq("term_id", params.termId)
     .not("practical_scored_at", "is", null);
 
@@ -534,10 +534,11 @@ export async function getPracticalTermScores(
     throw new Error(sessionError.message);
   }
 
-  const sessions = (sessionRows ?? []) as unknown as { id: string; practical_rubric_version: number | null }[];
+  const sessions = (sessionRows ?? []) as unknown as SlotSessionRow[];
   if (sessions.length === 0) return [];
 
   const versionBySession = new Map(sessions.map((s) => [s.id, s.practical_rubric_version]));
+  const slotBySession = new Map(sessions.map((s) => [s.id, slotKeyOf(s)]));
 
   // 2. Who was present in those rounds.
   let attendanceQuery = supabase
@@ -577,7 +578,7 @@ export async function getPracticalTermScores(
         studentId: row.student_id,
         studentName: fullName(row.student),
         systemId: row.student?.system_id ?? null,
-        roundId: row.id,
+        roundId: slotBySession.get(row.attendance_session_id) ?? row.id,
         rubricVersion: versionBySession.get(row.attendance_session_id) ?? null,
         aspect: o.aspect,
         band: o.band,
@@ -593,7 +594,16 @@ export interface ObservationFact {
   studentId: string;
   studentName: string;
   systemId: string | null;
-  /** Distinct values per learner give roundsScored — one round is one lesson_attendance row. */
+  /**
+   * Distinct values per learner give roundsScored.
+   *
+   * This is the SLOT (class, stream, date, period), not the attendance row.
+   * 12-attendance-sessions.sql deliberately permits several sessions for one slot
+   * — a retake after a mistake — and the live database has three such pairs with
+   * identical rosters. Keyed by row, scoring both copies would bank two rounds for
+   * one lesson for every learner in it, inflating the denominator that
+   * MINIMUM_ROUNDS depends on and double-weighting that lesson in the average.
+   */
   roundId: string;
   rubricVersion: number | null;
   aspect: PracticalAspect;
@@ -728,6 +738,8 @@ export async function getPracticalTermScoreForStudent(
 
 export interface StaffRound {
   sessionId: string;
+  /** class + stream + date + period. Two sessions sharing this are one lesson. */
+  slotKey: string;
   sessionDate: string;
   period: number;
   learners: number;
@@ -755,7 +767,9 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
 
   const { data: sessionRows, error } = await supabase
     .from("attendance_sessions")
-    .select("id, session_date, period, practical_scored_at, practical_rubric_version, term:terms(ends_on)")
+    .select(
+      "id, class_id, stream_id, session_date, period, practical_scored_at, practical_rubric_version, term:terms(ends_on)"
+    )
     .eq("staff_id", staffId)
     .order("session_date", { ascending: false })
     .limit(limit);
@@ -797,7 +811,7 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
     scoredByAttendance.set(o.lesson_attendance_id, set);
   }
 
-  return open
+  const rounds = open
     .map((session) => {
       const attendanceIds = bySession.get(session.id) ?? [];
       const required = aspectsForVersion(session.practical_rubric_version ?? CURRENT_RUBRIC_VERSION);
@@ -808,6 +822,7 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
 
       return {
         sessionId: session.id,
+        slotKey: slotKeyOf(session),
         sessionDate: session.session_date,
         period: session.period,
         learners: attendanceIds.length,
@@ -819,6 +834,34 @@ export async function listStaffRounds(staffId: string, limit = 30): Promise<Staf
     // Nobody present means nothing to score and completeRound refuses it, so it
     // would be an item the teacher could never clear.
     .filter((round) => round.learners > 0);
+
+  return dedupeSlots(rounds);
+}
+
+/**
+ * One entry per lesson, even when the register was taken more than once for it.
+ *
+ * Retakes are legitimate — 12-attendance-sessions.sql permits them on purpose, so
+ * a mistake can be corrected — but the live database has three slots with two
+ * sessions and identical rosters. Shown raw, a teacher sees the same lesson twice
+ * with no way to tell which to score, and scoring both banks two rounds for one
+ * lesson for every learner in it.
+ *
+ * Keeps whichever copy already carries work: finished first, then the furthest
+ * through, then the larger roster. Never hides work a teacher has already done.
+ */
+export function dedupeSlots(rounds: StaffRound[]): StaffRound[] {
+  const best = new Map<string, StaffRound>();
+  for (const round of rounds) {
+    const held = best.get(round.slotKey);
+    if (!held || rank(round) > rank(held)) best.set(round.slotKey, round);
+  }
+  return Array.from(best.values());
+}
+
+function rank(round: StaffRound): number {
+  if (round.scoredAt) return 1_000_000 + round.learners;
+  return round.aspectsDone * 1_000 + round.learners;
 }
 
 // ─── Reminders ──────────────────────────────────────────────────────────────
@@ -926,8 +969,29 @@ export async function listPracticalReminders(): Promise<PracticalReminder[]> {
 
 // ─── Internals ──────────────────────────────────────────────────────────────
 
+/** class + stream + date + period: what "the same lesson" means here. */
+function slotKeyOf(s: {
+  class_id: string;
+  stream_id: string | null;
+  session_date: string;
+  period: number;
+}): string {
+  return `${s.class_id}|${s.stream_id ?? "-"}|${s.session_date}|${s.period}`;
+}
+
+interface SlotSessionRow {
+  id: string;
+  class_id: string;
+  stream_id: string | null;
+  session_date: string;
+  period: number;
+  practical_rubric_version: number | null;
+}
+
 interface StaffRoundRow {
   id: string;
+  class_id: string;
+  stream_id: string | null;
   session_date: string;
   period: number;
   practical_scored_at: string | null;
