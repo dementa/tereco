@@ -29,20 +29,37 @@ import { getCurrentTermId } from "@/lib/entities/performance";
  * for — rewording an aspect — cost one string and touch no data. Every
  * historical score stays valid and comparable, because the code never moved.
  *
- * `works_without_support` was originally specified as "requires support from the
- * teacher most of the time". Stored that way it ran opposite in polarity to the
- * other six: averaged naively, a learner needing constant help would have scored
- * HIGHER, and the number would have looked entirely normal. It was also
- * unanswerable at capture — "requires support most of the time: Outstanding" is
- * not something a teacher can press with confidence, and two teachers would have
- * guessed in opposite directions. Inverted so all seven point the same way.
+ * `tries_before_asking` was specified as "requires support from the teacher most
+ * of the time". Stored that way it ran opposite in polarity to the other six:
+ * averaged naively, a learner needing constant help would have scored HIGHER,
+ * and the number would have looked entirely normal. It was also unanswerable at
+ * capture — "requires support most of the time: Outstanding" is not something a
+ * teacher can press with confidence, and two teachers would have guessed in
+ * opposite directions.
+ *
+ * Inverting it created a second problem: "works independently without needing
+ * teacher support" asked almost exactly what `navigates_independently` already
+ * asked, so two of only seven slots measured one thing and independence counted
+ * double in every learner's score. The two are now split along the line that
+ * actually separates them:
+ *
+ *   navigates_independently  SKILL   — can they operate the machine? menus,
+ *                                      saving, finding what they need
+ *   tries_before_asking      HABIT   — do they attempt before putting a hand up?
+ *
+ * A learner who knows the machine perfectly but calls the teacher every two
+ * minutes out of low confidence scores high on the first and low on the second.
+ * One who barely knows the menus but doggedly works it out scores the reverse.
+ * Those are different children needing different help, which is the whole reason
+ * to spend two slots rather than one — and it is what lets badges later tell a
+ * confidence problem from a teaching one.
  */
 export const PRACTICAL_ASPECTS = [
   { code: "uses_lab_properly", label: "Uses the lab properly" },
   { code: "types_two_hands", label: "Types using two hands" },
   { code: "maintains_order", label: "Maintains order while in class" },
-  { code: "navigates_independently", label: "Navigates the computer independently" },
-  { code: "works_without_support", label: "Works independently without needing teacher support" },
+  { code: "navigates_independently", label: "Finds their way around the computer on their own" },
+  { code: "tries_before_asking", label: "Tries first before asking for help" },
   { code: "helps_others", label: "Helps others when they are stuck" },
   { code: "finishes_on_time", label: "Finishes work in time" },
 ] as const;

@@ -57,11 +57,11 @@
 -- ALTER TYPE ... ADD VALUE is append-only, which is the correct semantics here:
 -- a code referenced by historical observations must never disappear.
 --
--- ⚠ BEFORE APPLYING THIS IN SUPABASE: settle the aspect 4 / aspect 5 overlap
---   recorded in TODOS.md. 'navigates_independently' and 'works_without_support'
---   as currently worded ask nearly the same question. Because the enum is
---   append-only, a value added here cannot be cleanly removed later. Writing
---   this file is reversible; running it is not.
+-- ⚠ The enum below is APPEND-ONLY once applied: ALTER TYPE can add a value but
+--   not cleanly remove or rename one. Writing this file is reversible; running
+--   it is not. The aspect 4 / aspect 5 overlap that was open at review time is
+--   resolved (see the note on 'tries_before_asking' below), so the seven values
+--   here are the settled set.
 
 -- ─── The rubric vocabulary ──────────────────────────────────────────────────
 -- Codes, never sentences. The wording a teacher reads lives in one label map in
@@ -69,14 +69,27 @@
 -- one string and touches no data, leaving every historical score valid and
 -- comparable.
 --
--- 'works_without_support' was specified as "requires support from the teacher
--- most of the time". Stored that way it would have run opposite in polarity to
--- the other six: averaged naively, a learner who needed constant help would have
+-- 'tries_before_asking' was specified as "requires support from the teacher most
+-- of the time". Stored that way it would have run opposite in polarity to the
+-- other six: averaged naively, a learner who needed constant help would have
 -- scored HIGHER, and the number would have looked entirely normal. Worse, the
 -- question was unanswerable at capture — "requires support most of the time:
 -- Outstanding" is not something a teacher can press with any confidence, and two
--- teachers would have guessed in opposite directions. Inverted to positive
--- polarity so all seven point the same way and aggregation is a plain average.
+-- teachers would have guessed in opposite directions.
+--
+-- Inverting it introduced a second problem, since "works independently without
+-- needing teacher support" then asked almost exactly what
+-- 'navigates_independently' already asked. Two of seven slots measuring one
+-- thing meant independence counted double in every learner's score, invisibly.
+-- Split along the line that actually separates them:
+--
+--   navigates_independently   SKILL  — can they operate the machine at all?
+--   tries_before_asking       HABIT  — do they attempt before asking?
+--
+-- A learner who knows the machine but calls the teacher constantly out of low
+-- confidence is high on the first and low on the second; one who barely knows
+-- the menus but works it out doggedly is the reverse. Different children, needing
+-- different help — which is why this is worth two of the seven slots.
 do $$
 begin
   if not exists (select 1 from pg_type where typname = 'practical_aspect') then
@@ -85,7 +98,7 @@ begin
       'types_two_hands',
       'maintains_order',
       'navigates_independently',
-      'works_without_support',
+      'tries_before_asking',
       'helps_others',
       'finishes_on_time'
     );

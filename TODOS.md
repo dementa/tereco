@@ -5,12 +5,28 @@ reasoning in a commit message or a chat log.
 
 ---
 
-## Decide whether aspects 4 and 5 are one aspect or two
+## ~~Decide whether aspects 4 and 5 are one aspect or two~~ — RESOLVED 2026-08-05
 
-**What:** The practical rubric currently lists both *"navigates the computer independently"*
-(aspect 4) and *"works independently without needing teacher support"* (aspect 5). Decide
-whether these stay separate, get merged into one, or get sharpened so they measure genuinely
-different things.
+**Outcome:** kept as two, sharpened so they measure genuinely different things.
+
+- Aspect 4 `navigates_independently` → **"Finds their way around the computer on their own"**
+  — a SKILL. Can they operate the machine: menus, saving, finding what they need.
+- Aspect 5 `tries_before_asking` → **"Tries first before asking for help"**
+  — a HABIT. Do they attempt before putting a hand up.
+
+A learner who knows the machine but calls the teacher every two minutes out of low confidence
+scores high on the first and low on the second. One who barely knows the menus but works it out
+doggedly scores the reverse. Different children, needing different help — a confidence problem
+versus a teaching problem — which is what makes two slots worth spending, and what badges would
+read later. **Needs a sentence of explanation to the project sponsor**, since the wording now
+differs from the seven they specified.
+
+The original reasoning is kept below, because the enum is append-only and anyone reopening this
+should see why it landed where it did.
+
+**What it was:** The practical rubric listed both *"navigates the computer independently"*
+(aspect 4) and *"works independently without needing teacher support"* (aspect 5), which asked
+nearly the same question.
 
 **Why:** As worded, the two ask a teacher nearly the same question. That costs one of only
 seven rubric slots, and the two will correlate so tightly that the practical score effectively
@@ -29,12 +45,12 @@ they need), aspect 5 is about *help-seeking behaviour* (do they attempt before a
 genuinely different and both useful for badges later. If that distinction holds, reword both to
 make it explicit rather than merging.
 
-**Depends on / blocked by:** Nothing blocks deciding. But it should be settled **before** the
+**Depends on / blocked by:** (resolved) Nothing blocked deciding. But it should be settled **before** the
 `21-practical-observations.sql` migration lands, because the aspect codes are a Postgres enum and
 `ALTER TYPE ... ADD VALUE` is append-only — a code chosen now cannot be cleanly removed later.
 Sponsor sign-off needed, since the seven aspects were specified by the project sponsor.
 
-**Blocks:** T1 (schema migration), if you want it resolved first.
+**Blocks:** nothing now — the migration carries the settled values.
 
 ---
 
