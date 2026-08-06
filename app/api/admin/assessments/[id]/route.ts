@@ -63,6 +63,8 @@ const UpdateSchema = z.object({
   closesAt: z.string().nullable().optional(),
   status: z.enum(['draft', 'published', 'closed']).optional(),
   instructions: z.string().optional(),
+  /** Publish (true) or withdraw (false) this closed paper as a practice E-Paper. */
+  isEPaper: z.boolean().optional(),
   targets: z.array(TargetSchema).optional(),
   questions: z.array(QuestionSchema).optional(),
 });
@@ -110,6 +112,20 @@ export async function PUT(
       return errorResponse('You can only work with assessments you created.', 403);
     }
 
+    // Only a closed paper can be practised. Refused rather than silently
+    // ignored: a teacher who ticks the box on a published paper and is told
+    // nothing would reasonably assume it worked, and only find out weeks later
+    // that nothing ever appeared in the Library.
+    if (validated.isEPaper === true) {
+      const willBeClosed = (validated.status ?? assessment.status) === 'closed';
+      if (!willBeClosed) {
+        return errorResponse(
+          'Only a closed paper can be published as an E-Paper. Close it first.',
+          409
+        );
+      }
+    }
+
     await updateAssessment(id, {
       title: validated.title,
       description: validated.description,
@@ -118,6 +134,7 @@ export async function PUT(
       closesAt: validated.closesAt,
       status: validated.status,
       instructions: validated.instructions,
+      isEPaper: validated.isEPaper,
       targets: validated.targets,
     });
 

@@ -23,6 +23,8 @@ export interface Assessment {
   /** Printed at the top of the question paper. */
   instructions: string;
   resultsReleasedAt?: string;
+  /** When this closed paper was published for untimed practice. Undefined = not an E-Paper. */
+  ePaperAt?: string;
   targets: AssessmentTarget[];
   /** Staff granted edit+mark access by the owner. See lib/auth/access.ts. */
   collaboratorIds: string[];
@@ -109,6 +111,8 @@ export interface UpdateAssessmentInput {
   closesAt?: string | null;
   status?: AssessmentStatus;
   instructions?: string;
+  /** Publish (or withdraw) this closed paper as an untimed practice E-Paper. */
+  isEPaper?: boolean;
   targets?: Omit<AssessmentTarget, "id">[];
 }
 
@@ -124,6 +128,7 @@ interface AssessmentRow {
   created_by: string | null;
   instructions: string;
   results_released_at: string | null;
+  e_paper_at: string | null;
   targets:
     | {
         id: string;
@@ -139,7 +144,7 @@ interface AssessmentRow {
 // Single string literal — concatenation would widen it to `string` and silently
 // disable the client's column checking.
 const ASSESSMENT_COLUMNS =
-  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, targets:assessment_targets(id, school_id, level, class_id, student_id), collaborators:assessment_collaborators(staff_id)";
+  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, e_paper_at, targets:assessment_targets(id, school_id, level, class_id, student_id), collaborators:assessment_collaborators(staff_id)";
 
 const QUESTION_COLUMNS =
   "id, position, code, question_text, type, options, correct_answer, model_answer, image_url, image_public_id, max_score, config";
@@ -159,6 +164,7 @@ function rowToAssessment(row: AssessmentRow): Assessment {
     createdBy: row.created_by,
     instructions: row.instructions ?? "",
     resultsReleasedAt: row.results_released_at ?? undefined,
+    ePaperAt: row.e_paper_at ?? undefined,
     targets: (row.targets ?? []).map((t) => ({
       id: t.id,
       schoolId: t.school_id,
@@ -388,6 +394,19 @@ export async function updateAssessment(
   if (updates.closesAt !== undefined) patch.closes_at = updates.closesAt;
   if (updates.status !== undefined) patch.status = updates.status;
   if (updates.instructions !== undefined) patch.instructions = updates.instructions;
+  // Publishing a paper for practice is a separate act from closing it, even
+  // when the two happen in one click. Passing false un-publishes it: the paper
+  // drops straight out of e_papers_for_student, which is the whole withdrawal
+  // mechanism — there is no second copy to delete.
+  //
+  // Idempotent on the way in: an already-published paper keeps its original
+  // timestamp. Overwriting it would silently re-sort the Library, pushing a
+  // year-old paper to the top of "newest first" because someone re-saved it.
+  if (updates.isEPaper !== undefined) {
+    patch.e_paper_at = updates.isEPaper
+      ? existing.ePaperAt ?? new Date().toISOString()
+      : null;
+  }
 
   const { error } = await supabase.from("assessments").update(patch).eq("id", existing.id);
   if (error) throw new Error(error.message);

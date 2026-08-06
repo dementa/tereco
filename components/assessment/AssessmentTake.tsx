@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { AlertCircle, Clock, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
+import { AlertCircle, BookOpen, Clock, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthContext';
 import {
   groupQuestions,
@@ -46,6 +46,17 @@ interface Question {
 const CHECKBOX_SEP = ' | ';
 
 /**
+ * Live sitting, or untimed practice on a closed paper (an E-Paper).
+ *
+ * One component rather than two because the paper is the same paper: the same
+ * question rendering, the same grouping and stem rules, the same answer
+ * capture. Only the clock, the endpoint, and where "finish" goes differ. A
+ * forked copy would drift on question rendering, which is where all the real
+ * complexity is.
+ */
+export type TakeMode = 'live' | 'practice';
+
+/**
  * Progress is kept in localStorage, not sessionStorage.
  *
  * sessionStorage is erased when the browser session ends, and a power cut ends
@@ -56,9 +67,16 @@ const CHECKBOX_SEP = ' | ';
  * sessionStorage, die with the tab: on a shared school computer the next
  * learner to sign in would otherwise have the previous one's answers restored
  * into their paper.
+ *
+ * It also includes the MODE. A learner may practise a paper they have already
+ * sat, and both use the same assessment id — without this, opening the practice
+ * version would restore (and then overwrite) the answers from their real
+ * sitting. Live keeps the original prefix so anyone mid-sitting when this ships
+ * still finds their work.
  */
-function progressKey(studentId: string, assessmentId: string, part: string): string {
-  return `tereco_take_${studentId}_${assessmentId}_${part}`;
+function progressKey(mode: TakeMode, studentId: string, assessmentId: string, part: string): string {
+  const prefix = mode === 'practice' ? 'tereco_practice' : 'tereco_take';
+  return `${prefix}_${studentId}_${assessmentId}_${part}`;
 }
 
 /**
@@ -66,20 +84,27 @@ function progressKey(studentId: string, assessmentId: string, part: string): str
  *
  * Anyone sitting a paper at the moment this ships has their answers under the
  * old scheme; without this fallback their next reload would find nothing and
- * silently discard the lot.
+ * silently discard the lot. Practice never consults the legacy key — there was
+ * no practice before this shipped, and reading it would pull a real sitting's
+ * answers into a practice run.
  */
-function readProgress(studentId: string, assessmentId: string, part: string): string | null {
-  return (
-    localStorage.getItem(progressKey(studentId, assessmentId, part)) ??
-    sessionStorage.getItem(`assessment_${assessmentId}_${part}`)
-  );
+function readProgress(
+  mode: TakeMode,
+  studentId: string,
+  assessmentId: string,
+  part: string
+): string | null {
+  const own = localStorage.getItem(progressKey(mode, studentId, assessmentId, part));
+  if (own !== null || mode === 'practice') return own;
+  return sessionStorage.getItem(`assessment_${assessmentId}_${part}`);
 }
 
-export function AssessmentTake() {
+export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const assessmentId = params.id;
   const { isAuthenticated, user, loading: authLoading } = useAuth();
+  const isPractice = mode === 'practice';
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -129,15 +154,18 @@ export function AssessmentTake() {
 
         const meta = metaData.data;
         setAssessmentTitle(meta?.title ?? 'Assessment');
-        setTimeLimit((meta?.timeLimit ?? 0) * 60);
+        // Practice is untimed. Leaving timeLimit at 0 is what switches the
+        // whole clock off: the timer effect returns early, the countdown does
+        // not render, and nothing auto-submits.
+        setTimeLimit(isPractice ? 0 : (meta?.timeLimit ?? 0) * 60);
         setQuestions(Array.isArray(qData.data) ? qData.data : []);
 
         // Restore any in-progress answers/index
-        const savedAnswers = readProgress(studentId, assessmentId, 'answers');
+        const savedAnswers = readProgress(mode, studentId, assessmentId, 'answers');
         if (savedAnswers) {
           try { setAnswers(JSON.parse(savedAnswers)); } catch { /* ignore */ }
         }
-        const savedIndex = readProgress(studentId, assessmentId, 'index');
+        const savedIndex = readProgress(mode, studentId, assessmentId, 'index');
         if (savedIndex) setCurrentIndex(parseInt(savedIndex, 10) || 0);
 
         // Ask the server when this sitting started. Doing it here, not in the
@@ -146,14 +174,20 @@ export function AssessmentTake() {
         // If it fails — most likely no connection — the sitting falls back to
         // a locally held start time so the learner is never blocked from
         // working. It re-anchors the moment the network returns.
-        try {
-          const sRes = await fetch(`/api/assessments/${assessmentId}/sitting`, { method: 'POST' });
-          const sData = await sRes.json();
-          if (!cancelled && sData.success && typeof sData.data?.remainingSeconds === 'number') {
-            serverRemainingRef.current = sData.data.remainingSeconds;
+        //
+        // Skipped entirely in practice: /sitting opens a real sitting window
+        // against a live assessment, and calling it for a closed paper would
+        // either fail or, worse, record something.
+        if (!isPractice) {
+          try {
+            const sRes = await fetch(`/api/assessments/${assessmentId}/sitting`, { method: 'POST' });
+            const sData = await sRes.json();
+            if (!cancelled && sData.success && typeof sData.data?.remainingSeconds === 'number') {
+              serverRemainingRef.current = sData.data.remainingSeconds;
+            }
+          } catch {
+            /* offline — the local clock carries the sitting until we reconnect */
           }
-        } catch {
-          /* offline — the local clock carries the sitting until we reconnect */
         }
       } catch (err) {
         if (!cancelled) {
@@ -166,7 +200,7 @@ export function AssessmentTake() {
     }
     fetchAssessmentData();
     return () => { cancelled = true; };
-  }, [assessmentId, authLoading, studentId]);
+  }, [assessmentId, authLoading, studentId, mode, isPractice]);
 
   const submitAnswers = useCallback(async () => {
     if (submittedRef.current) return;
@@ -174,28 +208,43 @@ export function AssessmentTake() {
     setSubmitting(true);
     try {
       const timeSpent = Math.round((Date.now() - (startTimeRef.current || Date.now())) / 1000);
-      const res = await fetch(`/api/assessments/${assessmentId}/submit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ answers, timeSpent }),
-      });
+      const res = await fetch(
+        isPractice
+          ? `/api/e-papers/${assessmentId}/attempt`
+          : `/api/assessments/${assessmentId}/submit`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // Practice sends no timeSpent: there is no limit to check it against,
+          // and the attempt row records its own start and finish.
+          body: JSON.stringify(isPractice ? { answers } : { answers, timeSpent }),
+        }
+      );
       const data = await res.json();
       if (!res.ok || !data.success) throw new Error(data.message || 'Submission failed.');
 
       // Clear both schemes: the old sessionStorage keys may still hold this
       // learner's answers if they started before this shipped.
       for (const part of ['answers', 'index', 'start']) {
-        localStorage.removeItem(progressKey(studentId, assessmentId, part));
-        sessionStorage.removeItem(`assessment_${assessmentId}_${part}`);
+        localStorage.removeItem(progressKey(mode, studentId, assessmentId, part));
+        if (!isPractice) sessionStorage.removeItem(`assessment_${assessmentId}_${part}`);
       }
-      router.push(`/student/confirmation?ref=${encodeURIComponent(assessmentId)}`);
+
+      if (isPractice) {
+        // Straight to the marked paper. The whole reason a learner practises is
+        // to see what was expected, so an intermediate "submitted!" screen would
+        // just be a click between them and the answer.
+        router.push(`/student/attempts/${encodeURIComponent(data.data.attemptId)}`);
+      } else {
+        router.push(`/student/confirmation?ref=${encodeURIComponent(assessmentId)}`);
+      }
     } catch (err) {
       submittedRef.current = false;
       setError(err instanceof Error ? err.message : 'Submission failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
-  }, [answers, assessmentId, router, studentId]);
+  }, [answers, assessmentId, router, studentId, mode, isPractice]);
 
   // ─── Timer ───────────────────────────────────────────────
   useEffect(() => {
@@ -209,13 +258,13 @@ export function AssessmentTake() {
     let start: number;
     if (serverRemaining !== null) {
       start = Date.now() - (timeLimit - serverRemaining) * 1000;
-      localStorage.setItem(progressKey(studentId, assessmentId, 'start'), start.toString());
+      localStorage.setItem(progressKey(mode, studentId, assessmentId, 'start'), start.toString());
     } else {
       // No server answer (offline). Fall back to a locally remembered start so
       // the learner can keep working; it re-anchors when the network returns.
-      const storedStart = readProgress(studentId, assessmentId, 'start');
+      const storedStart = readProgress(mode, studentId, assessmentId, 'start');
       start = storedStart ? parseInt(storedStart, 10) : Date.now();
-      localStorage.setItem(progressKey(studentId, assessmentId, 'start'), start.toString());
+      localStorage.setItem(progressKey(mode, studentId, assessmentId, 'start'), start.toString());
     }
     startTimeRef.current = start;
 
@@ -234,7 +283,7 @@ export function AssessmentTake() {
     updateTimer();
 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [loading, timeLimit, assessmentId, submitAnswers, studentId]);
+  }, [loading, timeLimit, assessmentId, submitAnswers, studentId, mode]);
 
   // ─── Persist progress ────────────────────────────────────
   // localStorage, so it survives the machine losing power. Written on every
@@ -242,10 +291,13 @@ export function AssessmentTake() {
   useEffect(() => {
     if (!studentId) return;
     if (Object.keys(answers).length > 0) {
-      localStorage.setItem(progressKey(studentId, assessmentId, 'answers'), JSON.stringify(answers));
+      localStorage.setItem(
+        progressKey(mode, studentId, assessmentId, 'answers'),
+        JSON.stringify(answers)
+      );
     }
-    localStorage.setItem(progressKey(studentId, assessmentId, 'index'), currentIndex.toString());
-  }, [answers, currentIndex, assessmentId, studentId]);
+    localStorage.setItem(progressKey(mode, studentId, assessmentId, 'index'), currentIndex.toString());
+  }, [answers, currentIndex, assessmentId, studentId, mode]);
 
   const handleAnswer = (questionId: string, value: string) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
@@ -309,7 +361,13 @@ export function AssessmentTake() {
       <div className="min-h-screen flex items-center justify-center bg-bg px-4">
         <div className="text-center">
           <p className="text-text-muted">No questions found for this assessment.</p>
-          <Button className="mt-4" variant="outline" onClick={() => router.push('/student/list')}>Back to List</Button>
+          <Button
+            className="mt-4"
+            variant="outline"
+            onClick={() => router.push(isPractice ? '/student/library' : '/student/list')}
+          >
+            {isPractice ? 'Back to Library' : 'Back to List'}
+          </Button>
         </div>
       </div>
     );
@@ -358,14 +416,26 @@ export function AssessmentTake() {
           </p>
         </div>
         <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-          {timeLimit > 0 && (
-            <div className={`flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl ${isTimeLow ? 'bg-error-bg text-error' : 'bg-white text-primary-900'}`}>
-              <Clock className="w-4 h-4 shrink-0" />
-              <span className="font-mono font-bold text-base sm:text-lg tabular-nums">{timeStr}</span>
+          {/*
+            Practice says so where the clock would be. The absence of a timer is
+            the feature — a learner who has only ever sat timed papers will keep
+            hunting for the countdown otherwise, and rush anyway.
+          */}
+          {isPractice ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-white text-primary-900">
+              <BookOpen className="w-4 h-4 shrink-0" />
+              <span className="text-sm font-medium">Practice • no timer</span>
             </div>
+          ) : (
+            timeLimit > 0 && (
+              <div className={`flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl ${isTimeLow ? 'bg-error-bg text-error' : 'bg-white text-primary-900'}`}>
+                <Clock className="w-4 h-4 shrink-0" />
+                <span className="font-mono font-bold text-base sm:text-lg tabular-nums">{timeStr}</span>
+              </div>
+            )
           )}
           <Button inline variant="outline" onClick={submitAnswers} disabled={submitting} className="text-sm">
-            Submit
+            {isPractice ? 'Finish' : 'Submit'}
           </Button>
         </div>
       </header>
@@ -516,8 +586,10 @@ export function AssessmentTake() {
           <span className="text-xs text-text-faint tabular-nums shrink-0">{currentIndex + 1} of {total}</span>
           {isLast ? (
             <Button inline variant="primary" onClick={submitAnswers} isLoading={submitting}>
-              <span className="xs:hidden">Submit</span>
-              <span className="hidden xs:inline">Submit Assessment</span>
+              <span className="xs:hidden">{isPractice ? 'Finish' : 'Submit'}</span>
+              <span className="hidden xs:inline">
+                {isPractice ? 'Finish & see answers' : 'Submit Assessment'}
+              </span>
               <CheckCircle className="w-4 h-4 sm:ml-1" />
             </Button>
           ) : (
