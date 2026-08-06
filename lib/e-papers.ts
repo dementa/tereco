@@ -173,13 +173,35 @@ export async function recordPracticeAttempt(input: {
     return { question: q, answer, correct };
   });
 
+  // ONE timestamp for both ends, and both written explicitly.
+  //
+  // started_at has a `default now()`, which is the database's clock; finished_at
+  // was being stamped from the app's. The row is written in a single shot at
+  // finish time, so the two are read microseconds apart — and whenever the app
+  // server's clock sits even milliseconds behind Postgres's, finished_at lands
+  // before started_at and `check (finished_at >= started_at)` rejects the whole
+  // attempt. That is not a rare race: the skew is a standing offset between two
+  // machines, so it fails every time until the clocks drift back, which is
+  // exactly how it presented — every learner, every paper, nothing saved.
+  //
+  // Letting the default fill started_at is not an option while finished_at is
+  // ours: mixing the two clocks in one row is the bug. The app owns both.
+  //
+  // started_at is not a measured start. Nothing opens an attempt row when the
+  // learner opens the paper — practice is untimed and has no sitting window —
+  // so the default never meant anything more than "when this row landed". The
+  // index that orders a learner's attempts by started_at desc still orders them
+  // correctly, because one attempt is still one finish.
+  const recordedAt = new Date().toISOString();
+
   const { data: attempt, error: attemptError } = await supabase
     .from("practice_attempts")
     .insert({
       assessment_id: input.assessmentId,
       student_id: input.studentId,
       enrollment_id: input.enrollmentId ?? null,
-      finished_at: new Date().toISOString(),
+      started_at: recordedAt,
+      finished_at: recordedAt,
       // Null rather than 0 when the paper is entirely short/long answers.
       // "0 out of 0" reads as a failure; nothing at all reads as "a human has
       // to look at this", which is the truth.
