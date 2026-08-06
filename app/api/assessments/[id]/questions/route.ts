@@ -6,6 +6,7 @@ import {
 } from '@/lib/assessments';
 import { errorResponse, successResponse } from '@/lib/apiResponse';
 import { getCurrentProfile } from '@/lib/auth/session';
+import { canPractise } from '@/lib/e-papers';
 
 export async function GET(
   request: NextRequest,
@@ -30,9 +31,24 @@ export async function GET(
     // builds their list, so the page they can open and the list they are shown
     // can never disagree. Staff and admins are handling papers by their role
     // and are not narrowed by targeting.
+    //
+    // A closed paper republished as an E-Paper is the second way a learner may
+    // hold a paper, and it is checked against `e_papers_for_student` for the
+    // same reason. The two are ORed rather than merged into one query because
+    // they mean different things: one is "you may sit this", the other is "you
+    // may practise this". A paper can be either, and a learner who has already
+    // sat a paper is deliberately still allowed to practise it.
+    //
+    // The response shape is identical either way — the allow-list below never
+    // sends correctAnswer or modelAnswer. Practice reveals those only after the
+    // attempt is finished, through the attempts route.
     if (profile.role === 'student') {
-      const eligible = await getAssessmentsForStudent(profile.id);
-      if (!eligible.some((a) => a.id === assessment.id)) {
+      const [sittable, practisable] = await Promise.all([
+        getAssessmentsForStudent(profile.id),
+        canPractise(profile.id, assessment.id),
+      ]);
+      const mayOpen = practisable || sittable.some((a) => a.id === assessment.id);
+      if (!mayOpen) {
         // The overwhelmingly common reason, and the only one the learner can do
         // anything about, is that they have already sat it. Saying so beats a
         // bare 403 that reads like a bug.

@@ -1,11 +1,11 @@
 import { NextRequest } from 'next/server';
 import {
-  AUTO_SCORED_TYPES,
   getAssessmentBySystemId,
   getQuestions,
   saveSubmission,
   type SubmissionAnswer,
 } from '@/lib/assessments';
+import { autoScore } from '@/lib/marking';
 import { z } from 'zod';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { getCurrentProfile } from '@/lib/auth/session';
@@ -69,22 +69,13 @@ export async function POST(
 
     const questions = await getQuestions(assessment.id);
 
-    const norm = (s: string) => s.trim().toLowerCase();
     const answers: SubmissionAnswer[] = questions.map((q) => {
       const given = validated.answers[q.id] ?? '';
 
       // Objective questions are marked now; everything else is left null for a
       // human. null means "not yet marked" — distinct from 0, "marked wrong".
-      let score: number | undefined;
-      if (AUTO_SCORED_TYPES.has(q.questionType) && q.correctAnswer) {
-        if (q.questionType === 'checkbox') {
-          const a = given.split('|').map(norm).filter(Boolean).sort();
-          const b = q.correctAnswer.split('|').map(norm).filter(Boolean).sort();
-          score = a.length === b.length && a.every((v, i) => v === b[i]) ? q.maxScore : 0;
-        } else {
-          score = norm(given) === norm(q.correctAnswer) ? q.maxScore : 0;
-        }
-      }
+      // Shared with practice attempts: see lib/marking.ts.
+      const score = autoScore(q, given);
 
       return {
         questionId: q.id,
