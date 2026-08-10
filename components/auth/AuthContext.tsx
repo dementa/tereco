@@ -2,6 +2,8 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
+import { endSession, loadIdentity } from '@/lib/auth/identity';
+
 export interface User {
   id: string;
   staffId: string;
@@ -33,25 +35,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [mustChangePassword, setMustChangePassword] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  // Session lives server-side (real Supabase Auth cookies, set by
-  // /api/auth/login) — this just rehydrates React state from it on load.
+  // In a browser the session lives server-side (real Supabase Auth cookies, set
+  // by /api/auth/login) and this rehydrates React state from it on load. In
+  // TERECO Collect there is no network to ask, so the identity comes from the
+  // local database instead — see lib/auth/identity.ts.
   const refresh = useCallback(async () => {
     try {
-      const res = await fetch('/api/auth/me');
-      const data = await res.json();
-      if (data.success) {
-        setUser(data.user);
-        setIsAuthenticated(true);
-        setMustChangePassword(!!data.user.mustChangePassword);
-      } else {
-        setUser(null);
-        setIsAuthenticated(false);
-        setMustChangePassword(false);
-      }
-    } catch {
-      setUser(null);
-      setIsAuthenticated(false);
-      setMustChangePassword(false);
+      const { user: nextUser, mustChangePassword: mustChange } = await loadIdentity();
+      setUser(nextUser);
+      setIsAuthenticated(nextUser !== null);
+      setMustChangePassword(mustChange);
     } finally {
       setLoading(false);
     }
@@ -78,7 +71,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
     setIsAuthenticated(false);
     setMustChangePassword(false);
-    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    void endSession();
   };
 
   return (

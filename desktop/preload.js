@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('tereco', {
   // the main process so no credential or cookie is ever reachable from the page.
   signIn: (credentials) => ipcRenderer.invoke('tereco:signIn', credentials),
   signOut: () => ipcRenderer.invoke('tereco:signOut'),
+  currentUser: () => ipcRenderer.invoke('tereco:currentUser'),
   prepare: (assessmentSystemId) => ipcRenderer.invoke('tereco:prepare', assessmentSystemId),
 
   getPackage: (assessmentId) => ipcRenderer.invoke('tereco:getPackage', assessmentId),

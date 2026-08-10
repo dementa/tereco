@@ -84,6 +84,15 @@ export interface TerecoBridge {
    */
   signIn(credentials: { identifier: string; password: string }): Promise<SignedInUser | null>;
   signOut(): Promise<void>;
+
+  /**
+   * Who is signed in on this machine, read from the local database.
+   *
+   * Needs no network, which is the point: the web app rehydrates its session
+   * from /api/auth/me on every load, and offline that failure was read as
+   * "nobody is signed in" — ejecting a learner from a paper they were sitting.
+   */
+  currentUser(): Promise<SignedInUser | null>;
   /** Downloads, verifies and stores a paper. After this, the cable can come out. */
   prepare(assessmentSystemId: string): Promise<PreparedResult>;
 

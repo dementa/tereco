@@ -302,6 +302,16 @@ function registerIpc(repo) {
     repo.setActiveStudentId(null);
   });
 
+  /**
+   * Who is signed in on this machine, read from the local database.
+   *
+   * The web app rehydrates its session from /api/auth/me on every load. Offline
+   * that call fails, the app concludes nobody is signed in, and the learner is
+   * bounced out of the paper they are sitting. This is the same answer without
+   * a network.
+   */
+  ipcMain.handle('tereco:currentUser', () => repo.getActiveStudent());
+
   ipcMain.handle('tereco:prepare', (_e, assessmentSystemId) =>
     prepareAssessment({
       baseUrl: API_BASE_URL,

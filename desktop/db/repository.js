@@ -40,6 +40,38 @@ function createRepository(db) {
     else writeMeta.run('active_student_id', studentId);
   }
 
+  const selectStudent = db.prepare('select * from students where id = ?');
+
+  /**
+   * The signed-in learner, read from local storage rather than the network.
+   *
+   * This is what lets a paper survive the cable coming out. The web app
+   * rehydrates its session from `/api/auth/me` on every page load; offline that
+   * call fails, the app concludes nobody is signed in, and the learner is
+   * bounced out of the paper they are sitting. The identity was written here
+   * during online preparation, so it is still available with no network.
+   *
+   * Deliberately NOT proof of anything. It says who last signed in on this
+   * machine, which is enough to render a name and scope a query. Authorisation
+   * to sit a paper comes from the signed package and nothing else.
+   */
+  function getActiveStudent() {
+    const studentId = getActiveStudentId();
+    if (!studentId) return null;
+
+    const row = selectStudent.get(studentId);
+    if (!row) return null;
+
+    return {
+      id: row.id,
+      staffId: row.system_id ?? '',
+      name: row.name,
+      role: 'student',
+      school: '',
+      className: row.class_label ?? null,
+    };
+  }
+
   // ─── Clock ────────────────────────────────────────────────────────────────
 
   /**
@@ -393,6 +425,7 @@ function createRepository(db) {
   return {
     getActiveStudentId,
     setActiveStudentId,
+    getActiveStudent,
     listPrepared,
     getPackage,
     getQuestions,
