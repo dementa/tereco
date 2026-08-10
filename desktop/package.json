@@ -8,12 +8,16 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder",
-    "dist:win": "electron-builder --win",
-    "dist:linux": "electron-builder --linux",
-    "dist:mac": "electron-builder --mac"
+    "dist": "npm run renderer:check && electron-builder",
+    "dist:win": "npm run renderer:check && electron-builder --win",
+    "dist:linux": "npm run renderer:check && electron-builder --linux",
+    "dist:mac": "npm run renderer:check && electron-builder --mac",
+    "renderer:check": "node -e \"require('fs').existsSync('renderer/dist/index.html')||(console.error('\\nrenderer/dist is missing. Run `npm run build:renderer` from the repo root first: without it the installer ships no application code and the app cannot start offline.\\n'),process.exit(1))\"",
+    "rebuild": "electron-rebuild -f -w better-sqlite3-multiple-ciphers",
+    "postinstall": "electron-rebuild -f -w better-sqlite3-multiple-ciphers || echo \"[tereco] electron-rebuild failed; the native SQLite module will not load in Electron until this succeeds\""
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
     "electron": "33.2.1",
     "electron-builder": "25.1.8"
   },
@@ -29,11 +33,17 @@
     "files": [
       "main.js",
       "preload.js",
-      "package.json"
+      "package.json",
+      "renderer/dist/**"
     ],
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] }
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
       ],
       "icon": "build/icon.png"
     },
@@ -46,17 +56,29 @@
       "shortcutName": "TERECO Collect"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Education",
       "icon": "build/icon.png",
       "maintainer": "TERECO <support@tereco.local>"
     },
     "mac": {
       "target": [
-        { "target": "dmg", "arch": ["x64", "arm64"] }
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
       ],
       "category": "public.app-category.education",
       "icon": "build/icon.png"
     }
+  },
+  "dependencies": {
+    "better-sqlite3-multiple-ciphers": "^13.0.3"
   }
 }

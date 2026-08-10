@@ -1,23 +1,35 @@
 'use strict';
 
-const { app, BrowserWindow, shell, Menu } = require('electron');
+const { app, BrowserWindow, shell, Menu, ipcMain } = require('electron');
 const path = require('path');
+const fs = require('fs');
+const crypto = require('crypto');
 
 /**
- * The deployed TERECO web app the desktop client loads.
- * Priority: TERECO_APP_URL env var > --url=<url> CLI arg > DEFAULT_URL.
- * Update DEFAULT_URL to the production Vercel domain before building installers.
+ * The bundled offline client. This is the default and the point of the app:
+ * the code is installed on the machine, so the window opens with no network at
+ * all. Previously this file loaded https://tereco.vercel.app, which meant every
+ * screen arrived over the wire and the app was unusable once the lab switched
+ * the internet off.
  */
-const DEFAULT_URL = 'https://tereco.vercel.app';
+const RENDERER_ENTRY = path.join(__dirname, 'renderer', 'dist', 'index.html');
 
-function resolveAppUrl() {
+/**
+ * Optional remote override, kept for two cases only: pointing at a local
+ * `next dev` while working on the web app, and the legacy online-only mode.
+ * Priority: TERECO_APP_URL env var > --url=<url> CLI arg.
+ *
+ * Absent both, the app loads from disk. There is deliberately no default URL:
+ * falling back to a remote origin is what made offline impossible.
+ */
+function resolveRemoteOverride() {
   if (process.env.TERECO_APP_URL) return process.env.TERECO_APP_URL;
   const arg = process.argv.find((a) => a.startsWith('--url='));
   if (arg) return arg.slice('--url='.length);
-  return DEFAULT_URL;
+  return null;
 }
 
-const APP_URL = resolveAppUrl();
+const REMOTE_URL = resolveRemoteOverride();
 let mainWindow = null;
 
 function isSameOrigin(target, base) {
@@ -28,7 +40,14 @@ function isSameOrigin(target, base) {
   }
 }
 
-function showLoadError(win) {
+function showLoadError(win, reason) {
+  const heading = reason === 'bundle' ? 'TERECO Collect is damaged' : "Can't reach TERECO";
+  const body =
+    reason === 'bundle'
+      ? 'The application files could not be opened. Your saved work is not affected. ' +
+        'Ask your administrator to reinstall TERECO Collect on this computer.'
+      : 'Check your internet connection and try again. The app needs to connect to the TERECO server.';
+
   const html = `data:text/html,${encodeURIComponent(`
     <html><head><meta charset="utf-8"><title>TERECO Collect</title>
     <style>
@@ -43,8 +62,8 @@ function showLoadError(win) {
         padding:10px 20px;border-radius:12px;font-size:14px;cursor:pointer}
     </style></head>
     <body><div class="card">
-      <h1>Can't reach TERECO</h1>
-      <p>Check your internet connection and try again. The app needs to connect to the TERECO server.</p>
+      <h1>${heading}</h1>
+      <p>${body}</p>
       <button onclick="location.reload()">Retry</button>
     </div></body></html>`)}`;
   win.loadURL(html);
@@ -73,13 +92,21 @@ function createWindow() {
 
   mainWindow.once('ready-to-show', () => mainWindow.show());
 
-  mainWindow.loadURL(APP_URL);
+  if (REMOTE_URL) {
+    mainWindow.loadURL(REMOTE_URL);
+  } else {
+    mainWindow.loadFile(RENDERER_ENTRY);
+  }
 
   mainWindow.webContents.on('did-fail-load', (_e, errorCode, _desc, validatedURL, isMainFrame) => {
     // -3 is ERR_ABORTED (e.g. client-side navigation), ignore it.
-    if (isMainFrame && errorCode !== -3) {
-      showLoadError(mainWindow);
-    }
+    if (!isMainFrame || errorCode === -3) return;
+
+    // Loading from disk cannot fail for want of a network, so a failure here
+    // means the renderer bundle is missing or corrupt — a broken install, not a
+    // connectivity problem. Saying "check your internet" would send a lab
+    // technician down entirely the wrong path.
+    showLoadError(mainWindow, REMOTE_URL ? 'network' : 'bundle');
   });
 
   // Open external links (different origin, or target=_blank) in the system browser.
@@ -89,10 +116,15 @@ function createWindow() {
   });
 
   mainWindow.webContents.on('will-navigate', (event, url) => {
-    if (!isSameOrigin(url, APP_URL)) {
-      event.preventDefault();
-      shell.openExternal(url);
-    }
+    // Offline mode is a file:// page. Nothing may navigate away from the
+    // bundle: a paper in progress must not be replaceable by a remote page,
+    // and an external link during a sitting belongs in the system browser.
+    // Hash changes do not fire this event, so the in-app router is unaffected.
+    const allowed = REMOTE_URL ? isSameOrigin(url, REMOTE_URL) : url.startsWith('file://');
+    if (allowed) return;
+
+    event.preventDefault();
+    if (/^https?:/.test(url)) shell.openExternal(url);
   });
 
   // Reload came from the View menu, which no longer exists. Keeping F5 and
@@ -173,6 +205,91 @@ function buildMenu() {
   );
 }
 
+/**
+ * Stable per-installation identifier.
+ *
+ * Written once to userData and read thereafter, so it survives app updates and
+ * restarts but not a reimage — which is the correct behaviour, since a reimaged
+ * machine genuinely is a new installation. It rides along in attempt metadata
+ * so an administrator can tell which desk a paper was sat at.
+ */
+function readDeviceId() {
+  const file = path.join(app.getPath('userData'), 'device-id');
+  try {
+    const existing = fs.readFileSync(file, 'utf8').trim();
+    if (existing) return existing;
+  } catch {
+    /* first run on this machine */
+  }
+
+  const id = crypto.randomUUID();
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, id, 'utf8');
+  } catch (err) {
+    // A read-only profile would break persistence, so surface it rather than
+    // silently handing out a fresh id on every launch.
+    console.error('Could not persist device id:', err);
+  }
+  return id;
+}
+
+/**
+ * Wiring for the bridge declared in desktop/renderer/src/tereco-bridge.d.ts.
+ *
+ * Every handler is a thin pass-through to the repository. Identity and time are
+ * resolved here, never accepted from the renderer: `deviceId` comes from this
+ * process and the active learner from the local session, so a page that lies
+ * about who it is gets nowhere.
+ */
+function registerIpc(repo) {
+  const deviceId = readDeviceId();
+
+  const notYet = (phase) => () => {
+    throw new Error(`Not implemented until Phase ${phase} (issue #33).`);
+  };
+
+  ipcMain.handle('tereco:device', () => ({
+    deviceId,
+    appVersion: app.getVersion(),
+  }));
+
+  ipcMain.handle('tereco:listPrepared', () => repo.listPrepared());
+  ipcMain.handle('tereco:getPackage', (_e, assessmentId) => repo.getPackage(assessmentId));
+  ipcMain.handle('tereco:getQuestions', (_e, assessmentId) => repo.getQuestions(assessmentId));
+
+  ipcMain.handle('tereco:getAttempt', (_e, assessmentId) => repo.getAttempt(assessmentId, deviceId));
+  ipcMain.handle('tereco:saveAnswer', (_e, attemptId, questionId, value) =>
+    repo.saveAnswer(attemptId, questionId, value)
+  );
+  ipcMain.handle('tereco:saveIndex', (_e, attemptId, currentIndex) =>
+    repo.saveIndex(attemptId, currentIndex)
+  );
+  ipcMain.handle('tereco:submit', (_e, attemptId) => repo.submit(attemptId));
+
+  // Reads the queue truthfully already; the engine that drains it lands in
+  // Phase 4, so retrying has nothing to retry yet.
+  ipcMain.handle('tereco:syncStatus', () => repo.syncStatus());
+  ipcMain.handle('tereco:retrySync', notYet(4));
+}
+
+/**
+ * Opens the local database, or shows why it could not be opened.
+ *
+ * A failure here is never recoverable by retrying, and it must never be
+ * mistaken for "no data yet" — an unreadable file may hold a room's worth of
+ * unsent papers.
+ */
+function openLocalDatabase() {
+  const { openDatabase } = require('./db');
+  const { createRepository } = require('./db/repository');
+  const { resolveEncryptionKey } = require('./db/key');
+
+  const file = path.join(app.getPath('userData'), 'tereco.db');
+  const db = openDatabase({ file, key: resolveEncryptionKey() });
+  return createRepository(db);
+}
+
 // Single-instance lock so only one window runs.
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
@@ -187,6 +304,21 @@ if (!gotLock) {
 
   app.whenReady().then(() => {
     buildMenu();
+
+    let repo;
+    try {
+      repo = openLocalDatabase();
+    } catch (err) {
+      // Starting without local storage would let a learner sit a paper whose
+      // answers go nowhere. Refuse, and say what happened, rather than opening
+      // a window that quietly loses their work.
+      const { dialog } = require('electron');
+      dialog.showErrorBox('TERECO Collect cannot start', String(err.message || err));
+      app.quit();
+      return;
+    }
+
+    registerIpc(repo);
     createWindow();
 
     app.on('activate', () => {
