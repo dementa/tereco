@@ -239,13 +239,21 @@ export function AssessmentTake() {
   // ─── Persist progress ────────────────────────────────────
   // localStorage, so it survives the machine losing power. Written on every
   // keystroke-level change, because the interruption is never announced.
+  //
+  // Waits for `loading` to clear. This effect used to run on mount, while the
+  // loader above was still awaiting the network, and unconditionally wrote
+  // currentIndex — which is 0 before anything is restored. By the time the
+  // loader read the stored index back, it was reading the 0 this effect had
+  // just written over it, so a learner who reloaded mid-paper always landed
+  // back on question 1. Answers escaped it only because that write is guarded
+  // by `length > 0` and the initial state is empty.
   useEffect(() => {
-    if (!studentId) return;
+    if (!studentId || loading) return;
     if (Object.keys(answers).length > 0) {
       localStorage.setItem(progressKey(studentId, assessmentId, 'answers'), JSON.stringify(answers));
     }
     localStorage.setItem(progressKey(studentId, assessmentId, 'index'), currentIndex.toString());
-  }, [answers, currentIndex, assessmentId, studentId]);
+  }, [answers, currentIndex, assessmentId, studentId, loading]);
 
   const handleAnswer = (questionId: string, value: string) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
