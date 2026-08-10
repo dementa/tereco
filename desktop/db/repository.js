@@ -409,6 +409,113 @@ function createRepository(db) {
     'select status, count(*) as n from sync_queue group by status'
   );
 
+  /**
+   * The backoff is expressed here rather than in the engine.
+   *
+   * Claiming a row and then deciding it is too soon would mean marking it
+   * failed again just to put it back, inflating its retry count for an attempt
+   * that never happened — and re-selecting the same row on the next pass, which
+   * spins. Filtering at selection time means an item that is waiting is simply
+   * not offered.
+   */
+  const selectNextQueued = db.prepare(`
+    select q.id            as queueId,
+           q.retry_count   as retryCount,
+           a.id            as attemptId,
+           a.assessment_id as assessmentId,
+           a.student_id    as studentId,
+           a.device_id     as deviceId,
+           a.started_at    as startedAt,
+           a.submitted_at  as submittedAt,
+           p.token         as token
+      from sync_queue q
+      join attempts a on a.id = q.attempt_id
+      join packages p
+        on p.assessment_id = a.assessment_id
+       and p.student_id = a.student_id
+     where q.status in ('pending', 'failed')
+       and (
+         q.last_attempt_at is null
+         or q.last_attempt_at + (
+              case q.retry_count
+                when 0 then 0
+                when 1 then 5000
+                when 2 then 30000
+                when 3 then 120000
+                else 600000
+              end
+            ) <= ?
+       )
+     order by q.created_at
+     limit 1
+  `);
+
+  const markSyncing = db.prepare(
+    "update sync_queue set status = 'syncing', last_attempt_at = ? where id = ?"
+  );
+
+  /**
+   * Takes the oldest outstanding submission and marks it in flight.
+   *
+   * Oldest first so a machine that has been offline for days uploads papers in
+   * the order they were sat, and one item at a time so a lab reconnecting does
+   * not open fifty concurrent requests over a link that is already the reason
+   * this feature exists.
+   */
+  const claimNext = db.transaction((now = Date.now()) => {
+    const row = selectNextQueued.get(now);
+    if (!row) return null;
+
+    markSyncing.run(now, row.queueId);
+
+    const answers = {};
+    for (const answer of selectAnswers.all(row.attemptId)) {
+      answers[answer.question_id] = answer.value;
+    }
+
+    return {
+      queueId: row.queueId,
+      retryCount: row.retryCount,
+      attemptId: row.attemptId,
+      deviceId: row.deviceId,
+      token: row.token,
+      answers,
+      // Measured from the signed start to the moment the device recorded the
+      // submission, so it is the same number the server would have computed.
+      timeSpentSeconds: Math.max(0, Math.round(((row.submittedAt ?? Date.now()) - row.startedAt) / 1000)),
+      submittedAt: row.submittedAt ?? Date.now(),
+    };
+  });
+
+  const markSyncedStmt = db.prepare(
+    "update sync_queue set status = 'synced', synced_at = ?, error_message = null where id = ?"
+  );
+
+  /**
+   * Only ever called after the server has confirmed the write.
+   *
+   * Nothing local is deleted at this point either: the attempt and its answers
+   * stay on the machine. Disk is cheap and a lab technician being able to prove
+   * a paper existed is not.
+   */
+  function markSynced(queueId) {
+    markSyncedStmt.run(Date.now(), queueId);
+  }
+
+  const markFailedStmt = db.prepare(`
+    update sync_queue
+       set status = 'failed',
+           retry_count = retry_count + 1,
+           error_message = ?
+     where id = ?
+  `);
+
+  /** A failed upload must never cost the student their work — only the row's
+   *  status changes, and it stays eligible to be claimed again. */
+  function markFailed(queueId, message) {
+    markFailedStmt.run(String(message ?? '').slice(0, 500), queueId);
+  }
+
   function syncStatus() {
     const counts = { pending: 0, syncing: 0, synced: 0, failed: 0 };
     for (const row of countQueue.all()) counts[row.status] = row.n;
@@ -435,6 +542,9 @@ function createRepository(db) {
     submit,
     savePackage,
     syncStatus,
+    claimNext,
+    markSynced,
+    markFailed,
   };
 }
 

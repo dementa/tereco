@@ -256,12 +256,9 @@ function readDeviceId() {
 function registerIpc(repo) {
   const deviceId = readDeviceId();
 
-  const notYet = (phase) => () => {
-    throw new Error(`Not implemented until Phase ${phase} (issue #33).`);
-  };
-
   const { net } = require('electron');
   const { prepareAssessment } = require('./net/prepare');
+  const { createSyncEngine } = require('./net/sync');
 
   /**
    * Public keys that may have signed a package, by key id.
@@ -312,6 +309,27 @@ function registerIpc(repo) {
    */
   ipcMain.handle('tereco:currentUser', () => repo.getActiveStudent());
 
+  const sync = createSyncEngine({ baseUrl: API_BASE_URL, repo, fetchFn });
+
+  /**
+   * Drains the queue whenever the machine has a network again.
+   *
+   * Polling rather than listening for an online event: a lab machine is often
+   * "connected" to a router that cannot reach the internet, so the only honest
+   * test is trying. Failures cost one request and back off from there.
+   *
+   * Runs unprompted because the learner who sat the paper has usually gone home
+   * by the time the connection returns. Nobody should have to remember to press
+   * a button for a submission to reach the school.
+   */
+  const SYNC_POLL_MS = 60_000;
+  const pump = () => {
+    if (!net.isOnline()) return;
+    sync.drain().catch((err) => console.error('[tereco] sync failed:', err));
+  };
+  setInterval(pump, SYNC_POLL_MS).unref?.();
+  setTimeout(pump, 5_000).unref?.();
+
   ipcMain.handle('tereco:prepare', (_e, assessmentSystemId) =>
     prepareAssessment({
       baseUrl: API_BASE_URL,
@@ -342,10 +360,14 @@ function registerIpc(repo) {
   );
   ipcMain.handle('tereco:submit', (_e, attemptId) => repo.submit(attemptId));
 
-  // Reads the queue truthfully already; the engine that drains it lands in
-  // Phase 4, so retrying has nothing to retry yet.
-  ipcMain.handle('tereco:syncStatus', () => repo.syncStatus());
-  ipcMain.handle('tereco:retrySync', notYet(4));
+  ipcMain.handle('tereco:syncStatus', () => sync.status());
+
+  // Manual retry behind the "Synchronization incomplete" state, for when
+  // someone is standing at the machine and would rather not wait for the poll.
+  ipcMain.handle('tereco:retrySync', async () => {
+    await sync.drain();
+    return sync.status();
+  });
 }
 
 /**

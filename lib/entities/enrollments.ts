@@ -63,6 +63,41 @@ export async function getCurrentEnrollment(
 }
 
 /** Full class label including stream, e.g. "P.4 Bright". */
+/**
+ * The enrolment a learner held at a given moment.
+ *
+ * Needed by offline sync (issue #33): a paper sat in June can reach the server
+ * in July, by which time the learner may have been promoted or transferred.
+ * Filing that result against `current_enrollments` would put it in a class the
+ * paper was never sat in, which is exactly what the enrolment design exists to
+ * prevent — see getEnrollmentHistory.
+ *
+ * Returns null only when the learner has no enrolment at all. When history does
+ * not cover the instant (a sitting on the day of a move, say), the caller is
+ * expected to fall back rather than reject: a paper that cannot be filed
+ * perfectly is still a paper, and refusing it destroys real work.
+ */
+export async function getEnrollmentAt(
+  studentId: string,
+  at: number
+): Promise<{ enrollmentId: string } | null> {
+  const instant = new Date(at).toISOString();
+  const supabase = getSupabaseAdmin();
+
+  const { data, error } = await supabase
+    .from("enrollments")
+    .select("id, enrolled_on, exited_on")
+    .eq("student_id", studentId)
+    .lte("enrolled_on", instant)
+    .order("enrolled_on", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const rows = (data ?? []) as { id: string; exited_on: string | null }[];
+  const covering = rows.find((row) => !row.exited_on || row.exited_on >= instant);
+
+  return covering ? { enrollmentId: covering.id } : null;
+}
+
 export function enrollmentClassLabel(enrollment: CurrentEnrollment | null): string {
   if (!enrollment) return "";
   return [enrollment.classDisplayName, enrollment.streamName].filter(Boolean).join(" ");
