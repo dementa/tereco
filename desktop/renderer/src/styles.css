@@ -1,0 +1,24 @@
+/*
+ * Pulls in the web app's design system verbatim — the same @theme tokens, the
+ * same teal accent scale — so a paper sat on the desktop looks identical to one
+ * sat in the browser. Tailwind v4 resolves this @import at build time, and
+ * @tailwindcss/vite scans the Vite module graph for class names, which includes
+ * the shared components imported from the repo root.
+ */
+@import "../../../app/globals.css";
+
+/*
+ * The window has no browser chrome and no address bar, so the page itself is
+ * the entire surface. Fixed height stops the body scrolling behind a paper that
+ * manages its own scroll region.
+ */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+}
