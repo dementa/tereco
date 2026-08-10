@@ -50,14 +50,17 @@ is the right price.
 
 ### Testing it
 
+Tests run from the repo root with Vitest:
+
 ```bash
-node desktop/db/smoke.js   # 14 checks: prepare, resume, clock floor, submit, queue
+npm test                                  # everything
+npx vitest run desktop/db                 # just the database
 ```
 
-> **The smoke test and Electron need different builds of the same native module.**
+> **The tests and Electron need different builds of the same native module.**
 > `npm run rebuild` (and the `postinstall` hook) compiles
 > `better-sqlite3-multiple-ciphers` against Electron's ABI, after which system
-> Node can no longer load it and the smoke test fails with
+> Node can no longer load it and the tests fail with
 > `NODE_MODULE_VERSION` mismatch. Run `npm rebuild better-sqlite3-multiple-ciphers`
 > inside `desktop/` to switch it back for testing, and `npm run rebuild` before
 > launching Electron. This is inherent to native modules, not a bug.
@@ -145,5 +148,5 @@ decides what the window loads.
 ### Testing it
 
 ```bash
-node desktop/net/smoke.js   # 13 checks: signing, tamper rejection, preparation
+npx vitest run desktop/net   # signing, tamper rejection, preparation
 ```
