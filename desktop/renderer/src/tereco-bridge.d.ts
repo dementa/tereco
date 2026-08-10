@@ -60,8 +60,32 @@ export interface SyncStatus {
   lastError: string | null;
 }
 
+export interface PreparedResult {
+  assessmentId: string;
+  title: string;
+  questionCount: number;
+  startedAt: number;
+  durationSeconds: number;
+}
+
+export interface SignedInUser {
+  id: string;
+  name: string;
+  role: string;
+}
+
 export interface TerecoBridge {
   device(): Promise<DeviceInfo>;
+
+  /**
+   * The only calls that touch the network, and the only ones that need it.
+   * They run in the main process, so the session cookie never exists anywhere
+   * the page can read it.
+   */
+  signIn(credentials: { identifier: string; password: string }): Promise<SignedInUser | null>;
+  signOut(): Promise<void>;
+  /** Downloads, verifies and stores a paper. After this, the cable can come out. */
+  prepare(assessmentSystemId: string): Promise<PreparedResult>;
 
   /** Null until an assessment package has been downloaded and verified. */
   getPackage(assessmentId: string): Promise<PreparedAssessment | null>;

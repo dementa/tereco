@@ -40,7 +40,8 @@ TERECO_APP_URL=http://localhost:3000 npm start   # point at a local `next dev`
 
 SQLite via `better-sqlite3-multiple-ciphers`, at
 `<userData>/tereco.db`, encrypted with a key held in the OS keystore
-(`db/key.js`). Schema in `db/schema.sql`, data access in `db/repository.js`.
+(`db/key.js`). Schema in `db/migrations/` (numbered, applied in order and
+tracked in `user_version`), data access in `db/repository.js`.
 
 The connection runs `synchronous = FULL` rather than the usual `NORMAL`. Under
 WAL, `NORMAL` does not fsync on commit, so the last few writes can be lost to a
@@ -112,3 +113,37 @@ a code-signing certificate to electron-builder (`CSC_LINK` / `CSC_KEY_PASSWORD`)
 
 `build/icon.png` (1024×1024) is the source icon; electron-builder generates the
 per-platform icon formats (`.ico`, `.icns`) from it automatically.
+
+## Package signing keys
+
+Offline packages are authorised by an Ed25519 grant signed by the server and
+verified on the device. Generate a pair with:
+
+```bash
+node scripts/gen-package-keys.mjs [keyId]
+```
+
+The **private** key goes in the deployment environment and nowhere else:
+
+```
+TERECO_PACKAGE_KEY_ID=tereco-2026-08
+TERECO_PACKAGE_SIGNING_KEY="-----BEGIN PRIVATE KEY-----\n…"
+```
+
+The **public** key goes in `desktop/keys/package-keys.json`, which ships inside
+the installer. It holds no secret, so verification works with no network.
+
+To rotate, add a new key id alongside the existing one. Machines not yet
+updated keep verifying grants signed by the key they know, so a rotation does
+not brick a lab mid-term. Only drop an old public key once every machine has
+been updated **and** every grant signed with it has expired (14 days).
+
+The desktop talks to `TERECO_API_URL` (default `https://tereco.vercel.app`) for
+sign-in and preparation. That is separate from `TERECO_APP_URL`, which only
+decides what the window loads.
+
+### Testing it
+
+```bash
+node desktop/net/smoke.js   # 13 checks: signing, tamper rejection, preparation
+```

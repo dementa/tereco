@@ -118,7 +118,7 @@ function createRepository(db) {
 
   const selectQuestions = db.prepare(`
     select id, position, code, question_text, question_type,
-           options_json, image_url, max_score, config_json
+           options_json, image_url, media_path, max_score, config_json
       from questions
      where assessment_id = ?
      order by position
@@ -137,7 +137,12 @@ function createRepository(db) {
       questionText: row.question_text,
       questionType: row.question_type,
       options: row.options_json ? JSON.parse(row.options_json) : [],
-      imageUrl: row.image_url ?? undefined,
+      // The local copy when it was downloaded, the signed URL otherwise. The
+      // renderer must never reach the network, so a question whose media never
+      // arrived shows as missing rather than silently trying Cloudinary.
+      imageUrl: row.media_path ?? row.image_url ?? undefined,
+      /** The value the server signed. Kept for re-verification. */
+      signedImageUrl: row.image_url ?? undefined,
       maxScore: row.max_score ?? undefined,
       config: row.config_json ? JSON.parse(row.config_json) : undefined,
     }));
@@ -292,8 +297,8 @@ function createRepository(db) {
   const insertQuestion = db.prepare(`
     insert into questions
       (id, assessment_id, position, code, question_text, question_type,
-       options_json, image_url, max_score, config_json)
-    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       options_json, image_url, media_path, max_score, config_json)
+    values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const upsertPackage = db.prepare(`
     insert into packages (assessment_id, student_id, token, status, prepared_at, expires_at)
@@ -343,6 +348,9 @@ function createRepository(db) {
         q.questionType,
         q.options ? JSON.stringify(q.options) : null,
         q.imageUrl ?? null,
+        // Set by the caller once the asset is on disk. Null until then, and a
+        // picture question with a null path is not sittable.
+        q.mediaPath ?? null,
         q.maxScore ?? null,
         q.config ? JSON.stringify(q.config) : null
       );

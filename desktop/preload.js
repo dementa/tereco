@@ -19,6 +19,12 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('tereco', {
   device: () => ipcRenderer.invoke('tereco:device'),
 
+  // Online preparation. The only calls that touch the network, and they run in
+  // the main process so no credential or cookie is ever reachable from the page.
+  signIn: (credentials) => ipcRenderer.invoke('tereco:signIn', credentials),
+  signOut: () => ipcRenderer.invoke('tereco:signOut'),
+  prepare: (assessmentSystemId) => ipcRenderer.invoke('tereco:prepare', assessmentSystemId),
+
   getPackage: (assessmentId) => ipcRenderer.invoke('tereco:getPackage', assessmentId),
   getQuestions: (assessmentId) => ipcRenderer.invoke('tereco:getQuestions', assessmentId),
   listPrepared: () => ipcRenderer.invoke('tereco:listPrepared'),

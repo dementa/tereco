@@ -1,0 +1,11 @@
+-- Local copies of question media.
+--
+-- `image_url` must keep the value the server signed: the content hash is
+-- re-checked when the paper is opened, not only when it is downloaded, so
+-- rewriting the column to a local path would make a perfectly good package
+-- fail verification on the machine holding it.
+--
+-- The downloaded file therefore lives alongside it. Null means the asset has
+-- not been fetched, which for a picture question means the paper is not ready:
+-- "name the shape below" is unanswerable without the shape.
+alter table questions add column media_path text;

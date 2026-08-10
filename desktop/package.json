@@ -34,7 +34,10 @@
       "main.js",
       "preload.js",
       "package.json",
-      "renderer/dist/**"
+      "renderer/dist/**",
+      "db/**",
+      "net/**",
+      "keys/**"
     ],
     "win": {
       "target": [

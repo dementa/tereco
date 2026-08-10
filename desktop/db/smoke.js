@@ -17,7 +17,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 
-const { openDatabase } = require('./index');
+const { openDatabase, schemaVersion } = require('./index');
 const { createRepository } = require('./repository');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tereco-smoke-'));
@@ -75,8 +75,8 @@ console.log(`\nlocal database smoke test  (${file})\n`);
 let db = openDatabase({ file });
 let repo = createRepository(db);
 
-check('schema applies and sets user_version', () => {
-  assert.equal(db.pragma('user_version', { simple: true }), 1);
+check('every migration applies and user_version lands on the latest', () => {
+  assert.equal(db.pragma('user_version', { simple: true }), schemaVersion());
 });
 
 check('nothing is listed before a learner signs in', () => {

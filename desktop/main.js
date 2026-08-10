@@ -30,6 +30,17 @@ function resolveRemoteOverride() {
 }
 
 const REMOTE_URL = resolveRemoteOverride();
+
+/**
+ * Where the deployment lives.
+ *
+ * Distinct from REMOTE_URL, which only decides what the WINDOW loads. This is
+ * the origin the main process talks to during online preparation and, later,
+ * sync — the two are separate because the window loads from disk while the
+ * network calls still go to the server.
+ */
+const API_BASE_URL = process.env.TERECO_API_URL || 'https://tereco.vercel.app';
+
 let mainWindow = null;
 
 function isSameOrigin(target, base) {
@@ -248,6 +259,60 @@ function registerIpc(repo) {
   const notYet = (phase) => () => {
     throw new Error(`Not implemented until Phase ${phase} (issue #33).`);
   };
+
+  const { net } = require('electron');
+  const { prepareAssessment } = require('./net/prepare');
+
+  /**
+   * Public keys that may have signed a package, by key id.
+   *
+   * Shipped inside the installer, so verification needs no network and holds no
+   * secret. A map rather than one key: a machine that has not been reinstalled
+   * since a rotation still verifies grants signed by the key it knows.
+   */
+  const publicKeys = JSON.parse(
+    fs.readFileSync(path.join(__dirname, 'keys', 'package-keys.json'), 'utf8')
+  );
+
+  const mediaDir = path.join(app.getPath('userData'), 'media');
+
+  // Electron's net.fetch, not global fetch: it goes through the app session, so
+  // the sign-in cookie is stored and replayed by the main process and never
+  // exists anywhere the renderer can read it.
+  const fetchFn = (url, init) => net.fetch(url, init);
+
+  ipcMain.handle('tereco:signIn', async (_e, credentials) => {
+    const response = await net.fetch(new URL('/api/auth/login', API_BASE_URL).toString(), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(credentials),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || !body || body.success !== true) {
+      throw new Error(body?.message || 'Could not sign in.');
+    }
+
+    // Binds the local database to this learner. Everything the renderer can
+    // then list or open is scoped to them.
+    repo.setActiveStudentId(body.user?.id ?? body.data?.user?.id ?? null);
+    return body.user ?? body.data?.user ?? null;
+  });
+
+  ipcMain.handle('tereco:signOut', () => {
+    repo.setActiveStudentId(null);
+  });
+
+  ipcMain.handle('tereco:prepare', (_e, assessmentSystemId) =>
+    prepareAssessment({
+      baseUrl: API_BASE_URL,
+      assessmentSystemId,
+      deviceId,
+      repo,
+      mediaDir,
+      publicKeys,
+      fetchFn,
+    })
+  );
 
   ipcMain.handle('tereco:device', () => ({
     deviceId,

@@ -4,7 +4,30 @@ const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3-multiple-ciphers');
 
-const SCHEMA_VERSION = 1;
+/**
+ * Migrations are numbered files in db/migrations, applied in order.
+ *
+ * A lab machine keeps its database across app updates, so by the time a second
+ * version ships there are installations sitting on the first one, possibly
+ * holding unsent papers. Re-running a full schema would not reach them and
+ * dropping the file would destroy the work, so the version has to be tracked
+ * and the gap applied.
+ */
+const MIGRATIONS_DIR = path.join(__dirname, 'migrations');
+
+function loadMigrations() {
+  return fs
+    .readdirSync(MIGRATIONS_DIR)
+    .filter((name) => name.endsWith('.sql'))
+    .sort()
+    .map((name) => {
+      const version = Number.parseInt(name.slice(0, 3), 10);
+      if (!Number.isInteger(version) || version < 1) {
+        throw new Error(`Migration "${name}" must start with a number, e.g. 003-thing.sql`);
+      }
+      return { version, name, sql: fs.readFileSync(path.join(MIGRATIONS_DIR, name), 'utf8') };
+    });
+}
 
 /**
  * Opens (and if necessary creates and migrates) the local database.
@@ -82,21 +105,31 @@ function assertReadable(db, file, existed, encrypted) {
 
 function migrate(db) {
   const current = db.pragma('user_version', { simple: true });
-  if (current >= SCHEMA_VERSION) return;
 
-  const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8');
+  for (const { version, name, sql } of loadMigrations()) {
+    if (version <= current) continue;
 
-  // One transaction: a migration interrupted by a power cut leaves the file at
-  // its previous version rather than half-built.
-  db.exec('begin');
-  try {
-    db.exec(schema);
-    db.pragma(`user_version = ${SCHEMA_VERSION}`);
-    db.exec('commit');
-  } catch (err) {
-    db.exec('rollback');
-    throw err;
+    // One transaction per migration: interrupted by a power cut, the file is
+    // left at the previous version rather than half-built. SQLite applies DDL
+    // transactionally, so this genuinely rolls back.
+    db.exec('begin');
+    try {
+      db.exec(sql);
+      db.pragma(`user_version = ${version}`);
+      db.exec('commit');
+    } catch (err) {
+      db.exec('rollback');
+      const error = new Error(`Migration ${name} failed: ${err.message}`);
+      error.cause = err;
+      throw error;
+    }
   }
 }
 
-module.exports = { openDatabase, SCHEMA_VERSION };
+/** Highest migration on disk. Exported so the smoke test can assert on it. */
+function schemaVersion() {
+  const all = loadMigrations();
+  return all.length === 0 ? 0 : all[all.length - 1].version;
+}
+
+module.exports = { openDatabase, schemaVersion };
