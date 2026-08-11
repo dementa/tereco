@@ -37,7 +37,17 @@ export interface SourceQuestion {
   config?: QuestionConfig;
 }
 
+/**
+ * A live sitting, or untimed practice on a closed paper (an E-Paper).
+ *
+ * It belongs here rather than in the component because it decides two things
+ * the source owns: which endpoint a submission goes to, and which storage keys
+ * hold the progress.
+ */
+export type TakeMode = "live" | "practice";
+
 export interface PaperContext {
+  mode: TakeMode;
   studentId: string;
   assessmentId: string;
   /** Set by the desktop source: the local attempt being sat. */
@@ -70,16 +80,34 @@ export interface AssessmentSource {
   /** Locally remembered countdown start, used only when `remainingSeconds` is null. */
   readStart(context: PaperContext): number | null;
   writeStart(context: PaperContext, value: number): void;
+  /**
+   * Returns the practice attempt id when there is one, so the caller can send
+   * the learner straight to their marked paper. Live submissions have nothing
+   * to return: the confirmation screen is keyed on the assessment.
+   */
   submit(
     context: PaperContext,
     payload: { answers: Record<string, string>; timeSpent: number }
-  ): Promise<void>;
+  ): Promise<{ attemptId?: string }>;
 }
 
 // ─── Browser: the API over fetch ───────────────────────────────────────────
 
-function progressKey(studentId: string, assessmentId: string, part: string): string {
-  return `tereco_take_${studentId}_${assessmentId}_${part}`;
+/**
+ * The key includes the MODE. A learner may practise a paper they have already
+ * sat, and both use the same assessment id — without this, opening the practice
+ * version would restore, and then overwrite, the answers from their real
+ * sitting. Live keeps the original prefix so anyone mid-sitting across a deploy
+ * still finds their work.
+ */
+function progressKey(
+  mode: TakeMode,
+  studentId: string,
+  assessmentId: string,
+  part: string
+): string {
+  const prefix = mode === "practice" ? "tereco_practice" : "tereco_take";
+  return `${prefix}_${studentId}_${assessmentId}_${part}`;
 }
 
 /**
@@ -89,15 +117,21 @@ function progressKey(studentId: string, assessmentId: string, part: string): str
  * their answers under the old scheme; without this fallback their next reload
  * would find nothing and silently discard the lot.
  */
-function readProgress(studentId: string, assessmentId: string, part: string): string | null {
-  return (
-    localStorage.getItem(progressKey(studentId, assessmentId, part)) ??
-    sessionStorage.getItem(`assessment_${assessmentId}_${part}`)
-  );
+function readProgress(
+  mode: TakeMode,
+  studentId: string,
+  assessmentId: string,
+  part: string
+): string | null {
+  const own = localStorage.getItem(progressKey(mode, studentId, assessmentId, part));
+  // Practice never consults the legacy key — there was no practice before it
+  // shipped, and reading it would pull a real sitting's answers into a run.
+  if (own !== null || mode === "practice") return own;
+  return sessionStorage.getItem(`assessment_${assessmentId}_${part}`);
 }
 
 export const webSource: AssessmentSource = {
-  async load({ studentId, assessmentId }) {
+  async load({ mode, studentId, assessmentId }) {
     const metaRes = await fetch(`/api/assessments/${assessmentId}`);
     if (!metaRes.ok) throw new Error(`HTTP ${metaRes.status}: ${metaRes.statusText}`);
     const metaData = await metaRes.json();
@@ -108,7 +142,7 @@ export const webSource: AssessmentSource = {
     const qData = await qRes.json();
     if (!qData.success) throw new Error(qData.message || "Failed to load questions");
 
-    const savedAnswers = readProgress(studentId, assessmentId, "answers");
+    const savedAnswers = readProgress(mode, studentId, assessmentId, "answers");
     let answers: Record<string, string> = {};
     if (savedAnswers) {
       try {
@@ -118,7 +152,7 @@ export const webSource: AssessmentSource = {
       }
     }
 
-    const savedIndex = readProgress(studentId, assessmentId, "index");
+    const savedIndex = readProgress(mode, studentId, assessmentId, "index");
 
     /**
      * Ask the server when this sitting started.
@@ -128,20 +162,27 @@ export const webSource: AssessmentSource = {
      * blocked from working. It re-anchors when the network returns.
      */
     let remainingSeconds: number | null = null;
-    try {
-      const sRes = await fetch(`/api/assessments/${assessmentId}/sitting`, { method: "POST" });
-      const sData = await sRes.json();
-      if (sData.success && typeof sData.data?.remainingSeconds === "number") {
-        remainingSeconds = sData.data.remainingSeconds;
+    // Skipped entirely in practice: /sitting opens a real sitting window
+    // against a live assessment, and calling it for a closed paper would either
+    // fail or, worse, record something.
+    if (mode !== "practice") {
+      try {
+        const sRes = await fetch(`/api/assessments/${assessmentId}/sitting`, { method: "POST" });
+        const sData = await sRes.json();
+        if (sData.success && typeof sData.data?.remainingSeconds === "number") {
+          remainingSeconds = sData.data.remainingSeconds;
+        }
+      } catch {
+        /* offline — the local clock carries the sitting until we reconnect */
       }
-    } catch {
-      /* offline — the local clock carries the sitting until we reconnect */
     }
 
     const meta = metaData.data;
     return {
       title: meta?.title ?? "Assessment",
-      timeLimitSeconds: (meta?.timeLimit ?? 0) * 60,
+      // Practice is untimed. Zero is what switches the whole clock off: the
+      // timer effect returns early, no countdown renders, nothing auto-submits.
+      timeLimitSeconds: mode === "practice" ? 0 : (meta?.timeLimit ?? 0) * 60,
       questions: Array.isArray(qData.data) ? qData.data : [],
       answers,
       currentIndex: savedIndex ? parseInt(savedIndex, 10) || 0 : 0,
@@ -149,39 +190,57 @@ export const webSource: AssessmentSource = {
     };
   },
 
-  saveProgress({ studentId, assessmentId }, answers, currentIndex) {
+  saveProgress({ mode, studentId, assessmentId }, answers, currentIndex) {
     if (Object.keys(answers).length > 0) {
-      localStorage.setItem(progressKey(studentId, assessmentId, "answers"), JSON.stringify(answers));
+      localStorage.setItem(
+        progressKey(mode, studentId, assessmentId, "answers"),
+        JSON.stringify(answers)
+      );
     }
-    localStorage.setItem(progressKey(studentId, assessmentId, "index"), currentIndex.toString());
+    localStorage.setItem(
+      progressKey(mode, studentId, assessmentId, "index"),
+      currentIndex.toString()
+    );
   },
 
-  clearProgress({ studentId, assessmentId }) {
-    // Clear both schemes: the old sessionStorage keys may still hold this
-    // learner's answers if they started before the localStorage change shipped.
+  clearProgress({ mode, studentId, assessmentId }) {
     for (const part of ["answers", "index", "start"]) {
-      localStorage.removeItem(progressKey(studentId, assessmentId, part));
-      sessionStorage.removeItem(`assessment_${assessmentId}_${part}`);
+      localStorage.removeItem(progressKey(mode, studentId, assessmentId, part));
+      // The legacy keys belong to live sittings only; a practice run clearing
+      // them would wipe answers from a real sitting that is still in progress.
+      if (mode !== "practice") sessionStorage.removeItem(`assessment_${assessmentId}_${part}`);
     }
   },
 
-  readStart({ studentId, assessmentId }) {
-    const stored = readProgress(studentId, assessmentId, "start");
+  readStart({ mode, studentId, assessmentId }) {
+    const stored = readProgress(mode, studentId, assessmentId, "start");
     return stored ? parseInt(stored, 10) : null;
   },
 
-  writeStart({ studentId, assessmentId }, value) {
-    localStorage.setItem(progressKey(studentId, assessmentId, "start"), value.toString());
+  writeStart({ mode, studentId, assessmentId }, value) {
+    localStorage.setItem(progressKey(mode, studentId, assessmentId, "start"), value.toString());
   },
 
-  async submit({ assessmentId }, payload) {
-    const res = await fetch(`/api/assessments/${assessmentId}/submit`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+  async submit({ mode, assessmentId }, payload) {
+    const practice = mode === "practice";
+
+    const res = await fetch(
+      practice
+        ? `/api/e-papers/${assessmentId}/attempt`
+        : `/api/assessments/${assessmentId}/submit`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Practice sends no timeSpent: there is no limit to check it against,
+        // and the attempt row records its own start and finish.
+        body: JSON.stringify(practice ? { answers: payload.answers } : payload),
+      }
+    );
+
     const data = await res.json();
     if (!res.ok || !data.success) throw new Error(data.message || "Submission failed.");
+
+    return practice ? { attemptId: data.data?.attemptId } : {};
   },
 };
 
@@ -326,9 +385,16 @@ export function createDesktopSource(): AssessmentSource {
       /* the signed package owns the clock */
     },
 
-    async submit({ attemptId }) {
+    async submit({ mode, attemptId }) {
+      // TERECO Collect only ever holds live papers: its home screen lists
+      // prepared packages, and practice is a Library feature that needs the
+      // network anyway. Saying so beats a confusing failure further down.
+      if (mode === "practice") {
+        throw new Error("Practice papers can only be done online.");
+      }
       if (!attemptId) throw new Error("No attempt is open on this computer.");
       await bridge().submit(attemptId);
+      return {};
     },
   };
 }

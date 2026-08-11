@@ -205,6 +205,10 @@ export async function getAvailableAttendanceSessions(params: {
     .eq("session_date", params.date)
     .eq("period", params.period)
     .is("lesson_report_id", null)
+    // Lesson registers only. An assessment register has the same shape and would
+    // otherwise be swallowed by a lesson report being filed for that slot,
+    // taking its learners with it and leaving the assessment unscoreable.
+    .eq("kind", "lesson")
     .order("taken_at", { ascending: false });
 
   query = params.streamId ? query.eq("stream_id", params.streamId) : query.is("stream_id", null);
@@ -249,6 +253,12 @@ export async function createAttendanceSession(input: {
   streamId: string | null;
   date: string;
   period: number;
+  /** True when this was a computer-lab lesson, so it gets practical scoring afterwards. */
+  isPractical: boolean;
+  /** 'assessment' when this register is for learners sitting a paper under supervision. */
+  kind?: "lesson" | "assessment";
+  /** Required when kind is 'assessment'; the DB constraint rejects the row otherwise. */
+  assessmentId?: string | null;
   attendance: AttendanceEntryInput[];
 }): Promise<{ id: string; present: number; absent: number }> {
   const supabase = getSupabaseAdmin();
@@ -262,6 +272,12 @@ export async function createAttendanceSession(input: {
       stream_id: input.streamId,
       session_date: input.date,
       period: input.period,
+      // An assessment register exists to be scored, so it is always practical —
+      // matching attendance_sessions_assessment_practical_ck rather than relying
+      // on the form to have ticked a box.
+      is_practical: input.kind === "assessment" ? true : input.isPractical,
+      kind: input.kind ?? "lesson",
+      assessment_id: input.kind === "assessment" ? (input.assessmentId ?? null) : null,
     })
     .select("id")
     .single();

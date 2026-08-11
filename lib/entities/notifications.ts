@@ -10,7 +10,12 @@ export type NotificationType =
   | "lesson_digest"
   | "library_content_approved"
   | "library_content_rejected"
-  | "marking_reminder";
+  | "marking_reminder"
+  // Kept in step with notifications_type_check by hand — the constraint is a
+  // text CHECK, which lib/database.types.ts renders as plain `string`, so
+  // nothing verifies these two lists agree. Widen both together: the SQL in a
+  // new numbered migration (22-practical-reminders.sql was the last), and here.
+  | "practical_reminder";
 
 export interface Notification {
   id: number;

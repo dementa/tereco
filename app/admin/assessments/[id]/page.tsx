@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
+import { Modal } from '@/components/ui/Modal';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useAuth } from '@/components/auth/AuthContext';
@@ -98,6 +99,8 @@ interface Assessment {
   opensAt?: string;
   closesAt?: string;
   status: 'draft' | 'published' | 'closed';
+  /** Set when this closed paper is published for untimed practice in the Library. */
+  ePaperAt?: string;
   instructions: string;
   createdBy: string | null;
   targets: AssessmentTarget[];
@@ -210,6 +213,12 @@ export default function AssessmentDetailPage() {
   // otherwise. Only asked for when that's actually the case.
   const [reopenClosesAt, setReopenClosesAt] = useState('');
   const [showReopenForm, setShowReopenForm] = useState(false);
+  // Closing is where the E-Paper decision gets made, so it is a prompt rather
+  // than a bare button. Same flow as the staff page — an admin closing a paper
+  // must be offered the same choice, or which console you happen to use
+  // silently decides whether learners ever get to revise it.
+  const [closing, setClosing] = useState(false);
+  const [publishAsEPaper, setPublishAsEPaper] = useState(false);
 
   // The PDF the "Preview" buttons are showing in-app, before the user downloads.
   const [preview, setPreview] = useState<{ url: string; filename: string; title: string } | null>(
@@ -812,6 +821,7 @@ export default function AssessmentDetailPage() {
             <Badge variant={assessment.status === 'published' ? 'success' : 'muted'}>
               {assessment.status}
             </Badge>
+            {assessment.ePaperAt && <Badge variant="success">E-Paper</Badge>}
           </h1>
           <p className="text-sm text-text-muted">
             {assessment.systemId} · {assessment.timeLimit} minutes ·{' '}
@@ -830,10 +840,7 @@ export default function AssessmentDetailPage() {
             </Button>
           )}
           {assessment.status === 'published' && (
-            <Button
-              variant="outline"
-              onClick={() => void patchAssessment({ status: 'closed' }, 'Assessment closed.')}
-            >
+            <Button variant="outline" onClick={() => { setPublishAsEPaper(false); setClosing(true); }}>
               Close
             </Button>
           )}
@@ -866,6 +873,29 @@ export default function AssessmentDetailPage() {
               title="Students who already submitted still can't resit it — only students who haven't sat this paper yet will regain access."
             >
               Reopen
+            </Button>
+          )}
+          {/*
+            A paper closed before E-Papers existed, or closed without ticking
+            the box, can still be published later — otherwise the only way to
+            offer an old paper for practice would be to reopen and re-close it.
+            Withdrawing is the same switch the other way: it drops out of the
+            Library at once, and no learner loses a practice attempt they have
+            already finished, because attempts stand on their own rows.
+          */}
+          {assessment.status === 'closed' && !showReopenForm && (
+            <Button
+              variant="outline"
+              onClick={() =>
+                void patchAssessment(
+                  { isEPaper: !assessment.ePaperAt },
+                  assessment.ePaperAt ? 'Withdrawn from the Library.' : 'Published as an E-Paper.'
+                )
+              }
+              disabled={questions.length === 0}
+              title={questions.length === 0 ? 'A paper with no questions cannot be practised' : undefined}
+            >
+              {assessment.ePaperAt ? 'Withdraw E-Paper' : 'Publish as E-Paper'}
             </Button>
           )}
           {isOwner && (
@@ -1619,6 +1649,61 @@ export default function AssessmentDetailPage() {
         filename={preview?.filename ?? 'document.pdf'}
         title={preview?.title ?? 'Preview'}
       />
+
+      {/*
+        The box starts UNCHECKED on purpose. An opt-out default would push every
+        paper anyone closes into the Library, including the ones with a typo in
+        question 4 they were glad to see the back of. Making the first E-Paper a
+        deliberate act costs one tick and means everything in that tab is there
+        because someone chose it.
+      */}
+      <Modal open={closing} onClose={() => setClosing(false)} title="Close this assessment">
+        <div className="space-y-4">
+          <p className="text-sm text-text-muted">
+            Learners will no longer be able to sit <strong>{assessment.title}</strong>. Results
+            and marking are unaffected, and you can reopen it afterwards.
+          </p>
+
+          <label className="flex items-start gap-3 p-3 rounded-xl border border-border cursor-pointer hover:bg-bg-muted transition-colors">
+            <input
+              type="checkbox"
+              checked={publishAsEPaper}
+              onChange={(e) => setPublishAsEPaper(e.target.checked)}
+              className="w-4 h-4 mt-0.5 accent-primary-700"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium text-primary-900">
+                Also publish it as an E-Paper
+              </span>
+              <span className="block text-sm text-text-muted mt-0.5">
+                The paper appears in the Library for the learners it was set for, to practise
+                with no timer. Afterwards they see the model answers. Nothing they do counts
+                towards their grades, and nobody is asked to mark any of it.
+              </span>
+            </span>
+          </label>
+
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" inline onClick={() => setClosing(false)}>
+              Cancel
+            </Button>
+            <Button
+              inline
+              onClick={async () => {
+                setClosing(false);
+                await patchAssessment(
+                  { status: 'closed', isEPaper: publishAsEPaper },
+                  publishAsEPaper
+                    ? 'Assessment closed and published as an E-Paper.'
+                    : 'Assessment closed.'
+                );
+              }}
+            >
+              Close assessment
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

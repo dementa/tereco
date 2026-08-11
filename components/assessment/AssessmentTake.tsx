@@ -4,9 +4,9 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { AlertCircle, Clock, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
+import { AlertCircle, BookOpen, Clock, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthContext';
-import { resolveSource } from '@/lib/assessment/source';
+import { resolveSource, type TakeMode } from '@/lib/assessment/source';
 import {
   groupQuestions,
   formatQuestionLabel,
@@ -46,11 +46,27 @@ interface Question {
 
 const CHECKBOX_SEP = ' | ';
 
-export function AssessmentTake() {
+/**
+ * Live sitting, or untimed practice on a closed paper (an E-Paper).
+ *
+ * One component rather than two because the paper is the same paper: the same
+ * question rendering, the same grouping and stem rules, the same answer
+ * capture. Only the clock, the endpoint, and where "finish" goes differ. A
+ * forked copy would drift on question rendering, which is where all the real
+ * complexity is.
+ *
+ * The mode is re-exported from the source, which is where it now has to live:
+ * it decides the endpoint AND the storage keys, and both of those moved there
+ * when the offline client arrived.
+ */
+export type { TakeMode };
+
+export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
   const params = useParams<{ id: string }>();
   const router = useRouter();
   const assessmentId = params.id;
   const { isAuthenticated, user, loading: authLoading } = useAuth();
+  const isPractice = mode === 'practice';
 
   const [questions, setQuestions] = useState<Question[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -79,6 +95,12 @@ export function AssessmentTake() {
 
   const studentId = user?.id ?? '';
 
+  /** Everything the source needs to know about which paper, and whose. */
+  const context = useMemo(
+    () => ({ mode, studentId, assessmentId }),
+    [mode, studentId, assessmentId]
+  );
+
   // ─── Auth guard ────────────────────────────────────────
   useEffect(() => {
     if (authLoading) return;
@@ -97,9 +119,9 @@ export function AssessmentTake() {
       try {
         // The source decides where this comes from: the API in a browser, the
         // local SQLite database in TERECO Collect where there is no network at
-        // all. The clock is anchored as part of the load, before the first
-        // tick, either way.
-        const paper = await source.load({ studentId, assessmentId });
+        // all. Practice is untimed and never opens a sitting; the source knows
+        // that too, so this reads the same either way.
+        const paper = await source.load({ ...context, studentId });
 
         if (cancelled) return;
 
@@ -121,7 +143,7 @@ export function AssessmentTake() {
     }
     fetchAssessmentData();
     return () => { cancelled = true; };
-  }, [assessmentId, authLoading, studentId, source]);
+  }, [assessmentId, authLoading, studentId, source, context]);
 
   const submitAnswers = useCallback(async () => {
     if (submittedRef.current) return;
@@ -129,22 +151,32 @@ export function AssessmentTake() {
     setSubmitting(true);
     try {
       const timeSpent = Math.round((Date.now() - (startTimeRef.current || Date.now())) / 1000);
-      const context = { studentId, assessmentId, attemptId: attemptIdRef.current };
 
-      // In a browser this posts to the API. In TERECO Collect it marks the
-      // attempt submitted in SQLite and queues it, with no network — the
-      // learner is told their work is safe on this computer and it syncs later.
-      await source.submit(context, { answers, timeSpent });
+      // In a browser this posts to the API — the live submit route, or the
+      // E-Paper attempt route for practice. In TERECO Collect it marks the
+      // attempt submitted in SQLite and queues it, with no network at all.
+      const result = await source.submit(
+        { ...context, attemptId: attemptIdRef.current },
+        { answers, timeSpent }
+      );
 
       source.clearProgress(context);
-      router.push(`/student/confirmation?ref=${encodeURIComponent(assessmentId)}`);
+
+      if (isPractice && result.attemptId) {
+        // Straight to the marked paper. The whole reason a learner practises is
+        // to see what was expected, so an intermediate "submitted!" screen would
+        // just be a click between them and the answer.
+        router.push(`/student/attempts/${encodeURIComponent(result.attemptId)}`);
+      } else {
+        router.push(`/student/confirmation?ref=${encodeURIComponent(assessmentId)}`);
+      }
     } catch (err) {
       submittedRef.current = false;
       setError(err instanceof Error ? err.message : 'Submission failed. Please try again.');
     } finally {
       setSubmitting(false);
     }
-  }, [answers, assessmentId, router, studentId, source]);
+  }, [answers, assessmentId, router, source, context, isPractice]);
 
   // ─── Timer ───────────────────────────────────────────────
   useEffect(() => {
@@ -158,14 +190,12 @@ export function AssessmentTake() {
     let start: number;
     if (serverRemaining !== null) {
       start = Date.now() - (timeLimit - serverRemaining) * 1000;
-      source.writeStart({ studentId, assessmentId }, start);
+      source.writeStart(context, start);
     } else {
-      // No server answer (offline in a browser). Fall back to a locally
-      // remembered start so the learner can keep working; it re-anchors when
-      // the network returns. The desktop never lands here: its clock comes
-      // from the signed package.
-      start = source.readStart({ studentId, assessmentId }) ?? Date.now();
-      source.writeStart({ studentId, assessmentId }, start);
+      // No server answer (offline). Fall back to a locally remembered start so
+      // the learner can keep working; it re-anchors when the network returns.
+      start = source.readStart(context) ?? Date.now();
+      source.writeStart(context, start);
     }
     startTimeRef.current = start;
 
@@ -184,7 +214,7 @@ export function AssessmentTake() {
     updateTimer();
 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [loading, timeLimit, assessmentId, submitAnswers, studentId, source]);
+  }, [loading, timeLimit, submitAnswers, source, context]);
 
   // ─── Persist progress ────────────────────────────────────
   // Written on every keystroke-level change, because the interruption is never
@@ -192,20 +222,16 @@ export function AssessmentTake() {
   // browser, an fsynced SQLite row in TERECO Collect.
   //
   // Waits for `loading` to clear. This effect used to run on mount, while the
-  // loader above was still awaiting the network, and unconditionally wrote
-  // currentIndex — which is 0 before anything is restored. By the time the
-  // loader read the stored index back, it was reading the 0 this effect had
-  // just written over it, so a learner who reloaded mid-paper always landed
-  // back on question 1. Answers escaped it only because that write is guarded
-  // by `length > 0` and the initial state is empty.
+  // loader above was still fetching, and unconditionally wrote currentIndex —
+  // which is 0 before anything is restored. By the time the loader read the
+  // stored index back it was reading the 0 this effect had just written over
+  // it, so a learner who reloaded mid-paper always landed back on question 1.
+  // Answers escaped it only because that write is guarded by `length > 0` and
+  // the initial state is empty.
   useEffect(() => {
     if (!studentId || loading) return;
-    source.saveProgress(
-      { studentId, assessmentId, attemptId: attemptIdRef.current },
-      answers,
-      currentIndex
-    );
-  }, [answers, currentIndex, assessmentId, studentId, loading, source]);
+    source.saveProgress({ ...context, attemptId: attemptIdRef.current }, answers, currentIndex);
+  }, [answers, currentIndex, studentId, loading, source, context]);
 
   const handleAnswer = (questionId: string, value: string) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
@@ -269,7 +295,13 @@ export function AssessmentTake() {
       <div className="min-h-screen flex items-center justify-center bg-bg px-4">
         <div className="text-center">
           <p className="text-text-muted">No questions found for this assessment.</p>
-          <Button className="mt-4" variant="outline" onClick={() => router.push('/student/list')}>Back to List</Button>
+          <Button
+            className="mt-4"
+            variant="outline"
+            onClick={() => router.push(isPractice ? '/student/library' : '/student/list')}
+          >
+            {isPractice ? 'Back to Library' : 'Back to List'}
+          </Button>
         </div>
       </div>
     );
@@ -318,14 +350,26 @@ export function AssessmentTake() {
           </p>
         </div>
         <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-          {timeLimit > 0 && (
-            <div className={`flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl ${isTimeLow ? 'bg-error-bg text-error' : 'bg-white text-primary-900'}`}>
-              <Clock className="w-4 h-4 shrink-0" />
-              <span className="font-mono font-bold text-base sm:text-lg tabular-nums">{timeStr}</span>
+          {/*
+            Practice says so where the clock would be. The absence of a timer is
+            the feature — a learner who has only ever sat timed papers will keep
+            hunting for the countdown otherwise, and rush anyway.
+          */}
+          {isPractice ? (
+            <div className="flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-white text-primary-900">
+              <BookOpen className="w-4 h-4 shrink-0" />
+              <span className="text-sm font-medium">Practice • no timer</span>
             </div>
+          ) : (
+            timeLimit > 0 && (
+              <div className={`flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl ${isTimeLow ? 'bg-error-bg text-error' : 'bg-white text-primary-900'}`}>
+                <Clock className="w-4 h-4 shrink-0" />
+                <span className="font-mono font-bold text-base sm:text-lg tabular-nums">{timeStr}</span>
+              </div>
+            )
           )}
           <Button inline variant="outline" onClick={submitAnswers} disabled={submitting} className="text-sm">
-            Submit
+            {isPractice ? 'Finish' : 'Submit'}
           </Button>
         </div>
       </header>
@@ -476,8 +520,10 @@ export function AssessmentTake() {
           <span className="text-xs text-text-faint tabular-nums shrink-0">{currentIndex + 1} of {total}</span>
           {isLast ? (
             <Button inline variant="primary" onClick={submitAnswers} isLoading={submitting}>
-              <span className="xs:hidden">Submit</span>
-              <span className="hidden xs:inline">Submit Assessment</span>
+              <span className="xs:hidden">{isPractice ? 'Finish' : 'Submit'}</span>
+              <span className="hidden xs:inline">
+                {isPractice ? 'Finish & see answers' : 'Submit Assessment'}
+              </span>
               <CheckCircle className="w-4 h-4 sm:ml-1" />
             </Button>
           ) : (

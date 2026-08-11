@@ -296,6 +296,7 @@ export type Database = {
           created_by: string | null
           deleted_at: string | null
           description: string
+          e_paper_at: string | null
           id: string
           instructions: string
           opens_at: string | null
@@ -315,6 +316,7 @@ export type Database = {
           created_by?: string | null
           deleted_at?: string | null
           description?: string
+          e_paper_at?: string | null
           id?: string
           instructions?: string
           opens_at?: string | null
@@ -334,6 +336,7 @@ export type Database = {
           created_by?: string | null
           deleted_at?: string | null
           description?: string
+          e_paper_at?: string | null
           id?: string
           instructions?: string
           opens_at?: string | null
@@ -379,42 +382,67 @@ export type Database = {
       }
       attendance_sessions: {
         Row: {
+          assessment_id: string | null
           class_id: string
           created_at: string
           id: string
+          is_practical: boolean
+          kind: string
           lesson_report_id: string | null
           period: number
+          practical_rubric_version: number | null
+          practical_scored_at: string | null
           school_id: string
           session_date: string
           staff_id: string
           stream_id: string | null
           taken_at: string
+          term_id: string | null
         }
         Insert: {
+          assessment_id?: string | null
           class_id: string
           created_at?: string
           id?: string
+          is_practical?: boolean
+          kind?: string
           lesson_report_id?: string | null
           period: number
+          practical_rubric_version?: number | null
+          practical_scored_at?: string | null
           school_id: string
           session_date: string
           staff_id: string
           stream_id?: string | null
           taken_at?: string
+          term_id?: string | null
         }
         Update: {
+          assessment_id?: string | null
           class_id?: string
           created_at?: string
           id?: string
+          is_practical?: boolean
+          kind?: string
           lesson_report_id?: string | null
           period?: number
+          practical_rubric_version?: number | null
+          practical_scored_at?: string | null
           school_id?: string
           session_date?: string
           staff_id?: string
           stream_id?: string | null
           taken_at?: string
+          term_id?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "attendance_sessions_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "attendance_sessions_class_id_fkey"
             columns: ["class_id"]
@@ -448,6 +476,13 @@ export type Database = {
             columns: ["stream_id"]
             isOneToOne: false
             referencedRelation: "streams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_term_id_fkey"
+            columns: ["term_id"]
+            isOneToOne: false
+            referencedRelation: "terms"
             referencedColumns: ["id"]
           },
         ]
@@ -1236,6 +1271,151 @@ export type Database = {
           },
         ]
       }
+      practical_observations: {
+        Row: {
+          aspect: Database["public"]["Enums"]["practical_aspect"]
+          band: Database["public"]["Enums"]["practical_band"]
+          created_at: string
+          id: string
+          lesson_attendance_id: string
+          source: string
+          updated_at: string
+        }
+        Insert: {
+          aspect: Database["public"]["Enums"]["practical_aspect"]
+          band: Database["public"]["Enums"]["practical_band"]
+          created_at?: string
+          id?: string
+          lesson_attendance_id: string
+          source?: string
+          updated_at?: string
+        }
+        Update: {
+          aspect?: Database["public"]["Enums"]["practical_aspect"]
+          band?: Database["public"]["Enums"]["practical_band"]
+          created_at?: string
+          id?: string
+          lesson_attendance_id?: string
+          source?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practical_observations_lesson_attendance_id_fkey"
+            columns: ["lesson_attendance_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_attendance"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      practice_attempts: {
+        Row: {
+          assessment_id: string
+          auto_max: number | null
+          auto_score: number | null
+          created_at: string
+          enrollment_id: string | null
+          finished_at: string | null
+          id: string
+          started_at: string
+          student_id: string
+        }
+        Insert: {
+          assessment_id: string
+          auto_max?: number | null
+          auto_score?: number | null
+          created_at?: string
+          enrollment_id?: string | null
+          finished_at?: string | null
+          id?: string
+          started_at?: string
+          student_id: string
+        }
+        Update: {
+          assessment_id?: string
+          auto_max?: number | null
+          auto_score?: number | null
+          created_at?: string
+          enrollment_id?: string | null
+          finished_at?: string | null
+          id?: string
+          started_at?: string
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practice_attempts_assessment_id_fkey"
+            columns: ["assessment_id"]
+            isOneToOne: false
+            referencedRelation: "assessments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "practice_attempts_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "current_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "practice_attempts_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "practice_attempts_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      practice_responses: {
+        Row: {
+          answer: string
+          attempt_id: string
+          created_at: string
+          id: string
+          is_correct: boolean | null
+          question_id: string
+        }
+        Insert: {
+          answer?: string
+          attempt_id: string
+          created_at?: string
+          id?: string
+          is_correct?: boolean | null
+          question_id: string
+        }
+        Update: {
+          answer?: string
+          attempt_id?: string
+          created_at?: string
+          id?: string
+          is_correct?: boolean | null
+          question_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "practice_responses_attempt_id_fkey"
+            columns: ["attempt_id"]
+            isOneToOne: false
+            referencedRelation: "practice_attempts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "practice_responses_question_id_fkey"
+            columns: ["question_id"]
+            isOneToOne: false
+            referencedRelation: "questions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       profiles: {
         Row: {
           contact_email: string | null
@@ -1454,6 +1634,7 @@ export type Database = {
           logo_url: string | null
           name: string
           phone: string
+          practical_weight: number
           system_id: string
         }
         Insert: {
@@ -1469,6 +1650,7 @@ export type Database = {
           logo_url?: string | null
           name: string
           phone?: string
+          practical_weight?: number
           system_id: string
         }
         Update: {
@@ -1484,6 +1666,7 @@ export type Database = {
           logo_url?: string | null
           name?: string
           phone?: string
+          practical_weight?: number
           system_id?: string
         }
         Relationships: [
@@ -1900,6 +2083,7 @@ export type Database = {
           created_by: string | null
           deleted_at: string | null
           description: string
+          e_paper_at: string | null
           id: string
           instructions: string
           opens_at: string | null
@@ -1922,6 +2106,35 @@ export type Database = {
       correct_answer_is_valid: {
         Args: { p_correct: string; p_options: Json; p_type: string }
         Returns: boolean
+      }
+      e_papers_for_student: {
+        Args: { p_student: string }
+        Returns: {
+          academic_year_id: string | null
+          closes_at: string | null
+          created_at: string
+          created_by: string | null
+          deleted_at: string | null
+          description: string
+          e_paper_at: string | null
+          id: string
+          instructions: string
+          opens_at: string | null
+          results_released_at: string | null
+          results_released_by: string | null
+          status: string
+          system_id: string
+          term_id: string | null
+          time_limit_minutes: number
+          title: string
+          updated_at: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "assessments"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       generate_system_id: { Args: { p_entity_type: string }; Returns: string }
       library_content_for_profile: {
@@ -1969,6 +2182,7 @@ export type Database = {
           type: string
         }[]
       }
+      reconcile_terms: { Args: { p_school_id?: string }; Returns: number }
       set_current_academic_year: {
         Args: { p_year_id: string }
         Returns: undefined
@@ -1979,7 +2193,15 @@ export type Database = {
       }
     }
     Enums: {
-      [_ in never]: never
+      practical_aspect:
+        | "uses_lab_properly"
+        | "types_two_hands"
+        | "maintains_order"
+        | "navigates_independently"
+        | "tries_before_asking"
+        | "helps_others"
+        | "finishes_on_time"
+      practical_band: "outstanding" | "moderate" | "needs_support"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -2106,7 +2328,18 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      practical_aspect: [
+        "uses_lab_properly",
+        "types_two_hands",
+        "maintains_order",
+        "navigates_independently",
+        "tries_before_asking",
+        "helps_others",
+        "finishes_on_time",
+      ],
+      practical_band: ["outstanding", "moderate", "needs_support"],
+    },
   },
 } as const
 
