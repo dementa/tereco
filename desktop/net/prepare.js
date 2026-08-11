@@ -100,6 +100,9 @@ async function prepareAssessment({
     token: data.token,
     checksum: claims.contentHash,
     expiresAt: claims.validUntil,
+    // The signed sitting start. Anchoring the attempt to it is what stops a
+    // learner who prepared early getting a fresh full clock when they open.
+    startedAt: claims.startedAt,
   });
 
   return {

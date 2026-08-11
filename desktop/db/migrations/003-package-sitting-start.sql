@@ -1,0 +1,11 @@
+-- When the server says this sitting began.
+--
+-- The signed grant carries `startedAt` from assessment_sittings, and nothing
+-- was using it: attempts were anchored at whatever time the learner first
+-- opened the paper on the device. Prepare at 09:00, open at 10:00, and the
+-- clock handed out a full fresh hour while the server believed the sitting had
+-- been running since 09:00.
+--
+-- Storing it with the package means the attempt can be anchored to the server's
+-- answer on first entry, which is what the token exists to make possible.
+alter table packages add column sitting_started_at integer;
