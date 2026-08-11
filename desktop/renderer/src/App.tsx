@@ -247,9 +247,16 @@ function Home() {
                         minutes
                       </p>
                     </div>
-                    <Button inline onClick={() => router.push(`/assessment/${item.assessmentId}`)}>
-                      Start
-                    </Button>
+                    {item.attemptStatus === 'submitted' ? (
+                      // Already submitted: the main process refuses further writes to this
+                      // attempt anyway (#33), but a disabled state here means the learner
+                      // never gets that far and never sees a write fail with a raw error.
+                      <span className="text-sm font-medium text-neutral-500">Submitted</span>
+                    ) : (
+                      <Button inline onClick={() => router.push(`/assessment/${item.assessmentId}`)}>
+                        {item.attemptStatus === 'in_progress' ? 'Continue' : 'Start'}
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>

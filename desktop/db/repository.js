@@ -110,7 +110,8 @@ function createRepository(db) {
            a.duration_seconds as durationSeconds,
            a.question_count   as questionCount,
            p.prepared_at   as preparedAt,
-           t.started_at    as startedAt
+           t.started_at    as startedAt,
+           t.status        as attemptStatus
       from packages p
       join assessments a on a.id = p.assessment_id
       left join attempts t
@@ -141,6 +142,10 @@ function createRepository(db) {
       // coherent to show before an attempt exists.
       startedAt: row.startedAt ?? row.preparedAt,
       questionCount: row.questionCount,
+      // null: no attempt row yet, so the learner has never opened this paper.
+      // 'in_progress' / 'submitted' let the renderer choose Start vs Continue
+      // vs blocking re-entry into a paper that is already done.
+      attemptStatus: row.attemptStatus ?? null,
     }));
   }
 

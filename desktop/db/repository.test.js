@@ -118,6 +118,8 @@ describe('local assessment database', () => {
     expect(list).toHaveLength(1);
     expect(list[0].title).toBe('Biology Mid-Term');
     expect(list[0].questionCount).toBe(2);
+    // No attempt row yet: the list screen must offer Start, not Continue.
+    expect(list[0].attemptStatus).toBeNull();
   });
 
   it('rolls back an incomplete package so it can never be sat', () => {
@@ -146,6 +148,9 @@ describe('local assessment database', () => {
     expect(attempt.currentIndex).toBe(0);
     expect(attempt.answers).toEqual({});
     expect(attempt.remainingSeconds).toBeGreaterThan(3590);
+
+    // The list screen has to switch Start to Continue from this point on.
+    expect(repo.listPrepared()[0].attemptStatus).toBe('in_progress');
   });
 
   it('resumes the same attempt rather than granting a fresh clock', () => {
@@ -190,6 +195,10 @@ describe('local assessment database', () => {
   it('queues the work locally on submit, with no network', () => {
     expect(repo.submit(attemptId)).toEqual({ queued: true });
     expect(repo.syncStatus().pending).toBe(1);
+
+    // The list screen has to stop offering Start/Continue and block re-entry
+    // now, regardless of whether the submission has synced yet.
+    expect(repo.listPrepared()[0].attemptStatus).toBe('submitted');
   });
 
   it('refuses to change answers after submission', () => {
