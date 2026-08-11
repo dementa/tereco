@@ -12,7 +12,7 @@
     "dist:win": "npm run renderer:check && electron-builder --win",
     "dist:linux": "npm run renderer:check && electron-builder --linux",
     "dist:mac": "npm run renderer:check && electron-builder --mac",
-    "renderer:check": "node -e \"require('fs').existsSync('renderer/dist/index.html')||(console.error('\\nrenderer/dist is missing. Run `npm run build:renderer` from the repo root first: without it the installer ships no application code and the app cannot start offline.\\n'),process.exit(1))\"",
+    "renderer:check": "node -e \"require('fs').existsSync('renderer/dist/index.html')||(console.error('renderer/dist is missing. Run npm run build:renderer from the REPO ROOT first: without it the installer ships no application code.'),process.exit(1))\"",
     "rebuild": "electron-rebuild -f -w better-sqlite3-multiple-ciphers",
     "postinstall": "electron-rebuild -f -w better-sqlite3-multiple-ciphers || echo \"[tereco] electron-rebuild failed; the native SQLite module will not load in Electron until this succeeds\""
   },

@@ -1,0 +1,70 @@
+name: Desktop installer
+
+# Builds the Windows installer for TERECO Collect.
+#
+# It has to run on Windows. The client stores assessments in SQLite through
+# better-sqlite3-multiple-ciphers, a native module with no published Windows
+# prebuilds, and node-gyp cannot cross-compile from source. A Linux machine can
+# stamp an .exe through Wine but cannot produce the .node binary inside it, so
+# the only way to get an installer without a Windows workstation is to build it
+# on one — which is what this runner is.
+#
+# Run it from the Actions tab, or push to the branch below.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/offline-desktop-renderer
+    paths:
+      - 'desktop/**'
+      - 'components/**'
+      - 'lib/**'
+      - 'app/globals.css'
+      - '.github/workflows/desktop-installer.yml'
+
+jobs:
+  windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # The renderer is built from the repository root because it reuses the web
+      # app's React components and shares its node_modules. desktop/renderer/dist
+      # is gitignored, so without this the installer would ship no application
+      # code at all — the app would install and then have nothing to open.
+      - name: Build the renderer
+        run: |
+          npm ci
+          npm run build:renderer
+
+      - name: Verify the bundle exists
+        shell: bash
+        run: test -f desktop/renderer/dist/index.html
+
+      # postinstall runs electron-rebuild, which compiles the native SQLite
+      # module against Electron's ABI. This is the step that cannot happen
+      # anywhere but Windows, and the reason this workflow exists.
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm install
+
+      - name: Build the installer
+        working-directory: desktop
+        run: npm run dist:win
+
+      - name: Upload the installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: TERECO-Collect-Setup
+          path: |
+            desktop/dist/*.exe
+            desktop/dist/*.exe.blockmap
+          if-no-files-found: error
+          retention-days: 14
