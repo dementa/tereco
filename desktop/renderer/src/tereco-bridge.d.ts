@@ -28,6 +28,8 @@ export interface PreparedAssessment {
   /** Epoch ms the sitting was anchored at, from `assessment_sittings.started_at`. */
   startedAt: number;
   questionCount: number;
+  /** null before the learner has opened the paper at all. */
+  attemptStatus: 'in_progress' | 'submitted' | null;
 }
 
 export interface OfflineQuestion {
