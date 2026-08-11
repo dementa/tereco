@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!--
+      Locked down because this page is loaded from disk with `file://` and must
+      never reach the network during a paper. 'unsafe-inline' covers the style
+      tag Vite injects for the Tailwind bundle. No connect-src, so a stray
+      fetch() fails loudly in development instead of silently working on a
+      machine that happens to be online.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: file:; font-src 'self' data:;"
+    />
+    <title>TERECO Collect</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

@@ -1,0 +1,43 @@
+/*
+ * Pulls in the web app's design system verbatim — the same @theme tokens, the
+ * same teal accent scale — so a paper sat on the desktop looks identical to one
+ * sat in the browser. Tailwind v4 resolves this @import at build time, and
+ * @tailwindcss/vite scans the Vite module graph for class names, which includes
+ * the shared components imported from the repo root.
+ */
+@import "../../../app/globals.css";
+
+/*
+ * Tell Tailwind where this build's markup actually lives.
+ *
+ * v4 detects sources automatically, relative to the CSS entry — which here
+ * resolves through the import above and lands on `app/`. The desktop client
+ * renders almost nothing from `app/`: its screens are in this directory and the
+ * shared components are in `components/`. Without these, a class used ONLY
+ * outside `app/` is silently absent from the desktop stylesheet.
+ *
+ * It failed quietly and specifically: `inline-flex` appears only in
+ * components/ui/Button.tsx, so every button in the desktop client lost its flex
+ * layout and — because preflight sets `svg { display: block }` — stacked its
+ * icon above its label. The tests passed and the typecheck passed; only looking
+ * at it showed anything wrong.
+ */
+@source "../";
+@source "../../../components";
+@source "../../../lib";
+
+/*
+ * The window has no browser chrome and no address bar, so the page itself is
+ * the entire surface. Fixed height stops the body scrolling behind a paper that
+ * manages its own scroll region.
+ */
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+}

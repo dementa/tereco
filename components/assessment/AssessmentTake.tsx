@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { AlertCircle, BookOpen, Clock, ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { useAuth } from '@/components/auth/AuthContext';
+import { resolveSource, type TakeMode } from '@/lib/assessment/source';
 import {
   groupQuestions,
   formatQuestionLabel,
@@ -53,51 +54,12 @@ const CHECKBOX_SEP = ' | ';
  * capture. Only the clock, the endpoint, and where "finish" goes differ. A
  * forked copy would drift on question rendering, which is where all the real
  * complexity is.
+ *
+ * The mode is re-exported from the source, which is where it now has to live:
+ * it decides the endpoint AND the storage keys, and both of those moved there
+ * when the offline client arrived.
  */
-export type TakeMode = 'live' | 'practice';
-
-/**
- * Progress is kept in localStorage, not sessionStorage.
- *
- * sessionStorage is erased when the browser session ends, and a power cut ends
- * it — so a whole room of learners lost their answers and had to start again.
- * localStorage survives the reboot.
- *
- * The key includes the student id because localStorage does NOT, unlike
- * sessionStorage, die with the tab: on a shared school computer the next
- * learner to sign in would otherwise have the previous one's answers restored
- * into their paper.
- *
- * It also includes the MODE. A learner may practise a paper they have already
- * sat, and both use the same assessment id — without this, opening the practice
- * version would restore (and then overwrite) the answers from their real
- * sitting. Live keeps the original prefix so anyone mid-sitting when this ships
- * still finds their work.
- */
-function progressKey(mode: TakeMode, studentId: string, assessmentId: string, part: string): string {
-  const prefix = mode === 'practice' ? 'tereco_practice' : 'tereco_take';
-  return `${prefix}_${studentId}_${assessmentId}_${part}`;
-}
-
-/**
- * Reads the new key, then the old sessionStorage one.
- *
- * Anyone sitting a paper at the moment this ships has their answers under the
- * old scheme; without this fallback their next reload would find nothing and
- * silently discard the lot. Practice never consults the legacy key — there was
- * no practice before this shipped, and reading it would pull a real sitting's
- * answers into a practice run.
- */
-function readProgress(
-  mode: TakeMode,
-  studentId: string,
-  assessmentId: string,
-  part: string
-): string | null {
-  const own = localStorage.getItem(progressKey(mode, studentId, assessmentId, part));
-  if (own !== null || mode === 'practice') return own;
-  return sessionStorage.getItem(`assessment_${assessmentId}_${part}`);
-}
+export type { TakeMode };
 
 export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
   const params = useParams<{ id: string }>();
@@ -121,8 +83,23 @@ export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
   const submittedRef = useRef(false);
   /** Seconds left according to the SERVER when the sitting was last anchored. */
   const serverRemainingRef = useRef<number | null>(null);
+  /** Set only on the desktop, where the sitting is a row in the local database. */
+  const attemptIdRef = useRef<string | undefined>(undefined);
+
+  /**
+   * Where this paper's data comes from: the API in a browser, the local SQLite
+   * database in TERECO Collect. Resolved once — the answer cannot change
+   * mid-sitting, and re-resolving would rebuild the effect dependencies below.
+   */
+  const source = useMemo(() => resolveSource(), []);
 
   const studentId = user?.id ?? '';
+
+  /** Everything the source needs to know about which paper, and whose. */
+  const context = useMemo(
+    () => ({ mode, studentId, assessmentId }),
+    [mode, studentId, assessmentId]
+  );
 
   // ─── Auth guard ────────────────────────────────────────
   useEffect(() => {
@@ -140,55 +117,21 @@ export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
     let cancelled = false;
     async function fetchAssessmentData() {
       try {
-        const metaRes = await fetch(`/api/assessments/${assessmentId}`);
-        if (!metaRes.ok) throw new Error(`HTTP ${metaRes.status}: ${metaRes.statusText}`);
-        const metaData = await metaRes.json();
-        if (!metaData.success) throw new Error(metaData.message || 'Assessment not found');
-
-        const qRes = await fetch(`/api/assessments/${assessmentId}/questions`);
-        if (!qRes.ok) throw new Error(`HTTP ${qRes.status}: ${qRes.statusText}`);
-        const qData = await qRes.json();
-        if (!qData.success) throw new Error(qData.message || 'Failed to load questions');
+        // The source decides where this comes from: the API in a browser, the
+        // local SQLite database in TERECO Collect where there is no network at
+        // all. Practice is untimed and never opens a sitting; the source knows
+        // that too, so this reads the same either way.
+        const paper = await source.load({ ...context, studentId });
 
         if (cancelled) return;
 
-        const meta = metaData.data;
-        setAssessmentTitle(meta?.title ?? 'Assessment');
-        // Practice is untimed. Leaving timeLimit at 0 is what switches the
-        // whole clock off: the timer effect returns early, the countdown does
-        // not render, and nothing auto-submits.
-        setTimeLimit(isPractice ? 0 : (meta?.timeLimit ?? 0) * 60);
-        setQuestions(Array.isArray(qData.data) ? qData.data : []);
-
-        // Restore any in-progress answers/index
-        const savedAnswers = readProgress(mode, studentId, assessmentId, 'answers');
-        if (savedAnswers) {
-          try { setAnswers(JSON.parse(savedAnswers)); } catch { /* ignore */ }
-        }
-        const savedIndex = readProgress(mode, studentId, assessmentId, 'index');
-        if (savedIndex) setCurrentIndex(parseInt(savedIndex, 10) || 0);
-
-        // Ask the server when this sitting started. Doing it here, not in the
-        // timer effect, means the clock is anchored before the first tick.
-        //
-        // If it fails — most likely no connection — the sitting falls back to
-        // a locally held start time so the learner is never blocked from
-        // working. It re-anchors the moment the network returns.
-        //
-        // Skipped entirely in practice: /sitting opens a real sitting window
-        // against a live assessment, and calling it for a closed paper would
-        // either fail or, worse, record something.
-        if (!isPractice) {
-          try {
-            const sRes = await fetch(`/api/assessments/${assessmentId}/sitting`, { method: 'POST' });
-            const sData = await sRes.json();
-            if (!cancelled && sData.success && typeof sData.data?.remainingSeconds === 'number') {
-              serverRemainingRef.current = sData.data.remainingSeconds;
-            }
-          } catch {
-            /* offline — the local clock carries the sitting until we reconnect */
-          }
-        }
+        setAssessmentTitle(paper.title);
+        setTimeLimit(paper.timeLimitSeconds);
+        setQuestions(paper.questions);
+        setAnswers(paper.answers);
+        setCurrentIndex(paper.currentIndex);
+        serverRemainingRef.current = paper.remainingSeconds;
+        attemptIdRef.current = paper.attemptId;
       } catch (err) {
         if (!cancelled) {
           console.error('Error loading assessment:', err);
@@ -200,7 +143,7 @@ export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
     }
     fetchAssessmentData();
     return () => { cancelled = true; };
-  }, [assessmentId, authLoading, studentId, mode, isPractice]);
+  }, [assessmentId, authLoading, studentId, source, context]);
 
   const submitAnswers = useCallback(async () => {
     if (submittedRef.current) return;
@@ -208,33 +151,22 @@ export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
     setSubmitting(true);
     try {
       const timeSpent = Math.round((Date.now() - (startTimeRef.current || Date.now())) / 1000);
-      const res = await fetch(
-        isPractice
-          ? `/api/e-papers/${assessmentId}/attempt`
-          : `/api/assessments/${assessmentId}/submit`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // Practice sends no timeSpent: there is no limit to check it against,
-          // and the attempt row records its own start and finish.
-          body: JSON.stringify(isPractice ? { answers } : { answers, timeSpent }),
-        }
+
+      // In a browser this posts to the API — the live submit route, or the
+      // E-Paper attempt route for practice. In TERECO Collect it marks the
+      // attempt submitted in SQLite and queues it, with no network at all.
+      const result = await source.submit(
+        { ...context, attemptId: attemptIdRef.current },
+        { answers, timeSpent }
       );
-      const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.message || 'Submission failed.');
 
-      // Clear both schemes: the old sessionStorage keys may still hold this
-      // learner's answers if they started before this shipped.
-      for (const part of ['answers', 'index', 'start']) {
-        localStorage.removeItem(progressKey(mode, studentId, assessmentId, part));
-        if (!isPractice) sessionStorage.removeItem(`assessment_${assessmentId}_${part}`);
-      }
+      source.clearProgress(context);
 
-      if (isPractice) {
+      if (isPractice && result.attemptId) {
         // Straight to the marked paper. The whole reason a learner practises is
         // to see what was expected, so an intermediate "submitted!" screen would
         // just be a click between them and the answer.
-        router.push(`/student/attempts/${encodeURIComponent(data.data.attemptId)}`);
+        router.push(`/student/attempts/${encodeURIComponent(result.attemptId)}`);
       } else {
         router.push(`/student/confirmation?ref=${encodeURIComponent(assessmentId)}`);
       }
@@ -244,7 +176,7 @@ export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
     } finally {
       setSubmitting(false);
     }
-  }, [answers, assessmentId, router, studentId, mode, isPractice]);
+  }, [answers, assessmentId, router, source, context, isPractice]);
 
   // ─── Timer ───────────────────────────────────────────────
   useEffect(() => {
@@ -258,13 +190,12 @@ export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
     let start: number;
     if (serverRemaining !== null) {
       start = Date.now() - (timeLimit - serverRemaining) * 1000;
-      localStorage.setItem(progressKey(mode, studentId, assessmentId, 'start'), start.toString());
+      source.writeStart(context, start);
     } else {
       // No server answer (offline). Fall back to a locally remembered start so
       // the learner can keep working; it re-anchors when the network returns.
-      const storedStart = readProgress(mode, studentId, assessmentId, 'start');
-      start = storedStart ? parseInt(storedStart, 10) : Date.now();
-      localStorage.setItem(progressKey(mode, studentId, assessmentId, 'start'), start.toString());
+      start = source.readStart(context) ?? Date.now();
+      source.writeStart(context, start);
     }
     startTimeRef.current = start;
 
@@ -283,21 +214,24 @@ export function AssessmentTake({ mode = 'live' }: { mode?: TakeMode } = {}) {
     updateTimer();
 
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [loading, timeLimit, assessmentId, submitAnswers, studentId, mode]);
+  }, [loading, timeLimit, submitAnswers, source, context]);
 
   // ─── Persist progress ────────────────────────────────────
-  // localStorage, so it survives the machine losing power. Written on every
-  // keystroke-level change, because the interruption is never announced.
+  // Written on every keystroke-level change, because the interruption is never
+  // announced. Where it lands is the source's business: localStorage in a
+  // browser, an fsynced SQLite row in TERECO Collect.
+  //
+  // Waits for `loading` to clear. This effect used to run on mount, while the
+  // loader above was still fetching, and unconditionally wrote currentIndex —
+  // which is 0 before anything is restored. By the time the loader read the
+  // stored index back it was reading the 0 this effect had just written over
+  // it, so a learner who reloaded mid-paper always landed back on question 1.
+  // Answers escaped it only because that write is guarded by `length > 0` and
+  // the initial state is empty.
   useEffect(() => {
-    if (!studentId) return;
-    if (Object.keys(answers).length > 0) {
-      localStorage.setItem(
-        progressKey(mode, studentId, assessmentId, 'answers'),
-        JSON.stringify(answers)
-      );
-    }
-    localStorage.setItem(progressKey(mode, studentId, assessmentId, 'index'), currentIndex.toString());
-  }, [answers, currentIndex, assessmentId, studentId, mode]);
+    if (!studentId || loading) return;
+    source.saveProgress({ ...context, attemptId: attemptIdRef.current }, answers, currentIndex);
+  }, [answers, currentIndex, studentId, loading, source, context]);
 
   const handleAnswer = (questionId: string, value: string) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));
