@@ -222,7 +222,16 @@ function createRepository(db) {
 
     let attempt = selectAttempt.get(assessmentId, studentId);
     if (!attempt) {
-      const begin = startedAt ?? Date.now();
+      /**
+       * The server's sitting start wins.
+       *
+       * It is signed, so the device cannot move it, and it is the only clock a
+       * learner cannot reset. Anchoring to first-open instead would hand out a
+       * full fresh duration to anyone who prepared an hour before sitting down,
+       * which is exactly the gap the token exists to close. Falls back to now
+       * only for a package prepared before this column existed.
+       */
+      const begin = grant.sitting_started_at ?? startedAt ?? Date.now();
       const id = crypto.randomUUID();
       insertAttempt.run(id, assessmentId, studentId, deviceId, begin, begin);
       attempt = selectAttemptById.get(id);
@@ -333,11 +342,13 @@ function createRepository(db) {
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const upsertPackage = db.prepare(`
-    insert into packages (assessment_id, student_id, token, status, prepared_at, expires_at)
-    values (?, ?, ?, ?, ?, ?)
+    insert into packages
+      (assessment_id, student_id, token, status, prepared_at, expires_at, sitting_started_at)
+    values (?, ?, ?, ?, ?, ?, ?)
     on conflict(assessment_id, student_id) do update set
       token = excluded.token, status = excluded.status,
-      prepared_at = excluded.prepared_at, expires_at = excluded.expires_at
+      prepared_at = excluded.prepared_at, expires_at = excluded.expires_at,
+      sitting_started_at = excluded.sitting_started_at
   `);
 
   /**
@@ -350,7 +361,7 @@ function createRepository(db) {
    * notice until it was too late to fix.
    */
   const savePackage = db.transaction((payload) => {
-    const { student, assessment, questions, token, expiresAt, checksum } = payload;
+    const { student, assessment, questions, token, expiresAt, checksum, startedAt } = payload;
     const now = Date.now();
 
     upsertStudent.run(student.id, student.systemId ?? null, student.name, student.classLabel ?? null);
@@ -390,7 +401,9 @@ function createRepository(db) {
 
     // Held at 'preparing' while the rest of the payload (media, in Phase 2)
     // is still being fetched, so a package is never listable mid-write.
-    upsertPackage.run(assessment.id, student.id, token, 'preparing', now, expiresAt ?? null);
+    upsertPackage.run(
+      assessment.id, student.id, token, 'preparing', now, expiresAt ?? null, startedAt ?? null
+    );
 
     if (questions.length !== assessment.expectedQuestionCount) {
       // Rolls the whole transaction back, including the 'preparing' package.
@@ -399,7 +412,9 @@ function createRepository(db) {
       );
     }
 
-    upsertPackage.run(assessment.id, student.id, token, 'ready', now, expiresAt ?? null);
+    upsertPackage.run(
+      assessment.id, student.id, token, 'ready', now, expiresAt ?? null, startedAt ?? null
+    );
     return { ready: true };
   });
 
