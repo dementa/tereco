@@ -13,6 +13,15 @@ name: Desktop installer
 
 on:
   workflow_dispatch:
+  # On pull requests too: the client is only ever broken in ways that appear
+  # when it is packaged and started, which no other check does.
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'components/**'
+      - 'lib/**'
+      - 'app/globals.css'
+      - '.github/workflows/desktop-installer.yml'
   push:
     branches:
       - main
@@ -59,6 +68,14 @@ jobs:
       - name: Build the installer
         working-directory: desktop
         run: npm run dist:win
+
+      # An installer that exists is not an app that starts. This runs the
+      # packaged binary and fails if it dies during startup — the only check
+      # that catches a native module built for the wrong runtime, or a file
+      # left out of the package, before the .exe reaches a lab machine.
+      - name: Start the packaged app
+        working-directory: desktop
+        run: npm run smoke
 
       - name: Upload the installer
         uses: actions/upload-artifact@v4
