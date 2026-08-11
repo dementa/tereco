@@ -1,0 +1,216 @@
+TERECO Collect — running the offline desktop client
+===================================================
+Branch: feature/offline-desktop-renderer
+Issue:  #33
+PR:     https://github.com/dementa/tereco/pull/34
+
+This client runs an assessment with the internet switched off: local SQLite, a
+server-signed assessment package, and a queue that uploads when the network
+comes back.
+
+65 tests pass and the typecheck is clean. None of that proves it launches — the
+native SQLite module, electron-rebuild, safeStorage, loadFile and net.fetch
+have only ever run in a Linux dev container. Section 3 is the honest list of
+what is most likely to break.
+
+
+-----------------------------------------------------------------------------
+0. BEFORE ANYTHING ELSE
+-----------------------------------------------------------------------------
+
+Two server-side things, or downloads will fail. Both are Vercel dashboard
+changes; neither can be done from the command line.
+
+a) Environment variables, ticked for the environment you will point at:
+
+       TERECO_PACKAGE_KEY_ID=tereco-2026-08
+       TERECO_PACKAGE_SIGNING_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+
+   The private key must be the pair of the public key already committed to
+   desktop/keys/package-keys.json. Mismatch = every download fails with
+   "Package signature is not valid". Generate both halves from ONE run of:
+
+       node scripts/gen-package-keys.mjs
+
+   Missing entirely = the endpoint returns 503.
+
+b) Deployment Protection OFF for Preview.
+
+   The preview sits behind Vercel SSO, which the desktop app cannot get past —
+   it is not a browser and cannot complete the login. Turn it off, or merge to
+   main and use production instead.
+
+   Redeploy after changing environment variables; they do not apply to existing
+   deployments.
+
+Check you are through (401 = yes, 302 = protection still on, 404 = branch not
+deployed to that host):
+
+    curl -s -o /dev/null -w "%{http_code}\n" \
+      "https://tereco-git-feature-offline-desktop-renderer-dementas-projects.vercel.app/api/assessments/ASS0001/questions"
+
+In Windows cmd the format string needs a doubled percent: -w "%%{http_code}\n"
+
+
+-----------------------------------------------------------------------------
+1. BUILD AND LAUNCH
+-----------------------------------------------------------------------------
+
+THE BUILD RUNS FROM THE REPOSITORY ROOT. NOT FROM desktop/.
+
+desktop/renderer/dist is a build artefact and is gitignored, so a fresh clone
+contains no application at all until you build it. Skipping this is the single
+most common way to end up with a client that will not start.
+
+    cd C:\Users\ADMIN\Dementa\tereco-test\tereco
+    git pull
+
+    npm install
+    npm run build:renderer
+
+Confirm the bundle exists before continuing:
+
+    dir desktop\renderer\dist\index.html
+
+Then:
+
+    cd desktop
+    npm install
+
+`npm install` here runs electron-rebuild through postinstall. Watch it — it is
+the step most likely to fail.
+
+Point the app at a deployment and start it.
+
+  cmd:
+    set TERECO_API_URL=https://tereco-git-feature-offline-desktop-renderer-dementas-projects.vercel.app
+    npm start
+
+  PowerShell:
+    $env:TERECO_API_URL="https://..."; npm start
+
+  git bash:
+    export TERECO_API_URL="https://..."
+    npm start
+
+Use the form that matches your shell. `set` in git bash silently does nothing,
+and the app then talks to production, which does not have these routes and
+returns 404 on download.
+
+The terminal stays occupied while the app runs. Open a second one if you need
+a shell.
+
+
+-----------------------------------------------------------------------------
+2. THE SEQUENCE TO WALK
+-----------------------------------------------------------------------------
+
+    1.  Sign in with a real student ID and password.
+    2.  Download a paper.
+        -> expect: "You may now switch off the internet."
+    3.  DISCONNECT THE NETWORK (unplug, or disable Wi-Fi).
+    4.  Start the paper. Answer three or four questions.
+    5.  Close the app completely. Reopen it.
+        -> expect: same question, same remaining time, answers still there.
+    6.  Submit.
+        -> expect: "waiting to sync", and the work reported safe on this
+           computer.
+    7.  Reconnect. Wait up to 60 seconds.
+        -> expect: "Synchronization complete."
+    8.  Check Supabase: EXACTLY ONE submission for that student and assessment.
+
+That is issue #33's Definition of Done. If it survives to step 8, the feature
+works.
+
+Worth doing afterwards:
+
+    9.  Submit a second paper offline, then reconnect with the app CLOSED.
+        Reopen it — the queue should drain on its own within a minute.
+   10.  Wind the Windows clock back 20 minutes mid-paper.
+        The countdown must NOT gain time.
+   11.  Sign in as a different learner on the same machine.
+        The first learner's papers must not be listed.
+
+
+-----------------------------------------------------------------------------
+3. WHAT IS MOST LIKELY TO BREAK
+-----------------------------------------------------------------------------
+
+Startup now names the stage that failed and prints a stack trace to the
+terminal before showing any dialog. If you get no window AND no message, say
+so — that is itself a finding, and it means something escaped the handlers.
+
+a) NODE_MODULE_VERSION mismatch on startup
+   The native SQLite module was not rebuilt for Electron.
+
+       cd desktop
+       npm run rebuild
+
+   This then makes the module unloadable by plain Node, so `npm test` at the
+   repo root will fail with the mirror-image error. Switch back with:
+
+       cd desktop
+       npm rebuild better-sqlite3-multiple-ciphers
+
+   The two builds are mutually exclusive. That is inherent to native modules.
+
+b) Dialog: "No renderer bundle at ..."
+   Section 1 was run from desktop/ instead of the repository root.
+
+c) Dialog: "opening the local database"
+   Usually safeStorage on first run. The dialog carries the real reason.
+
+d) Sign-in works, Download returns 401 or 403
+   401 = the session cookie is not being carried by net.fetch.
+   403 = the signature failed; the keys in section 0a do not match.
+
+e) Download returns 404
+   The app is pointing at a host that does not have the branch. Almost always
+   the shell variable form from section 1.
+
+f) The download list is empty
+   Not necessarily a bug. `assessments_for_student` decides what a learner may
+   sit, so an empty list means no published assessment currently targets them.
+
+
+-----------------------------------------------------------------------------
+4. NOISE YOU CAN IGNORE
+-----------------------------------------------------------------------------
+
+    ERROR:crashpad_client_win.cc(868)] not connected
+
+Electron's crash reporter failing to attach on Windows. Harmless, prints on
+plenty of Electron apps, unrelated to TERECO.
+
+Only one instance runs at a time, by design — a learner must not be able to
+open two copies of a paper. A second `npm start` exiting immediately means an
+earlier one is still alive. Check the taskbar for a "TERECO Collect" window,
+or:
+
+    taskkill /IM electron.exe /F
+
+
+-----------------------------------------------------------------------------
+5. SEEING RENDERER ERRORS
+-----------------------------------------------------------------------------
+
+Devtools are deliberately unbound so a student cannot open them mid-paper.
+Main-process failures reach the terminal; renderer failures do not.
+
+Only if the window opens but is blank, temporarily add this inside
+createWindow() in desktop/main.js:
+
+    mainWindow.webContents.openDevTools({ mode: 'detach' });
+
+REMOVE IT before building any installer.
+
+
+-----------------------------------------------------------------------------
+6. WHAT TO SEND BACK
+-----------------------------------------------------------------------------
+
+    - the output of `npm install` inside desktop/ (the rebuild step especially)
+    - the output of `npm start`, verbatim, noise included
+    - which numbered step in section 2 it reached
+    - the exact title and text of any dialog
+    - a screenshot of anything that looks wrong
