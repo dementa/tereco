@@ -259,9 +259,29 @@ export function createDesktopSource(): AssessmentSource {
       };
     },
 
+    /**
+     * Never throws.
+     *
+     * This runs from a React passive effect on every answer change, and an
+     * exception escaping an effect tears down the tree — losing the paper a
+     * learner is part-way through, to report that one write did not happen.
+     * That trade is unacceptable: the answer is still in React state, still on
+     * screen, and the next change retries it.
+     *
+     * Failures are logged and the cache entry is left off so the retry happens.
+     * The learner is not told, because there is nothing they could do and the
+     * work has not actually been lost yet; a database that is genuinely
+     * unreachable surfaces on the next read, which is a screen that can explain
+     * itself.
+     */
     saveProgress({ attemptId }, answers, currentIndex) {
       if (!attemptId) return;
-      const api = bridge();
+
+      const api = (globalThis as { tereco?: TerecoBridgeSlice }).tereco;
+      if (!api) {
+        console.warn('[tereco] no local bridge available; progress not written');
+        return;
+      }
 
       for (const [questionId, value] of Object.entries(answers)) {
         if (written.get(questionId) === value) continue;
@@ -276,12 +296,21 @@ export function createDesktopSource(): AssessmentSource {
          * that never reached the disk, and this application exists because
          * learners lost answers they believed were saved.
          */
-        void api.saveAnswer(attemptId, questionId, value).catch(() => {
-          if (written.get(questionId) === value) written.delete(questionId);
-        });
+        try {
+          void api.saveAnswer(attemptId, questionId, value).catch(() => {
+            if (written.get(questionId) === value) written.delete(questionId);
+          });
+        } catch {
+          // A synchronous throw from the bridge itself, not a rejected write.
+          written.delete(questionId);
+        }
       }
 
-      void api.saveIndex(attemptId, currentIndex);
+      try {
+        void api.saveIndex(attemptId, currentIndex).catch(() => {});
+      } catch {
+        /* position is a convenience; never worth breaking the paper for */
+      }
     },
 
     clearProgress() {
