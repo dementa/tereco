@@ -93,6 +93,10 @@ export interface TerecoBridge {
    * "nobody is signed in" — ejecting a learner from a paper they were sitting.
    */
   currentUser(): Promise<SignedInUser | null>;
+  /** Papers this learner may sit, from the server. Online only by nature. */
+  availableAssessments(): Promise<
+    { systemId: string; title: string; timeLimit: number }[]
+  >;
   /** Downloads, verifies and stores a paper. After this, the cable can come out. */
   prepare(assessmentSystemId: string): Promise<PreparedResult>;
 

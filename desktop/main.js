@@ -330,6 +330,21 @@ function registerIpc(repo) {
   setInterval(pump, SYNC_POLL_MS).unref?.();
   setTimeout(pump, 5_000).unref?.();
 
+  /**
+   * Papers this learner may sit, from the server. Online only, by nature: it is
+   * the list of what could still be downloaded before the cable comes out.
+   */
+  ipcMain.handle('tereco:availableAssessments', async () => {
+    const response = await net.fetch(new URL('/api/assessments', API_BASE_URL).toString(), {
+      headers: { accept: 'application/json' },
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok || body?.success !== true) {
+      throw new Error(body?.message || 'Could not reach TERECO to list your assessments.');
+    }
+    return body.data ?? [];
+  });
+
   ipcMain.handle('tereco:prepare', (_e, assessmentSystemId) =>
     prepareAssessment({
       baseUrl: API_BASE_URL,

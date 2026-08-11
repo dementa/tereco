@@ -1,153 +1,304 @@
-import { useEffect, useState } from 'react';
-import { CheckCircle, HardDrive, WifiOff } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { CheckCircle, Download, HardDrive, LogOut, WifiOff } from 'lucide-react';
 
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { AuthProvider, useAuth } from '@/components/auth/AuthContext';
+import { AssessmentTake } from '@/components/assessment/AssessmentTake';
 
-import { usePathname, useParams, useRouter } from './shims/next-navigation';
+import { usePathname, useRouter } from './shims/next-navigation';
+import { SyncStatus } from './SyncStatus';
 import type { DeviceInfo, PreparedAssessment } from './tereco-bridge';
 
 /**
- * Phase 0 shell for the offline desktop client.
+ * TERECO Collect.
  *
- * What this proves: the bundle boots from `file://` with no network, the shared
- * TERECO components and design tokens render outside Next.js, and the renderer
- * reaches the main process only through `window.tereco`.
+ * Three screens, in the order the lab uses them: sign in and download while the
+ * internet is on, sit the paper with it off, and let anything unsent go up on
+ * its own when the connection comes back.
  *
- * What it deliberately does not do yet: render `AssessmentTake`. That component
- * needs real questions, a real attempt and a real clock behind the bridge, all
- * of which arrive with the SQLite work in Phases 1-3 of issue #33. Wiring it to
- * stub data now would prove nothing and would have to be unpicked.
+ * The paper itself is the same `AssessmentTake` the web app renders. It reads
+ * from the local database rather than the API because `window.tereco` exists
+ * here — see lib/assessment/source.ts. Nothing about it is desktop-specific,
+ * which is the whole reason there is one of it and not two.
  */
 export function App() {
+  return (
+    <AuthProvider>
+      <Shell />
+    </AuthProvider>
+  );
+}
+
+function Shell() {
   const pathname = usePathname();
-  const match = /^\/assessment\/([^/]+)\/?$/.test(pathname);
-  return match ? <PaperScreen /> : <ReadyScreen />;
+  const { isAuthenticated, loading } = useAuth();
+
+  if (loading) {
+    return <Centered>Starting TERECO Collect…</Centered>;
+  }
+
+  if (!isAuthenticated) return <SignIn />;
+
+  return /^\/assessment\/[^/]+\/?$/.test(pathname) ? <AssessmentTake /> : <Home />;
 }
 
-function useBridge() {
-  const [device, setDevice] = useState<DeviceInfo | null>(null);
-  const [prepared, setPrepared] = useState<PreparedAssessment[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function load() {
-      // Opened outside Electron (a plain browser, or a build smoke test) the
-      // bridge simply is not there. Say so plainly rather than throwing.
-      if (!window.tereco) {
-        if (!cancelled) {
-          setError('Not running inside TERECO Collect.');
-          setLoading(false);
-        }
-        return;
-      }
-
-      try {
-        const [deviceInfo, list] = await Promise.all([
-          window.tereco.device(),
-          window.tereco.listPrepared(),
-        ]);
-        if (cancelled) return;
-        setDevice(deviceInfo);
-        setPrepared(list);
-      } catch (err) {
-        if (!cancelled) setError(err instanceof Error ? err.message : 'Could not read local storage.');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    void load();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  return { device, prepared, error, loading };
-}
-
-function ReadyScreen() {
-  const router = useRouter();
-  const { device, prepared, error, loading } = useBridge();
-
+function Centered({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-full items-center justify-center bg-background p-6">
-      <div className="w-full max-w-xl">
-        <Card className="p-8">
-          <div className="flex items-center gap-3">
-            <WifiOff className="h-6 w-6 text-primary-700" aria-hidden />
-            <h1 className="text-xl font-semibold text-primary-900">Offline Assessment Mode</h1>
-          </div>
-
-          <p className="mt-3 text-sm leading-relaxed text-neutral-600">
-            This application runs from this computer. Once an assessment has been downloaded,
-            you can switch the internet off and your work will be saved here.
-          </p>
-
-          {loading && <p className="mt-6 text-sm text-neutral-500">Reading local storage…</p>}
-
-          {error && (
-            <p className="mt-6 rounded-xl bg-neutral-100 p-4 text-sm text-neutral-700">{error}</p>
-          )}
-
-          {!loading && !error && prepared.length === 0 && (
-            <p className="mt-6 rounded-xl bg-neutral-100 p-4 text-sm text-neutral-700">
-              No assessment has been prepared on this computer yet. Connect to the internet and
-              sign in to download one.
-            </p>
-          )}
-
-          {prepared.map((item) => (
-            <div
-              key={item.assessmentId}
-              className="mt-6 flex items-center justify-between rounded-xl border border-neutral-200 p-4"
-            >
-              <div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle className="h-4 w-4 text-primary-600" aria-hidden />
-                  <span className="font-medium text-primary-900">{item.title}</span>
-                </div>
-                <p className="mt-1 text-sm text-neutral-600">
-                  {item.questionCount} questions · {Math.round(item.durationSeconds / 60)} minutes
-                </p>
-              </div>
-              <Button onClick={() => router.push(`/assessment/${item.assessmentId}`)}>
-                Start
-              </Button>
-            </div>
-          ))}
-
-          {device && (
-            <p className="mt-8 flex items-center gap-2 text-xs text-neutral-500">
-              <HardDrive className="h-3.5 w-3.5" aria-hidden />
-              Device {device.deviceId} · v{device.appVersion}
-            </p>
-          )}
-        </Card>
-      </div>
+      <p className="text-sm text-neutral-500">{children}</p>
     </div>
   );
 }
 
-function PaperScreen() {
-  const router = useRouter();
-  const { id } = useParams<{ id: string }>();
+// ─── Sign in (needs the network) ───────────────────────────────────────────
+
+function SignIn() {
+  const { refresh } = useAuth();
+  const [identifier, setIdentifier] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!window.tereco) return;
+
+    setBusy(true);
+    setError('');
+    try {
+      await window.tereco.signIn({ identifier, password });
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not sign in.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="flex h-full items-center justify-center bg-background p-6">
-      <Card className="w-full max-w-xl p-8">
-        <h1 className="text-lg font-semibold text-primary-900">Assessment {id}</h1>
-        <p className="mt-3 text-sm leading-relaxed text-neutral-600">
-          The paper renders here once the local database is in place. AssessmentTake is wired to
-          this route in Phase 3.
+      <Card className="w-full max-w-md p-8">
+        <h1 className="text-xl font-semibold text-primary-900">Sign in to TERECO</h1>
+        <p className="mt-2 text-sm leading-relaxed text-neutral-600">
+          You need the internet for this step only. Once your assessment has downloaded you can
+          switch it off.
         </p>
-        <Button variant="outline" className="mt-6" onClick={() => router.push('/')}>
-          Back
-        </Button>
+
+        <form onSubmit={submit} className="mt-6 space-y-4">
+          <Input
+            label="Student ID"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            autoFocus
+            required
+          />
+          <Input
+            label="Password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+
+          {error && (
+            <p className="rounded-xl bg-red-50 p-3 text-sm text-red-900" role="alert">
+              {error}
+            </p>
+          )}
+
+          <Button type="submit" isLoading={busy} className="w-full">
+            Sign in
+          </Button>
+        </form>
       </Card>
+    </div>
+  );
+}
+
+// ─── Home: what is ready, and what could still be downloaded ───────────────
+
+interface Downloadable {
+  systemId: string;
+  title: string;
+  timeLimit: number;
+}
+
+function Home() {
+  const router = useRouter();
+  const { user, logout } = useAuth();
+
+  const [device, setDevice] = useState<DeviceInfo | null>(null);
+  const [prepared, setPrepared] = useState<PreparedAssessment[]>([]);
+  const [available, setAvailable] = useState<Downloadable[] | null>(null);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState('');
+
+  const load = useCallback(async () => {
+    if (!window.tereco) return;
+    const [deviceInfo, list] = await Promise.all([
+      window.tereco.device(),
+      window.tereco.listPrepared(),
+    ]);
+    setDevice(deviceInfo);
+    setPrepared(list);
+  }, []);
+
+  useEffect(() => {
+    void (async () => {
+      await load();
+    })();
+  }, [load]);
+
+  // Kept separate from `load` and allowed to fail quietly: listing what COULD be
+  // downloaded needs the network, and by design the machine often has none. A
+  // learner with a paper already prepared must not see an error because of it.
+  useEffect(() => {
+    const bridge = window.tereco;
+    if (!bridge) return;
+
+    void (async () => {
+      try {
+        setAvailable(await bridge.availableAssessments());
+      } catch {
+        setAvailable(null);
+      }
+    })();
+  }, []);
+
+  const download = async (systemId: string) => {
+    if (!window.tereco) return;
+    setBusyId(systemId);
+    setError('');
+    try {
+      await window.tereco.prepare(systemId);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not download this assessment.');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const preparedIds = new Set(prepared.map((p) => p.assessmentId));
+  const notYetDownloaded = (available ?? []).filter(
+    (a) => !preparedIds.has(a.systemId) && !prepared.some((p) => p.title === a.title)
+  );
+
+  return (
+    <div className="h-full overflow-y-auto bg-background">
+      <div className="mx-auto max-w-2xl space-y-4 p-6">
+        <header className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-semibold text-primary-900">
+              {user?.name ?? 'TERECO Collect'}
+            </h1>
+            {user?.className && <p className="text-sm text-neutral-600">{user.className}</p>}
+          </div>
+          <Button inline variant="ghost" onClick={logout}>
+            <LogOut className="mr-1.5 h-4 w-4" aria-hidden />
+            Sign out
+          </Button>
+        </header>
+
+        <SyncStatus />
+
+        {error && (
+          <p className="rounded-xl bg-red-50 p-4 text-sm text-red-900" role="alert">
+            {error}
+          </p>
+        )}
+
+        <Card className="p-6">
+          <div className="flex items-center gap-2">
+            <WifiOff className="h-5 w-5 text-primary-700" aria-hidden />
+            <h2 className="font-semibold text-primary-900">Ready for offline assessment</h2>
+          </div>
+
+          {prepared.length === 0 ? (
+            <p className="mt-3 text-sm leading-relaxed text-neutral-600">
+              Nothing has been downloaded to this computer yet. Download an assessment below while
+              you still have internet.
+            </p>
+          ) : (
+            <>
+              <p className="mt-3 text-sm leading-relaxed text-neutral-600">
+                These are saved on this computer.{' '}
+                <span className="font-medium text-primary-900">
+                  You may now switch off the internet.
+                </span>{' '}
+                Your work will be saved here.
+              </p>
+
+              <ul className="mt-4 space-y-3">
+                {prepared.map((item) => (
+                  <li
+                    key={item.assessmentId}
+                    className="flex items-center justify-between rounded-xl border border-neutral-200 p-4"
+                  >
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-primary-600" aria-hidden />
+                        <span className="font-medium text-primary-900">{item.title}</span>
+                      </div>
+                      <p className="mt-1 text-sm text-neutral-600">
+                        {item.questionCount} questions · {Math.round(item.durationSeconds / 60)}{' '}
+                        minutes
+                      </p>
+                    </div>
+                    <Button inline onClick={() => router.push(`/assessment/${item.assessmentId}`)}>
+                      Start
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </Card>
+
+        {available === null ? (
+          <p className="px-1 text-sm text-neutral-500">
+            No internet, so new assessments cannot be listed. Anything already downloaded above
+            still works.
+          </p>
+        ) : (
+          notYetDownloaded.length > 0 && (
+            <Card className="p-6">
+              <h2 className="font-semibold text-primary-900">Available to download</h2>
+              <ul className="mt-4 space-y-3">
+                {notYetDownloaded.map((item) => (
+                  <li
+                    key={item.systemId}
+                    className="flex items-center justify-between rounded-xl border border-neutral-200 p-4"
+                  >
+                    <div>
+                      <span className="font-medium text-primary-900">{item.title}</span>
+                      <p className="mt-1 text-sm text-neutral-600">{item.timeLimit} minutes</p>
+                    </div>
+                    <Button
+                      inline
+                      variant="outline"
+                      isLoading={busyId === item.systemId}
+                      onClick={() => download(item.systemId)}
+                    >
+                      <Download className="mr-1.5 h-4 w-4" aria-hidden />
+                      Download
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )
+        )}
+
+        {device && (
+          <p className="flex items-center gap-2 px-1 text-xs text-neutral-500">
+            <HardDrive className="h-3.5 w-3.5" aria-hidden />
+            Device {device.deviceId} · v{device.appVersion}
+          </p>
+        )}
+      </div>
     </div>
   );
 }

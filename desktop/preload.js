@@ -24,6 +24,7 @@ contextBridge.exposeInMainWorld('tereco', {
   signIn: (credentials) => ipcRenderer.invoke('tereco:signIn', credentials),
   signOut: () => ipcRenderer.invoke('tereco:signOut'),
   currentUser: () => ipcRenderer.invoke('tereco:currentUser'),
+  availableAssessments: () => ipcRenderer.invoke('tereco:availableAssessments'),
   prepare: (assessmentSystemId) => ipcRenderer.invoke('tereco:prepare', assessmentSystemId),
 
   getPackage: (assessmentId) => ipcRenderer.invoke('tereco:getPackage', assessmentId),
