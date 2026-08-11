@@ -106,6 +106,14 @@ immediately before both builds; it means nothing as a version to read by eye,
 it exists only so electron-updater's semver comparison always sees the newest
 release as newer.
 
+`"releaseType": "release"` in the `publish` block is load-bearing:
+electron-builder's GitHub provider creates a **draft** release by default. A
+draft is invisible to the unauthenticated public Releases API, which is what
+electron-updater polls — the first real run of this pipeline published a
+release, the workflow went green, and no install ever saw it, because it sat
+as a draft nobody had clicked "Publish" on. Leaving this out silently defeats
+the whole feature without an error anywhere.
+
 A build produced any other way (`npm run dist:win` locally, a PR build, a
 `workflow_dispatch` run) always passes `--publish never` and publishes
 nothing, regardless of the `publish` block in the build config below.
