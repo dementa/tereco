@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle, Download, HardDrive, LogOut, WifiOff } from 'lucide-react';
+import { CheckCircle, Download, HardDrive, LogOut, RefreshCw, WifiOff } from 'lucide-react';
 
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -134,6 +134,12 @@ function Home() {
   const [available, setAvailable] = useState<Downloadable[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [updateReady, setUpdateReady] = useState(false);
+
+  // Never fires in dev or against a REMOTE_URL override — see initAutoUpdate
+  // in main.js. Restarting is always the learner's own choice: this only ever
+  // shows on the Home screen, never over a paper in progress.
+  useEffect(() => window.tereco?.onUpdateReady(() => setUpdateReady(true)), []);
 
   const load = useCallback(async () => {
     if (!window.tereco) return;
@@ -203,6 +209,21 @@ function Home() {
         </header>
 
         <SyncStatus />
+
+        {updateReady && (
+          <div
+            role="status"
+            className="flex items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-900"
+          >
+            <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />
+            <span className="flex-1">
+              An update has downloaded. It installs the next time TERECO Collect closes.
+            </span>
+            <Button inline variant="outline" onClick={() => window.tereco?.installUpdate()}>
+              Restart now
+            </Button>
+          </div>
+        )}
 
         {error && (
           <p className="rounded-xl bg-red-50 p-4 text-sm text-red-900" role="alert">

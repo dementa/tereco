@@ -41,6 +41,9 @@ const REMOTE_URL = resolveRemoteOverride();
  */
 const API_BASE_URL = process.env.TERECO_API_URL || 'https://tereco.vercel.app';
 
+/** How often a long-running lab machine re-checks for a new build. */
+const UPDATE_POLL_MS = 4 * 60 * 60 * 1000;
+
 let mainWindow = null;
 
 function isSameOrigin(target, base) {
@@ -247,6 +250,42 @@ function readDeviceId() {
     console.error('Could not persist device id:', err);
   }
   return id;
+}
+
+/**
+ * Checks GitHub Releases for a newer build and installs it automatically.
+ *
+ * Skipped outside a packaged install: electron-updater looks for
+ * app-update.yml, which only exists inside a built installer, and a
+ * REMOTE_URL means someone is deliberately pointing this at a dev server
+ * rather than running the shipped app.
+ *
+ * Never interrupts a sitting. The download happens silently in the
+ * background; nothing here ever calls quitAndInstall on its own. The update
+ * takes effect the next time the app is closed and reopened — its own
+ * default — or immediately if the learner is on the Home screen and chooses
+ * "Restart now" themselves, which they cannot do from the paper screen.
+ */
+function initAutoUpdate() {
+  if (!app.isPackaged || REMOTE_URL) return;
+
+  const { autoUpdater } = require('electron-updater');
+
+  autoUpdater.on('error', (err) => console.error('[tereco] update check failed:', err));
+  autoUpdater.on('update-available', (info) =>
+    console.log(`[tereco] update ${info.version} found, downloading`)
+  );
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log(`[tereco] update ${info.version} downloaded — installs on next restart`);
+    mainWindow?.webContents.send('tereco:update-ready');
+  });
+
+  ipcMain.handle('tereco:installUpdate', () => autoUpdater.quitAndInstall());
+
+  const check = () =>
+    autoUpdater.checkForUpdates().catch((err) => console.error('[tereco] update check failed:', err));
+  setTimeout(check, 10_000).unref?.();
+  setInterval(check, UPDATE_POLL_MS).unref?.();
 }
 
 /**
@@ -532,6 +571,14 @@ if (!gotLock) {
       createWindow();
     } catch (err) {
       return fatal('opening the window', err);
+    }
+
+    // Never fatal: a lab machine with no internet, or a rate-limited GitHub
+    // API, must still open the app and let the day's papers be sat.
+    try {
+      initAutoUpdate();
+    } catch (err) {
+      console.error('[tereco] could not start the update checker:', err);
     }
 
     console.log(
