@@ -17,7 +17,26 @@
     <title>TERECO Collect</title>
   </head>
   <body>
-    <div id="root"></div>
+    <!--
+      Painted before the bundle has been parsed, and replaced by React's first
+      render. On a slow machine that gap is seconds of a window with nothing in
+      it, which reads as a hang; the same sentence the app shows while it loads
+      its session reads as progress.
+    -->
+    <div id="root">
+      <div
+        style="
+          display: flex;
+          min-height: 100vh;
+          align-items: center;
+          justify-content: center;
+          font: 14px system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+          color: #5a7d8a;
+        "
+      >
+        Starting TERECO Collect…
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

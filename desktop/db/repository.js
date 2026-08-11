@@ -324,6 +324,22 @@ function createRepository(db) {
     on conflict(id) do update set
       system_id = excluded.system_id, name = excluded.name, class_label = excluded.class_label
   `);
+
+  /**
+   * Records the learner who has just signed in, and makes them the active one.
+   *
+   * Sign-in used to write only the id. Nothing wrote the row it pointed at
+   * until a package had been downloaded, so `getActiveStudent` found no student
+   * and reported nobody signed in — a correct password put the learner straight
+   * back on the sign-in screen, with no error to explain it.
+   *
+   * One transaction, so the pointer is never stored without the row.
+   */
+  const signIn = db.transaction((student) => {
+    upsertStudent.run(student.id, student.systemId ?? null, student.name, student.classLabel ?? null);
+    setActiveStudentId(student.id);
+  });
+
   const upsertAssessment = db.prepare(`
     insert into assessments
       (id, title, instructions, duration_seconds, config_json, question_count, checksum, downloaded_at)
@@ -547,6 +563,7 @@ function createRepository(db) {
   return {
     getActiveStudentId,
     setActiveStudentId,
+    signIn,
     getActiveStudent,
     listPrepared,
     getPackage,

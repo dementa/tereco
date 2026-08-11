@@ -91,6 +91,25 @@ describe('local assessment database', () => {
     expect(repo.listPrepared()).toEqual([]);
   });
 
+  /**
+   * The regression that made a correct password look wrong: the id was stored
+   * but the learner was not, so the app read itself back as signed out and
+   * returned to the sign-in screen. Nothing has been downloaded at this point,
+   * which is exactly the state a first sign-in happens in.
+   */
+  it('knows who signed in before anything has been downloaded', () => {
+    repo.signIn({ id: 'stu-1', systemId: 'TST2026001', name: 'Test Learner', classLabel: 'S3' });
+
+    expect(repo.getActiveStudent()).toMatchObject({
+      id: 'stu-1',
+      staffId: 'TST2026001',
+      name: 'Test Learner',
+      className: 'S3',
+      role: 'student',
+    });
+    expect(repo.listPrepared()).toEqual([]);
+  });
+
   it('makes a verified package listable', () => {
     repo.savePackage(samplePackage());
     repo.setActiveStudentId('stu-1');

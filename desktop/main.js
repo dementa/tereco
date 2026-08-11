@@ -87,7 +87,13 @@ function createWindow() {
     minWidth: 480,
     minHeight: 600,
     backgroundColor: '#F5FDFF',
-    show: false,
+    // Shown at once, on the app's own background colour, rather than held back
+    // until the renderer paints. On a lab PC the bundle takes seconds to parse,
+    // and hiding the window until then means a double-click does nothing
+    // visible: people conclude the app is broken and click again — which the
+    // single-instance lock then swallows. index.html paints its own "Starting"
+    // line before any script runs, so the wait is at least visibly a wait.
+    show: true,
     // Defence in depth: even if a menu is ever set again, no bar is drawn in
     // the window frame.
     autoHideMenuBar: true,
@@ -100,8 +106,6 @@ function createWindow() {
       sandbox: true,
     },
   });
-
-  mainWindow.once('ready-to-show', () => mainWindow.show());
 
   if (REMOTE_URL) {
     mainWindow.loadURL(REMOTE_URL);
@@ -315,10 +319,21 @@ function registerIpc(repo) {
       throw new Error(body?.message || 'Could not sign in.');
     }
 
-    // Binds the local database to this learner. Everything the renderer can
-    // then list or open is scoped to them.
-    repo.setActiveStudentId(body.user?.id ?? body.data?.user?.id ?? null);
-    return body.user ?? body.data?.user ?? null;
+    const user = body.user ?? body.data?.user ?? null;
+    if (!user?.id) throw new Error('Could not sign in.');
+
+    // Binds the local database to this learner, and stores them, so the
+    // identity is readable with no network. Everything the renderer can then
+    // list or open is scoped to them.
+    repo.signIn({
+      id: user.id,
+      systemId: user.staffId || null,
+      // The column is NOT NULL and the display falls back to the id, which is
+      // better than refusing a sign-in over a missing name.
+      name: user.name || user.staffId || 'Student',
+      classLabel: user.className || null,
+    });
+    return user;
   });
 
   ipcMain.handle('tereco:signOut', () => {
@@ -519,7 +534,10 @@ if (!gotLock) {
       return fatal('opening the window', err);
     }
 
-    console.log(`[tereco] ready — API ${API_BASE_URL}, loading ${REMOTE_URL || RENDERER_ENTRY}`);
+    console.log(
+      `[tereco] ready in ${Math.round(process.uptime() * 1000)}ms — API ${API_BASE_URL}, ` +
+        `loading ${REMOTE_URL || RENDERER_ENTRY}`
+    );
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
