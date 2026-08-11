@@ -13,6 +13,15 @@ name: Desktop installer
 
 on:
   workflow_dispatch:
+  # On pull requests too: the client is only ever broken in ways that appear
+  # when it is packaged and started, which no other check does.
+  pull_request:
+    paths:
+      - 'desktop/**'
+      - 'components/**'
+      - 'lib/**'
+      - 'app/globals.css'
+      - '.github/workflows/desktop-installer.yml'
   push:
     branches:
       - main
