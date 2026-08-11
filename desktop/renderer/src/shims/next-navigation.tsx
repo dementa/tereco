@@ -13,7 +13,7 @@
  * the only workable location under `file://`.
  */
 
-import { useCallback, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useSyncExternalStore } from 'react';
 
 function subscribe(onChange: () => void): () => void {
   window.addEventListener('hashchange', onChange);
@@ -56,16 +56,24 @@ export function useRouter(): RouterShim {
     window.dispatchEvent(new HashChangeEvent('hashchange'));
   }, []);
 
-  return {
-    push,
-    replace,
-    back: () => window.history.back(),
-    forward: () => window.history.forward(),
-    // No-ops: there is nothing to revalidate and nothing to prefetch when the
-    // whole application is already on disk.
-    refresh: () => {},
-    prefetch: () => {},
-  };
+  // Memoized so the object itself is referentially stable, not just push/replace
+  // individually. AssessmentTake's countdown effect depends (transitively,
+  // through submitAnswers) on this router — an unstable object here reset the
+  // countdown to its starting value on every render, which looked exactly like
+  // a frozen timer: the number shown was correct, it just never advanced.
+  return useMemo(
+    () => ({
+      push,
+      replace,
+      back: () => window.history.back(),
+      forward: () => window.history.forward(),
+      // No-ops: there is nothing to revalidate and nothing to prefetch when the
+      // whole application is already on disk.
+      refresh: () => {},
+      prefetch: () => {},
+    }),
+    [push, replace]
+  );
 }
 
 /**
