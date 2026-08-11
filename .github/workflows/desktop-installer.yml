@@ -60,6 +60,14 @@ jobs:
         working-directory: desktop
         run: npm run dist:win
 
+      # An installer that exists is not an app that starts. This runs the
+      # packaged binary and fails if it dies during startup — the only check
+      # that catches a native module built for the wrong runtime, or a file
+      # left out of the package, before the .exe reaches a lab machine.
+      - name: Start the packaged app
+        working-directory: desktop
+        run: npm run smoke
+
       - name: Upload the installer
         uses: actions/upload-artifact@v4
         with:

@@ -78,6 +78,27 @@ npm run dist:mac     # macOS    -> dist/*.dmg   (must run on a Mac)
 Outputs land in `desktop/dist/`. The Windows artifact is
 `dist/TERECO Collect Setup <version>.exe` — a ~78 MB NSIS installer.
 
+Each `dist:*` script first runs `prepack:check`, which refuses to package a
+renderer bundle that is missing or a SQLite binary Electron cannot load. After
+building, `npm run smoke` starts the packaged app and fails if it exits — an
+installer that exists is not an app that starts, and every startup failure this
+client has had looked the same from outside: the shortcut opens nothing.
+
+### The pinned SQLite version is load-bearing
+
+`better-sqlite3-multiple-ciphers` is pinned to **12.11.1**, exactly, and must
+not be moved to 13.x. From 13.0.0 the module ships prebuilt binaries, and its
+`binding.gyp` skips compiling when it finds one — so `electron-rebuild` reports
+"Rebuild Complete" having built nothing, and the installer carries a binary
+built for plain Node. Loading it inside Electron segfaults the process before
+any window or error dialog exists: the app installs, and clicking it does
+nothing at all. 12.11.1 has no prebuilds, so the rebuild genuinely happens and
+the binary matches Electron's ABI.
+
+`npm run native:check` (part of `prepack:check`) is what enforces this: it opens
+an encrypted database using Electron's own runtime and fails the build if the
+module ships prebuilds or will not load.
+
 ### Building the Windows installer on Linux
 
 It works, but electron-builder shells out to Windows tools through Wine to stamp
@@ -140,6 +161,13 @@ To rotate, add a new key id alongside the existing one. Machines not yet
 updated keep verifying grants signed by the key they know, so a rotation does
 not brick a lab mid-term. Only drop an old public key once every machine has
 been updated **and** every grant signed with it has expired (14 days).
+
+`prepare.js` verifies grants with `lib/offline/package-token.js` from the repo
+root, shared with the Next.js route that signs them. It lives outside `desktop/`
+and so outside the asar, and is copied into the installer as `extraResources`,
+landing at `resources/lib/offline` — which is exactly where the `../../lib/...`
+require resolves from inside the archive. Without it the app throws while
+registering IPC and quits during startup.
 
 The desktop talks to `TERECO_API_URL` (default `https://tereco.vercel.app`) for
 sign-in and preparation. That is separate from `TERECO_APP_URL`, which only
