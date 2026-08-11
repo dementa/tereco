@@ -414,8 +414,62 @@ if (!gotLock) {
     }
   });
 
+  /**
+   * Nothing during startup may fail silently.
+   *
+   * Only the database call used to be guarded, and it sat inside a `.then()`.
+   * Anything thrown by `registerIpc` — reading and parsing the signing keys,
+   * loading the native SQLite module, requiring the sync engine — became an
+   * unhandled promise rejection, which Electron reports nowhere. The result was
+   * no window, no dialog and no message: the app simply did not appear, which
+   * is indistinguishable from a machine that will never run it.
+   */
+  function fatal(stage, err) {
+    const detail = err && err.stack ? err.stack : String(err);
+    // The terminal first, so `npm start` output carries it even if the dialog
+    // is dismissed or never renders.
+    console.error(`\n[tereco] startup failed during ${stage}:\n${detail}\n`);
+    try {
+      require('electron').dialog.showErrorBox(
+        'TERECO Collect cannot start',
+        `${stage}\n\n${err && err.message ? err.message : String(err)}`
+      );
+    } catch {
+      /* dialog needs a ready app; the console line above is the fallback */
+    }
+    app.quit();
+  }
+
+  // Last line of defence: anything that escapes the handlers below still gets
+  // printed rather than vanishing.
+  process.on('uncaughtException', (err) => fatal('an unexpected error', err));
+  process.on('unhandledRejection', (err) => fatal('an unexpected error', err));
+
   app.whenReady().then(() => {
-    buildMenu();
+    try {
+      buildMenu();
+    } catch (err) {
+      return fatal('building the menu', err);
+    }
+
+    /**
+     * The bundle is a build artefact, and `renderer/dist` is gitignored — so a
+     * fresh clone has no application in it until `npm run build:renderer` is
+     * run from the REPO ROOT, not from here. Checking up front turns a blank
+     * or erroring window into a sentence that says what to do.
+     */
+    if (!REMOTE_URL && !fs.existsSync(RENDERER_ENTRY)) {
+      return fatal(
+        'locating the application files',
+        new Error(
+          `No renderer bundle at ${RENDERER_ENTRY}.\n\n` +
+            'Run this from the repository root, not from desktop/:\n\n' +
+            '    npm install\n' +
+            '    npm run build:renderer\n\n' +
+            'then start the app again.'
+        )
+      );
+    }
 
     let repo;
     try {
@@ -424,14 +478,22 @@ if (!gotLock) {
       // Starting without local storage would let a learner sit a paper whose
       // answers go nowhere. Refuse, and say what happened, rather than opening
       // a window that quietly loses their work.
-      const { dialog } = require('electron');
-      dialog.showErrorBox('TERECO Collect cannot start', String(err.message || err));
-      app.quit();
-      return;
+      return fatal('opening the local database', err);
     }
 
-    registerIpc(repo);
-    createWindow();
+    try {
+      registerIpc(repo);
+    } catch (err) {
+      return fatal('setting up the local services', err);
+    }
+
+    try {
+      createWindow();
+    } catch (err) {
+      return fatal('opening the window', err);
+    }
+
+    console.log(`[tereco] ready — API ${API_BASE_URL}, loading ${REMOTE_URL || RENDERER_ENTRY}`);
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();
