@@ -32,7 +32,8 @@
     "publish": {
       "provider": "github",
       "owner": "dementa",
-      "repo": "tereco"
+      "repo": "tereco",
+      "releaseType": "release"
     },
     "directories": {
       "buildResources": "build",
