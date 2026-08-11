@@ -130,6 +130,16 @@ export interface TerecoBridge {
 
   /** Manual retry for the "Synchronization incomplete" state. */
   retrySync(): Promise<SyncStatus>;
+
+  /**
+   * Subscribes to "a new build has finished downloading in the background
+   * and is ready to install." Never fires outside a packaged install.
+   * Returns an unsubscribe function.
+   */
+  onUpdateReady(callback: () => void): () => void;
+
+  /** Restarts the app now and installs the downloaded update. */
+  installUpdate(): Promise<void>;
 }
 
 declare global {

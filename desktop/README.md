@@ -84,6 +84,32 @@ building, `npm run smoke` starts the packaged app and fails if it exits — an
 installer that exists is not an app that starts, and every startup failure this
 client has had looked the same from outside: the shortcut opens nothing.
 
+## Auto-update
+
+Packaged installs check GitHub Releases for a newer build on startup and every
+4 hours after (`initAutoUpdate` in `main.js`, via `electron-updater`). Skipped
+entirely for an unpackaged `npm start` or a `REMOTE_URL` override — both are
+someone deliberately running something other than the shipped app.
+
+The download happens silently in the background. Nothing ever force-restarts
+the app: a downloaded update installs the next time TERECO Collect is closed
+(electron-updater's own default), or immediately if the learner is on the Home
+screen and taps "Restart now" — that banner never appears over a paper in
+progress, only on Home.
+
+Releases are only ever created by `.github/workflows/desktop-installer.yml`,
+and only on a push to `main`, after the smoke test on that exact build has
+passed — see the workflow for why it's a second, separate `electron-builder`
+invocation rather than publishing the same build the smoke test ran against.
+`desktop/package.json`'s `version` is overwritten in CI to `1.0.<run number>`
+immediately before both builds; it means nothing as a version to read by eye,
+it exists only so electron-updater's semver comparison always sees the newest
+release as newer.
+
+A build produced any other way (`npm run dist:win` locally, a PR build, a
+`workflow_dispatch` run) always passes `--publish never` and publishes
+nothing, regardless of the `publish` block in the build config below.
+
 ### The pinned SQLite version is load-bearing
 
 `better-sqlite3-multiple-ciphers` is pinned to **12.11.1**, exactly, and must
@@ -115,10 +141,20 @@ sudo apt-get install -y wine32
 Wine prints a wall of `err:` lines about missing displays and RPC services while
 it does this. They are noise — the build is fine. `WINEDEBUG=-all` silences them.
 
-`"publish": null` in the build config is load-bearing: without it electron-builder
-tries to write auto-update metadata, finds no publish provider, and exits
-non-zero *after* the installer has already been written — a failure that looks
-like a broken build but isn't.
+Historically `"publish": null` was load-bearing here: with no publish config at
+all, electron-builder fell back to autodetecting a provider from `homepage`,
+that detection found nothing usable under Wine, and it exited non-zero *after*
+the installer had already been written — a failure that looked like a broken
+build but wasn't.
+
+The build config now carries a real GitHub publish target (needed for
+auto-update — see "Auto-update" below), which should sidestep this: an
+explicit config skips the autodetection step that used to fail. `dist:win`,
+`dist:linux` and `dist:mac` all still pass `--publish never` explicitly, so a
+local build never attempts to upload anywhere regardless. This has been
+verified on the real Windows CI runner but **not** re-verified against Wine on
+Linux — if you hit a non-zero exit here after the .exe/.AppImage/.dmg already
+exists, that history is almost certainly why.
 
 ### macOS notes
 

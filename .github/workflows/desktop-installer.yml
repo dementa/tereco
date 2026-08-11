@@ -36,6 +36,10 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
+    # Needed for the default GITHUB_TOKEN to create a release in the publish
+    # step below. Everything before it (build, smoke) needs no permission.
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -65,6 +69,17 @@ jobs:
         working-directory: desktop
         run: npm install
 
+      # electron-updater decides "is there something newer" by comparing
+      # semver against the running app. package.json's version never moves by
+      # itself, so without this every build would be "1.0.0" forever and no
+      # install would ever see an update. run_number only climbs, never
+      # resets, so it is monotonic across every run of this workflow — PR and
+      # manual runs included — which is all electron-updater requires.
+      - name: Set the desktop app version
+        working-directory: desktop
+        shell: bash
+        run: npm pkg set version="1.0.${{ github.run_number }}"
+
       - name: Build the installer
         working-directory: desktop
         run: npm run dist:win
@@ -86,3 +101,14 @@ jobs:
             desktop/dist/*.exe.blockmap
           if-no-files-found: error
           retention-days: 14
+
+      # Publishes a GitHub Release so electron-updater has something to find.
+      # Deliberately its own build, after the smoke test above has already
+      # proven the app starts — nothing broken ever reaches a release, and
+      # nothing publishes for a PR or a push to any branch but main.
+      - name: Publish a release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm run dist:win:publish
