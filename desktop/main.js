@@ -273,13 +273,39 @@ function registerIpc(repo) {
 
   const mediaDir = path.join(app.getPath('userData'), 'media');
 
-  // Electron's net.fetch, not global fetch: it goes through the app session, so
-  // the sign-in cookie is stored and replayed by the main process and never
-  // exists anywhere the renderer can read it.
-  const fetchFn = (url, init) => net.fetch(url, init);
+  /**
+   * Every request this app makes.
+   *
+   * Electron's net.fetch, not global fetch: it goes through the app session, so
+   * the sign-in cookie is stored and replayed by the main process and never
+   * exists anywhere the renderer can read it.
+   *
+   * TERECO_BYPASS_SECRET is for testing against a Vercel preview, which sits
+   * behind Deployment Protection. A browser can complete that login; this app
+   * cannot, so without the header every request is redirected to Vercel SSO and
+   * nothing downloads. Vercel's own mechanism for non-browser clients — see
+   * Protection Bypass for Automation — is this header.
+   *
+   * Unset in production and unset by default, so a real installer sends
+   * nothing. It is a development convenience, never a credential the app
+   * depends on.
+   */
+  const bypassSecret = process.env.TERECO_BYPASS_SECRET;
+
+  const fetchFn = (url, init = {}) =>
+    net.fetch(url, {
+      ...init,
+      headers: bypassSecret
+        ? { ...(init.headers ?? {}), 'x-vercel-protection-bypass': bypassSecret }
+        : init.headers,
+    });
+
+  if (bypassSecret) {
+    console.log('[tereco] sending a Vercel protection-bypass header (preview testing)');
+  }
 
   ipcMain.handle('tereco:signIn', async (_e, credentials) => {
-    const response = await net.fetch(new URL('/api/auth/login', API_BASE_URL).toString(), {
+    const response = await fetchFn(new URL('/api/auth/login', API_BASE_URL).toString(), {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(credentials),
@@ -335,7 +361,7 @@ function registerIpc(repo) {
    * the list of what could still be downloaded before the cable comes out.
    */
   ipcMain.handle('tereco:availableAssessments', async () => {
-    const response = await net.fetch(new URL('/api/assessments', API_BASE_URL).toString(), {
+    const response = await fetchFn(new URL('/api/assessments', API_BASE_URL).toString(), {
       headers: { accept: 'application/json' },
     });
     const body = await response.json().catch(() => null);

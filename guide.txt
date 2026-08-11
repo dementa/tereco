@@ -34,11 +34,26 @@ a) Environment variables, ticked for the environment you will point at:
 
    Missing entirely = the endpoint returns 503.
 
-b) Deployment Protection OFF for Preview.
+b) A way past Deployment Protection on the preview.
 
-   The preview sits behind Vercel SSO, which the desktop app cannot get past —
-   it is not a browser and cannot complete the login. Turn it off, or merge to
-   main and use production instead.
+   The preview sits behind Vercel SSO. A browser can complete that login; this
+   app cannot, so every request is redirected and nothing downloads.
+
+   Use Vercel's own mechanism for non-browser clients rather than switching
+   protection off:
+
+       Settings > Deployment Protection > Protection Bypass for Automation
+       > create a secret
+
+   Then pass it when starting the app (section 1) and it is sent as the
+   x-vercel-protection-bypass header on every request. The preview stays
+   protected from everyone else, and the secret can be revoked.
+
+   Needs a team member or Project Administrator role. It is NOT part of the
+   paid Advanced Deployment Protection add-on.
+
+   The secret is baked into deployments at build time, so regenerating it
+   means redeploying.
 
    Redeploy after changing environment variables; they do not apply to existing
    deployments.
@@ -84,13 +99,17 @@ Point the app at a deployment and start it.
 
   cmd:
     set TERECO_API_URL=https://tereco-git-feature-offline-desktop-renderer-dementas-projects.vercel.app
+    set TERECO_BYPASS_SECRET=<the secret from section 0b>
     npm start
 
   PowerShell:
-    $env:TERECO_API_URL="https://..."; npm start
+    $env:TERECO_API_URL="https://..."
+    $env:TERECO_BYPASS_SECRET="<secret>"
+    npm start
 
   git bash:
     export TERECO_API_URL="https://..."
+    export TERECO_BYPASS_SECRET="<secret>"
     npm start
 
 Use the form that matches your shell. `set` in git bash silently does nothing,
@@ -167,6 +186,11 @@ d) Sign-in works, Download returns 401 or 403
 e) Download returns 404
    The app is pointing at a host that does not have the branch. Almost always
    the shell variable form from section 1.
+
+g) Sign-in fails, or everything is redirected
+   The bypass secret is missing or wrong. On startup the app prints
+   "[tereco] sending a Vercel protection-bypass header" when one is set; if
+   that line is absent, TERECO_BYPASS_SECRET did not reach the process.
 
 f) The download list is empty
    Not necessarily a bug. `assessments_for_student` decides what a learner may
