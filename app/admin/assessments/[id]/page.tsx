@@ -12,7 +12,7 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useAuth } from '@/components/auth/AuthContext';
 import {
-  ArrowLeft, ChevronDown, ChevronRight, Download, KeyRound, Plus, Printer, Save, Send, Trash2, UserPlus,
+  ArrowLeft, ChevronDown, ChevronRight, Download, KeyRound, Plus, Printer, RotateCcw, Save, Send, Trash2, UserPlus,
 } from 'lucide-react';
 import { GroupImageField } from '@/components/admin/GroupImageField';
 import { PdfPreviewModal } from '@/components/assessment/PdfPreviewModal';
@@ -760,6 +760,28 @@ export default function AssessmentDetailPage() {
       toast.error('Network error.');
     } finally {
       setReleasing(false);
+    }
+  }
+
+  async function allowResit(result: Result) {
+    const scoreLabel = result.percentage !== null ? `, currently ${result.percentage}%` : '';
+    if (
+      !confirm(
+        `Let ${result.studentName} resit this paper? This permanently deletes their current ` +
+          `submission (${result.status}${scoreLabel}) so they can sit it again — this cannot be ` +
+          `undone. The assessment must still be open for them to see it in their list.`
+      )
+    )
+      return;
+    const res = await fetch(`/api/admin/assessments/${systemId}/results/${result.submissionId}`, {
+      method: 'DELETE',
+    });
+    const data = await res.json();
+    if (data.success) {
+      setResults((prev) => prev.filter((r) => r.submissionId !== result.submissionId));
+      toast.success(`${result.studentName} can resit this paper.`);
+    } else {
+      toast.error(data.message ?? 'Could not clear this submission.');
     }
   }
 
@@ -1623,6 +1645,14 @@ export default function AssessmentDetailPage() {
           rows={results}
           columns={resultColumns}
           rowKey={(r) => r.submissionId}
+          rowActions={(r) => [
+            {
+              label: 'Allow resit',
+              icon: RotateCcw,
+              onClick: () => void allowResit(r),
+              danger: true,
+            },
+          ]}
           initialSort={{ key: 'studentName', direction: 'asc' }}
           searchPlaceholder="Search results by student, ID, school or class…"
           emptyMessage="Nobody has sat this assessment yet."

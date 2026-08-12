@@ -722,6 +722,45 @@ export async function saveSubmission(input: {
   }
 }
 
+/**
+ * Clear a learner's sitting so they can take the paper again — for a teacher
+ * to use when a learner submitted blank, or gave up partway through.
+ *
+ * Deletes the submission (cascading its responses and any scans) and the
+ * sitting row that anchored its clock, so `assessments_for_student` (see
+ * 07-sitting-once.sql) stops excluding this assessment for them and
+ * `startOrResumeSitting` hands out a fresh start time rather than resuming
+ * the old one. The paper itself still has to be open (published, within its
+ * window) for the learner to see it again — this only undoes the "already
+ * sat it" side of the lock.
+ */
+export async function allowResit(assessmentId: string, submissionId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const { data: submission, error: fetchError } = await supabase
+    .from("assessment_submissions")
+    .select("id, assessment_id, student_id")
+    .eq("id", submissionId)
+    .maybeSingle();
+  if (fetchError) throw new Error(fetchError.message);
+  if (!submission || submission.assessment_id !== assessmentId) {
+    throw new UserFacingError("Submission not found for this assessment.", 404);
+  }
+
+  const { error: sittingError } = await supabase
+    .from("assessment_sittings")
+    .delete()
+    .eq("assessment_id", submission.assessment_id)
+    .eq("student_id", submission.student_id);
+  if (sittingError) throw new Error(sittingError.message);
+
+  const { error: deleteError } = await supabase
+    .from("assessment_submissions")
+    .delete()
+    .eq("id", submission.id);
+  if (deleteError) throw new Error(deleteError.message);
+}
+
 interface ResponseRow {
   id: string;
   submission_id: string;
