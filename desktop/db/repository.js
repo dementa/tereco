@@ -486,6 +486,34 @@ function createRepository(db) {
      limit 1
   `);
 
+  /**
+   * Same claim, minus the backoff filter.
+   *
+   * Used when a human pressed "Sync now" or the machine just came back online:
+   * both are already the honest signal the backoff exists to approximate, so
+   * waiting out a timer computed for a link that was down a moment ago only
+   * makes the button look broken.
+   */
+  const selectNextQueuedForce = db.prepare(`
+    select q.id            as queueId,
+           q.retry_count   as retryCount,
+           a.id            as attemptId,
+           a.assessment_id as assessmentId,
+           a.student_id    as studentId,
+           a.device_id     as deviceId,
+           a.started_at    as startedAt,
+           a.submitted_at  as submittedAt,
+           p.token         as token
+      from sync_queue q
+      join attempts a on a.id = q.attempt_id
+      join packages p
+        on p.assessment_id = a.assessment_id
+       and p.student_id = a.student_id
+     where q.status in ('pending', 'failed')
+     order by q.created_at
+     limit 1
+  `);
+
   const markSyncing = db.prepare(
     "update sync_queue set status = 'syncing', last_attempt_at = ? where id = ?"
   );
@@ -497,9 +525,13 @@ function createRepository(db) {
    * the order they were sat, and one item at a time so a lab reconnecting does
    * not open fifty concurrent requests over a link that is already the reason
    * this feature exists.
+   *
+   * `ignoreBackoff` skips the cooldown filter for a caller that already knows
+   * the wait is pointless (a manual retry, or the moment the network just
+   * came back) — everything else about claiming stays the same.
    */
-  const claimNext = db.transaction((now = Date.now()) => {
-    const row = selectNextQueued.get(now);
+  const claimNext = db.transaction((now = Date.now(), { ignoreBackoff = false } = {}) => {
+    const row = ignoreBackoff ? selectNextQueuedForce.get() : selectNextQueued.get(now);
     if (!row) return null;
 
     markSyncing.run(now, row.queueId);

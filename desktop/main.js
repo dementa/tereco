@@ -401,11 +401,21 @@ function registerIpc(repo) {
    * Runs unprompted because the learner who sat the paper has usually gone home
    * by the time the connection returns. Nobody should have to remember to press
    * a button for a submission to reach the school.
+   *
+   * `wasOnline` tracks the previous poll's answer so a false→true transition
+   * can be told apart from "still online". On that transition every item is
+   * forced, ignoring backoff: their cooldowns were computed against a link
+   * that was just down, and pending papers should not sit out however much of
+   * that timer is left now that the link is back.
    */
   const SYNC_POLL_MS = 60_000;
+  let wasOnline = net.isOnline();
   const pump = () => {
-    if (!net.isOnline()) return;
-    sync.drain().catch((err) => console.error('[tereco] sync failed:', err));
+    const isOnline = net.isOnline();
+    const justReconnected = isOnline && !wasOnline;
+    wasOnline = isOnline;
+    if (!isOnline) return;
+    sync.drain({ force: justReconnected }).catch((err) => console.error('[tereco] sync failed:', err));
   };
   setInterval(pump, SYNC_POLL_MS).unref?.();
   setTimeout(pump, 5_000).unref?.();
@@ -459,8 +469,11 @@ function registerIpc(repo) {
 
   // Manual retry behind the "Synchronization incomplete" state, for when
   // someone is standing at the machine and would rather not wait for the poll.
+  // Forced: a person pressing this button has already done the waiting the
+  // backoff exists to enforce, so an item still inside its cooldown must be
+  // tried anyway rather than making the button look like it did nothing.
   ipcMain.handle('tereco:retrySync', async () => {
-    await sync.drain();
+    await sync.drain({ force: true });
     return sync.status();
   });
 }
