@@ -8,7 +8,7 @@ import {
 } from '@/lib/assessments';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { getCurrentProfile, requireRole } from '@/lib/auth/session';
-import { canManageAssessment, isAssessmentOwner } from '@/lib/auth/access';
+import { canManageAssessment, canMarkAssessment, isAssessmentOwner } from '@/lib/auth/access';
 import { z } from 'zod';
 
 // Targeting replaces the old targetType/targetValue pair. Each entry narrows
@@ -70,6 +70,14 @@ const UpdateSchema = z.object({
 });
 
 // [id] is the public ASS#### system id.
+//
+// Gated on canMarkAssessment (broader than canManageAssessment) rather than
+// manage alone: a collaborator who can only mark a paper, not edit it, still
+// needs to open its analytics page. The `capabilities` object on the
+// response is what actually decides what the caller may DO with what they
+// see — the UI gates entirely off it rather than re-deriving role logic
+// client-side, and PUT/DELETE below keep their own, narrower checks
+// regardless of what this GET allowed.
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -82,12 +90,26 @@ export async function GET(
     if (!assessment) return errorResponse('Assessment not found', 404);
 
     const actor = await getCurrentProfile(request);
-    if (!actor || !canManageAssessment(actor, assessment)) {
-      return errorResponse('You can only work with assessments you created.', 403);
+    if (!actor || !canMarkAssessment(actor, assessment)) {
+      return errorResponse('You can only work with assessments for your own school.', 403);
     }
 
     const questions = await getQuestions(assessment.id);
-    return successResponse({ data: { ...assessment, questions } });
+    const manages = canManageAssessment(actor, assessment);
+    const capabilities = {
+      canManage: manages,
+      canMark: true,
+      isOwner: isAssessmentOwner(actor, assessment),
+      // Mirrors each download route's own gate exactly (paper and
+      // answer-key routes require canManageAssessment; results/pdf accepts
+      // the broader canMarkAssessment, which this GET has already checked
+      // to reach this point) — a button only shows here if the click behind
+      // it would actually succeed.
+      canDownloadPaper: manages,
+      canDownloadResults: true,
+      canDownloadAnswerKey: manages,
+    };
+    return successResponse({ data: { ...assessment, questions, capabilities } });
   } catch (error) {
     console.error('Error fetching assessment:', error);
     return errorResponse('Failed to fetch assessment', 500);

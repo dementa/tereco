@@ -46,3 +46,4 @@ scripts/*.xlsx
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.gstack/

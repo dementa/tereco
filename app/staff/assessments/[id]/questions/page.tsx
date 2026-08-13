@@ -1,0 +1,11 @@
+'use client';
+
+import { useParams } from 'next/navigation';
+import { QuestionsEditor } from '@/components/assessment/QuestionsEditor';
+
+export default function StaffQuestionsPage() {
+  const params = useParams<{ id: string }>();
+  return (
+    <QuestionsEditor systemId={params.id} apiBase="/api/admin/assessments" detailHref="/staff/assessments" />
+  );
+}

@@ -1,6 +1,7 @@
 import { NextRequest } from 'next/server';
 import {
   getAssessmentBySystemId,
+  getAssessmentsForStudent,
   getQuestions,
   saveSubmission,
   type SubmissionAnswer,
@@ -41,6 +42,17 @@ export async function POST(
     }
     if (assessment.status !== 'published') {
       return errorResponse('This assessment is not open for submission.', 409);
+    }
+
+    // Same gate as the sitting and questions routes: eligibility is the
+    // database's answer, so a learner cannot submit a paper they were never
+    // offered, even if they know or guess its system id.
+    const eligible = await getAssessmentsForStudent(profile.id);
+    if (!eligible.some((a) => a.id === assessment.id)) {
+      return errorResponse(
+        'This assessment is no longer available to you. If you have already sat it, your result is under Results.',
+        403
+      );
     }
 
     const now = Date.now();

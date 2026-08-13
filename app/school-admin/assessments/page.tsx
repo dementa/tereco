@@ -1,44 +1,17 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { Badge } from '@/components/ui/Badge';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/ToastProvider';
-
-interface Assessment {
-  id: string;
-  systemId: string;
-  title: string;
-  status: string;
-  opensAt?: string;
-  closesAt?: string;
-  resultsReleasedAt?: string;
-}
-
-const columns: DataTableColumn<Assessment>[] = [
-  { key: 'title', header: 'Title', value: (a) => a.title },
-  { key: 'systemId', header: 'ID', value: (a) => a.systemId },
-  {
-    key: 'status',
-    header: 'Status',
-    value: (a) => a.status,
-    render: (a) => <Badge variant={a.status === 'published' ? 'success' : 'muted'}>{a.status}</Badge>,
-  },
-  { key: 'opensAt', header: 'Opens', value: (a) => a.opensAt ?? '—' },
-  { key: 'closesAt', header: 'Closes', value: (a) => a.closesAt ?? '—' },
-  {
-    key: 'resultsReleasedAt',
-    header: 'Results',
-    value: (a) => (a.resultsReleasedAt ? 'Released' : 'Not released'),
-    render: (a) =>
-      a.resultsReleasedAt ? <Badge variant="success">Released</Badge> : <Badge variant="muted">Not released</Badge>,
-  },
-];
+import { AssessmentCard, type CardAssessment } from '@/components/assessment/AssessmentCard';
 
 export default function SchoolAdminAssessmentsPage() {
+  const router = useRouter();
   const toast = useToast();
-  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [assessments, setAssessments] = useState<CardAssessment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -61,6 +34,14 @@ export default function SchoolAdminAssessmentsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return assessments;
+    return assessments.filter(
+      (a) => a.title.toLowerCase().includes(q) || a.systemId.toLowerCase().includes(q)
+    );
+  }, [assessments, search]);
+
   return (
     <div className="space-y-4">
       <div>
@@ -70,16 +51,29 @@ export default function SchoolAdminAssessmentsPage() {
           stay with staff.
         </p>
       </div>
-      <DataTable
-        rows={assessments}
-        columns={columns}
-        rowKey={(a) => a.id}
-        loading={loading}
-        initialSort={{ key: 'title', direction: 'asc' }}
-        searchPlaceholder="Search by title or ID…"
-        emptyMessage="No assessments target your school yet."
-        exportFileName="school-assessments"
+
+      <Input
+        label="Search"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        placeholder="Search by title or ID…"
       />
+
+      {loading ? (
+        <p className="text-text-muted">Loading…</p>
+      ) : visible.length === 0 ? (
+        <p className="text-text-muted">No assessments target your school yet.</p>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visible.map((a) => (
+            <AssessmentCard
+              key={a.id}
+              assessment={a}
+              onClick={() => router.push(`/school-admin/assessments/${a.systemId}`)}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

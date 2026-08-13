@@ -264,15 +264,23 @@ export async function getMarkableAssessments(
 }
 
 /**
+ * Whether a school_admin at `schoolId` may see this assessment at all — an
+ * empty target list is open to every school, otherwise at least one target
+ * row must name this school. Shared by the school-admin list and single-
+ * assessment routes so they can't drift into disagreeing about who counts.
+ */
+export function isAssessmentVisibleToSchool(assessment: Assessment, schoolId: string): boolean {
+  return assessment.targets.length === 0 || assessment.targets.some((t) => t.schoolId === schoolId);
+}
+
+/**
  * Every assessment targeting one school (or open to every school), for the
  * school-admin oversight page — a read-only superset of what any one of that
  * school's teachers could mark, since it isn't limited to a single staffId.
  */
 export async function getAssessmentsForSchool(schoolId: string): Promise<Assessment[]> {
   const all = await getAssessments();
-  return all.filter(
-    (a) => a.targets.length === 0 || a.targets.some((t) => t.schoolId === schoolId)
-  );
+  return all.filter((a) => isAssessmentVisibleToSchool(a, schoolId));
 }
 
 /**
@@ -1013,7 +1021,7 @@ const PAGE_SIZE = 1000;
  * Throws rather than returning what it managed to collect: a short list that
  * reads as complete is exactly the failure this exists to prevent.
  */
-async function readAllPages<T>(
+export async function readAllPages<T>(
   page: (
     from: number,
     to: number
@@ -1175,6 +1183,7 @@ interface ResultRow {
   status: string;
   student: { system_id: string | null; first_name: string; middle_name: string | null; last_name: string } | null;
   enrollment: {
+    school_id: string;
     school: { name: string } | null;
     class: { alias: string | null; grade_level: { code: string } | null } | null;
     stream: { name: string } | null;
@@ -1182,8 +1191,15 @@ interface ResultRow {
 }
 
 // Same disambiguation as RESPONSE_COLUMNS: student_id, not marked_by.
+//
+// enrollments is `!inner` (rather than the default left embed) so that a
+// schoolId scope can filter on the joined table at all — PostgREST only
+// allows `.eq()` on an embedded resource when the embed is inner. Safe here
+// because assessment_submissions.enrollment_id is NOT NULL, so no row is
+// dropped by the switch — see LEADERBOARD_COLUMNS in
+// lib/entities/performance.ts for the same reasoning.
 const RESULT_COLUMNS =
-  "id, student_id, submitted_at, time_spent_seconds, total_score, max_score, status, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments(school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name))";
+  "id, student_id, submitted_at, time_spent_seconds, total_score, max_score, status, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments!inner(school_id, school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name))";
 
 /**
  * One row per student who sat the assessment, with their marked total.
@@ -1191,8 +1207,15 @@ const RESULT_COLUMNS =
  * Totals come from the submission, which a database trigger keeps in step with
  * the individual responses — so this can never report a score that disagrees
  * with the answers behind it.
+ *
+ * `opts.schoolId` narrows to one school's submissions — used by school_admin
+ * routes, which must never see another school's students even on an
+ * assessment targeted at multiple schools.
  */
-export async function getAssessmentResults(assessmentId: string): Promise<AssessmentResult[]> {
+export async function getAssessmentResults(
+  assessmentId: string,
+  opts?: { schoolId?: string }
+): Promise<AssessmentResult[]> {
   const supabase = getSupabaseAdmin();
 
   // Grows with the number of learners who sat the exam, so it pages. An exam
@@ -1202,15 +1225,14 @@ export async function getAssessmentResults(assessmentId: string): Promise<Assess
   //
   // submitted_at alone is not a total order (a class submitting together ties
   // to the second), so id breaks the tie and keeps the pages from overlapping.
-  const rows = await readAllPages<ResultRow>((from, to) =>
-    supabase
+  const rows = await readAllPages<ResultRow>((from, to) => {
+    let query = supabase
       .from("assessment_submissions")
       .select(RESULT_COLUMNS)
-      .eq("assessment_id", assessmentId)
-      .order("submitted_at", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, to)
-  );
+      .eq("assessment_id", assessmentId);
+    if (opts?.schoolId) query = query.eq("enrollment.school_id", opts.schoolId);
+    return query.order("submitted_at", { ascending: true }).order("id", { ascending: true }).range(from, to);
+  });
 
   return rows.map((row) => {
     const student = row.student;
