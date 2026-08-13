@@ -423,6 +423,54 @@ export async function updateAssessment(
 }
 
 /**
+ * Clone an assessment as a new draft — same title (suffixed), time limit,
+ * instructions, audience and questions, but its own fresh system id and no
+ * submissions. Draft status means saveQuestions' "already sat" lock can
+ * never apply to the copy, even if the source is closed with years of
+ * results behind it.
+ */
+export async function duplicateAssessment(sourceSystemId: string, createdBy: string): Promise<Assessment> {
+  const source = await getAssessmentBySystemId(sourceSystemId);
+  if (!source) throw new UserFacingError("Assessment not found");
+
+  const questions = await getQuestions(source.id);
+
+  const copy = await createAssessment({
+    title: `${source.title} (Copy)`,
+    description: source.description,
+    timeLimit: source.timeLimit,
+    instructions: source.instructions,
+    status: "draft",
+    createdBy,
+    targets: source.targets.map((t) => ({
+      schoolId: t.schoolId,
+      level: t.level,
+      classId: t.classId,
+      studentId: t.studentId,
+    })),
+  });
+
+  if (questions.length > 0) {
+    await saveQuestions(
+      copy.id,
+      questions.map((q) => ({
+        questionText: q.questionText,
+        questionType: q.questionType,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        modelAnswer: q.modelAnswer,
+        imageUrl: q.imageUrl,
+        imagePublicId: q.imagePublicId,
+        maxScore: q.maxScore,
+        config: q.config,
+      }))
+    );
+  }
+
+  return copy;
+}
+
+/**
  * Soft-delete. Submissions reference assessments, and removing a paper must
  * never take students' answers with it.
  */
@@ -863,13 +911,22 @@ function verdictFor(score: number | null, maxScore: number): AnswerVerdict {
  * Sequential rather than parallel: this is a printing path, not a hot one, and
  * a class of forty firing forty concurrent query bundles at Supabase is a good
  * way to get rate-limited mid-download.
+ *
+ * `opts.schoolId` narrows to one school's scripts — used by school_admin, so
+ * a bulk download on a multi-school assessment never bundles another
+ * school's learners into the same file.
  */
-export async function getAllMarkedScripts(assessmentId: string): Promise<MarkedScript[]> {
+export async function getAllMarkedScripts(
+  assessmentId: string,
+  opts?: { schoolId?: string }
+): Promise<MarkedScript[]> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
+  let query = supabase
     .from("assessment_submissions")
-    .select("student_id")
+    .select("student_id, enrollment:enrollments!inner(school_id)")
     .eq("assessment_id", assessmentId);
+  if (opts?.schoolId) query = query.eq("enrollment.school_id", opts.schoolId);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
 
   const scripts: MarkedScript[] = [];
@@ -1404,6 +1461,67 @@ export async function listAssessmentsAwaitingMarking(): Promise<AwaitingMarking[
     }
   }
   return awaiting;
+}
+
+/** School-wide marking totals — how far a school's teachers have gotten through marking, not per-assessment. */
+export interface SchoolMarkingProgress {
+  totalScripts: number;
+  markedScripts: number;
+  /** 'submitted' only — a script nobody has handed in yet isn't waiting on a marker, same convention as AwaitingMarking. */
+  pendingScripts: number;
+  fullyMarkedPapers: number;
+  /** Papers with at least one submission from this school — the denominator fullyMarkedPapers is out of. */
+  totalPapers: number;
+}
+
+/**
+ * Every submission across a school's assessments, marked or not — the
+ * aggregate `listAssessmentsAwaitingMarking` doesn't give you, since that
+ * one only ever looks at the unmarked side, one assessment at a time.
+ */
+export async function getSchoolMarkingProgress(schoolId: string): Promise<SchoolMarkingProgress> {
+  const supabase = getSupabaseAdmin();
+
+  interface Row {
+    assessment_id: string;
+    status: string;
+  }
+  const rows = await readAllPages<Row>((from, to) =>
+    supabase
+      .from("assessment_submissions")
+      .select("assessment_id, status, enrollment:enrollments!inner(school_id)")
+      .eq("enrollment.school_id", schoolId)
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
+
+  const byAssessment = new Map<string, { total: number; marked: number }>();
+  let markedScripts = 0;
+  let pendingScripts = 0;
+  for (const row of rows) {
+    const bucket = byAssessment.get(row.assessment_id) ?? { total: 0, marked: 0 };
+    bucket.total += 1;
+    if (row.status === "marked") {
+      bucket.marked += 1;
+      markedScripts += 1;
+    } else if (row.status === "submitted") {
+      pendingScripts += 1;
+    }
+    byAssessment.set(row.assessment_id, bucket);
+  }
+
+  let fullyMarkedPapers = 0;
+  for (const bucket of byAssessment.values()) {
+    if (bucket.total > 0 && bucket.total === bucket.marked) fullyMarkedPapers += 1;
+  }
+
+  return {
+    totalScripts: rows.length,
+    markedScripts,
+    pendingScripts,
+    fullyMarkedPapers,
+    totalPapers: byAssessment.size,
+  };
 }
 
 /** One assessment as it appears in a person's reminder. */

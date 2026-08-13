@@ -7,6 +7,8 @@ interface SatVsMissedChartProps {
   eligibleCount: number;
   satCount: number;
   missedCount: number;
+  /** Drill down into who missed it. "Sat" isn't clickable — that's just the existing All-submissions table. */
+  onMissedClick?: () => void;
 }
 
 const BAR_HEIGHT = 22;
@@ -21,7 +23,7 @@ const CHART_HEIGHT = BAR_HEIGHT * 2 + ROW_GAP * 3;
 const SAT_COLOR = 'var(--color-success)';
 const MISSED_COLOR = 'var(--color-warning)';
 
-export function SatVsMissedChart({ eligibleCount, satCount, missedCount }: SatVsMissedChartProps) {
+export function SatVsMissedChart({ eligibleCount, satCount, missedCount, onMissedClick }: SatVsMissedChartProps) {
   const { ref, width } = useElementSize<HTMLDivElement>();
   const chartWidth = Math.max(0, width - LABEL_WIDTH - 48);
 
@@ -29,8 +31,8 @@ export function SatVsMissedChart({ eligibleCount, satCount, missedCount }: SatVs
   const x = scaleLinear().domain([0, domainMax]).range([0, chartWidth]);
 
   const rows = [
-    { label: 'Sat', value: satCount, color: SAT_COLOR },
-    { label: 'Missed', value: missedCount, color: MISSED_COLOR },
+    { label: 'Sat', value: satCount, color: SAT_COLOR, onClick: undefined },
+    { label: 'Missed', value: missedCount, color: MISSED_COLOR, onClick: onMissedClick },
   ];
 
   return (
@@ -42,10 +44,17 @@ export function SatVsMissedChart({ eligibleCount, satCount, missedCount }: SatVs
             const barWidth = Math.max(0, x(row.value));
             const y = ROW_GAP + i * (BAR_HEIGHT + ROW_GAP);
             return (
-              <g key={row.label} transform={`translate(${LABEL_WIDTH}, ${y})`}>
-                <title>{`${row.label}: ${row.value}`}</title>
+              <g
+                key={row.label}
+                transform={`translate(${LABEL_WIDTH}, ${y})`}
+                onClick={row.onClick}
+                className={row.onClick ? 'cursor-pointer' : undefined}
+              >
+                <title>{`${row.label}: ${row.value}${row.onClick ? ' — click to see who' : ''}`}</title>
                 {/* Recessive baseline gridline. */}
                 <line x1={0} x2={chartWidth} y1={BAR_HEIGHT} y2={BAR_HEIGHT} stroke="var(--color-border)" strokeWidth={1} />
+                {/* Full-row hit target — the bar itself may be too short/thin to click reliably. */}
+                <rect x={0} y={0} width={chartWidth} height={BAR_HEIGHT} fill="transparent" />
                 <rect
                   x={0}
                   y={0}
@@ -53,6 +62,7 @@ export function SatVsMissedChart({ eligibleCount, satCount, missedCount }: SatVs
                   height={BAR_HEIGHT}
                   fill={row.color}
                   rx={4}
+                  className={row.onClick ? 'opacity-90 hover:opacity-100' : undefined}
                 />
                 <text
                   x={-8}

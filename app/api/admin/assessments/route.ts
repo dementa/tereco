@@ -6,6 +6,7 @@ import {
   createAssessment,
   saveQuestions,
 } from '@/lib/assessments';
+import { canManageAssessment, isAssessmentOwner } from '@/lib/auth/access';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { getCurrentProfile, requireRole } from '@/lib/auth/session';
 import { z } from 'zod';
@@ -28,7 +29,15 @@ export async function GET(request: NextRequest) {
         : markable
           ? await getMarkableAssessments(profile.id, profile.schoolId)
           : await getEditableAssessments(profile.id);
-    return successResponse({ data: assessments });
+
+    // Cheap in-memory computation (no extra queries) — the card list's
+    // three-dot menu needs to know per-card whether Duplicate/Delete apply
+    // without re-deriving owner/collaborator logic client-side.
+    const withCapabilities = assessments.map((a) => ({
+      ...a,
+      capabilities: { canManage: canManageAssessment(profile, a), isOwner: isAssessmentOwner(profile, a) },
+    }));
+    return successResponse({ data: withCapabilities });
   } catch (error) {
     console.error('Error fetching assessments:', error);
     return errorResponse('Failed to fetch assessments', 500);

@@ -108,6 +108,9 @@ export async function GET(
       canDownloadPaper: manages,
       canDownloadResults: true,
       canDownloadAnswerKey: manages,
+      // /scripts is gated on canMarkAssessment (same as results/pdf) — this
+      // GET already required that to reach this point.
+      canDownloadScripts: true,
     };
     return successResponse({ data: { ...assessment, questions, capabilities } });
   } catch (error) {

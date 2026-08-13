@@ -2,6 +2,7 @@
 
 import { Card } from '@/components/ui/Card';
 import { Badge } from '@/components/ui/Badge';
+import { CardMenu } from '@/components/assessment/CardMenu';
 
 export interface CardAssessment {
   id: string;
@@ -12,6 +13,8 @@ export interface CardAssessment {
   opensAt?: string;
   closesAt?: string;
   resultsReleasedAt?: string;
+  /** Absent for school_admin's read-only list — no menu is shown when it's missing. */
+  capabilities?: { canManage: boolean; isOwner: boolean };
 }
 
 export const STATUS_VARIANT: Record<string, 'default' | 'accent' | 'success' | 'muted'> = {
@@ -57,9 +60,18 @@ interface AssessmentCardProps {
   schools?: { id: string; name: string }[];
   levels?: { level: number; code: string }[];
   onClick: () => void;
+  onDuplicate?: () => void;
+  onDelete?: () => void;
 }
 
-export function AssessmentCard({ assessment, schools = [], levels = [], onClick }: AssessmentCardProps) {
+export function AssessmentCard({
+  assessment,
+  schools = [],
+  levels = [],
+  onClick,
+  onDuplicate,
+  onDelete,
+}: AssessmentCardProps) {
   // Card itself doesn't forward onClick, so the click/keyboard target wraps
   // it rather than trying to thread the handler through.
   return (
@@ -78,7 +90,17 @@ export function AssessmentCard({ assessment, schools = [], levels = [], onClick 
       <Card hover>
         <div className="flex items-start justify-between gap-2 mb-1">
           <h3 className="font-semibold text-primary-900 min-w-0 truncate">{assessment.title}</h3>
-          <Badge variant={STATUS_VARIANT[assessment.status]}>{assessment.status}</Badge>
+          <div className="flex items-center gap-1 shrink-0">
+            <Badge variant={STATUS_VARIANT[assessment.status]}>{assessment.status}</Badge>
+            {assessment.capabilities && onDuplicate && onDelete && (
+              <CardMenu
+                capabilities={assessment.capabilities}
+                onOpen={onClick}
+                onDuplicate={onDuplicate}
+                onDelete={onDelete}
+              />
+            )}
+          </div>
         </div>
         <p className="text-xs text-text-muted mb-3">{assessment.systemId}</p>
         <div className="space-y-1 text-xs text-[#666666]">

@@ -8,6 +8,8 @@ interface ScoreDistributionChartProps {
   distribution: { bucket: string; count: number }[];
   topPerformers?: PerformerEntry[];
   bottomPerformers?: PerformerEntry[];
+  /** Drill down into who's in one bucket. Not called for empty buckets. */
+  onBucketClick?: (bucket: string) => void;
 }
 
 const CHART_HEIGHT = 180;
@@ -25,6 +27,7 @@ export function ScoreDistributionChart({
   distribution,
   topPerformers = [],
   bottomPerformers = [],
+  onBucketClick,
 }: ScoreDistributionChartProps) {
   const { ref, width } = useElementSize<HTMLDivElement>();
   const plotHeight = CHART_HEIGHT - AXIS_HEIGHT - MARKER_LANE;
@@ -57,9 +60,16 @@ export function ScoreDistributionChart({
             {distribution.map((d, i) => {
               const barHeight = plotHeight - y(d.count);
               const bx = xBand(String(i)) ?? 0;
+              const clickable = d.count > 0 && !!onBucketClick;
               return (
-                <g key={d.bucket}>
-                  <title>{`${d.bucket}%: ${d.count} student${d.count === 1 ? '' : 's'}`}</title>
+                <g
+                  key={d.bucket}
+                  onClick={clickable ? () => onBucketClick(d.bucket) : undefined}
+                  className={clickable ? 'cursor-pointer' : undefined}
+                >
+                  <title>{`${d.bucket}%: ${d.count} student${d.count === 1 ? '' : 's'}${clickable ? ' — click to see who' : ''}`}</title>
+                  {/* Full-height hit target — a low bar can be a few pixels tall. */}
+                  <rect x={bx} y={0} width={xBand.bandwidth()} height={plotHeight} fill="transparent" />
                   <rect
                     x={bx}
                     y={y(d.count)}
@@ -67,6 +77,7 @@ export function ScoreDistributionChart({
                     height={Math.max(0, barHeight)}
                     fill={BAR_COLOR}
                     rx={3}
+                    className={clickable ? 'opacity-90 hover:opacity-100' : undefined}
                   />
                   {d.count > 0 && (
                     <text

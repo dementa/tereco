@@ -6,6 +6,8 @@ import type { QuestionStat } from '@/lib/entities/assessment-analytics';
 
 interface QuestionPerformanceChartProps {
   questions: QuestionStat[];
+  /** Drill down into every student's answer for one question. Not called for questions with zero responses. */
+  onQuestionClick?: (questionId: string) => void;
 }
 
 const BAR_HEIGHT = 16;
@@ -22,7 +24,7 @@ const WEAK_COLOR = 'var(--color-error)';
 const STRONG_COLOR = 'var(--color-success)';
 const UNMARKED_COLOR = 'var(--color-border-strong)';
 
-export function QuestionPerformanceChart({ questions }: QuestionPerformanceChartProps) {
+export function QuestionPerformanceChart({ questions, onQuestionClick }: QuestionPerformanceChartProps) {
   const { ref, width } = useElementSize<HTMLDivElement>();
   const chartWidth = Math.max(0, width - LABEL_WIDTH - 40);
   const chartHeight = questions.length * (BAR_HEIGHT + ROW_GAP) + ROW_GAP;
@@ -57,11 +59,27 @@ export function QuestionPerformanceChart({ questions }: QuestionPerformanceChart
             const barWidth = pct === null ? 0 : Math.max(0, x(pct));
             const y = ROW_GAP + i * (BAR_HEIGHT + ROW_GAP);
             const color = pct === null ? UNMARKED_COLOR : pct < 50 ? WEAK_COLOR : STRONG_COLOR;
+            const clickable = q.respondedCount > 0 && !!onQuestionClick;
             return (
-              <g key={q.questionId} transform={`translate(${LABEL_WIDTH}, ${y})`}>
-                <title>{`${q.code}: ${q.questionText || 'Untitled'} — ${pct === null ? 'not yet marked' : `${pct}% average`}`}</title>
+              <g
+                key={q.questionId}
+                transform={`translate(${LABEL_WIDTH}, ${y})`}
+                onClick={clickable ? () => onQuestionClick(q.questionId) : undefined}
+                className={clickable ? 'cursor-pointer' : undefined}
+              >
+                <title>{`${q.code}: ${q.questionText || 'Untitled'} — ${pct === null ? 'not yet marked' : `${pct}% average`}${clickable ? ' — click to see every answer' : ''}`}</title>
                 <line x1={0} x2={chartWidth} y1={BAR_HEIGHT} y2={BAR_HEIGHT} stroke="var(--color-border)" strokeWidth={1} />
-                <rect x={0} y={0} width={barWidth} height={BAR_HEIGHT} fill={color} rx={3} />
+                {/* Full-row hit target — an unmarked/weak bar can be very short. */}
+                <rect x={0} y={0} width={chartWidth} height={BAR_HEIGHT} fill="transparent" />
+                <rect
+                  x={0}
+                  y={0}
+                  width={barWidth}
+                  height={BAR_HEIGHT}
+                  fill={color}
+                  rx={3}
+                  className={clickable ? 'opacity-90 hover:opacity-100' : undefined}
+                />
                 <text
                   x={-8}
                   y={BAR_HEIGHT / 2}

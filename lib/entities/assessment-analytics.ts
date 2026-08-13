@@ -210,3 +210,158 @@ export async function getAssessmentAnalytics(
 
   return { summary, questionStats, distribution, topPerformers, bottomPerformers };
 }
+
+// ─── Drill-down: which students make up one bar/segment of a chart ─────────
+
+export type AnalyticsSegment =
+  | { type: "missed" }
+  | { type: "bucket"; bucket: string }
+  | { type: "question"; questionId: string };
+
+export interface SegmentEntry {
+  studentId: string;
+  studentName: string;
+  studentSystemId: string | null;
+  className: string;
+  /** Percentage for a bucket segment, "answer (score)" for a question segment, absent for missed. */
+  value?: string;
+}
+
+interface MissedProfileRow {
+  id: string;
+  system_id: string | null;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+}
+
+interface MissedEnrollmentRow {
+  student_id: string;
+  class_display_name: string | null;
+  stream_name: string | null;
+}
+
+interface QuestionAnswerRow {
+  answer: string;
+  score: number | null;
+  submission: {
+    student_id: string;
+    student: { system_id: string | null; first_name: string; middle_name: string | null; last_name: string } | null;
+    enrollment: {
+      class: { alias: string | null; grade_level: { code: string } | null } | null;
+      stream: { name: string } | null;
+    } | null;
+  } | null;
+}
+
+const QUESTION_ANSWERS_COLUMNS =
+  "answer, score, submission:assessment_submissions!inner(student_id, assessment_id, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments!inner(school_id, class:classes(alias, grade_level:grade_levels(code)), stream:streams(name)))";
+
+function fullName(p: { first_name: string; middle_name: string | null; last_name: string }): string {
+  return [p.first_name, p.middle_name, p.last_name].filter(Boolean).join(" ").trim();
+}
+
+/**
+ * The people behind one chart segment — who missed it, who's in one score
+ * bucket, or how each student answered one question. Reuses the same
+ * queries `getAssessmentAnalytics` already runs rather than re-deriving the
+ * underlying sets, so a segment's roster can never disagree with the count
+ * it was clicked from.
+ */
+export async function getAssessmentAnalyticsSegment(
+  assessment: Assessment,
+  segment: AnalyticsSegment,
+  opts?: { schoolId?: string }
+): Promise<SegmentEntry[]> {
+  const supabase = getSupabaseAdmin();
+
+  if (segment.type === "missed") {
+    let eligibleQuery = supabase.rpc("eligible_students_for_assessment", { p_assessment: assessment.id });
+    if (opts?.schoolId) eligibleQuery = eligibleQuery.eq("school_id", opts.schoolId);
+    const [{ data: eligibleData, error: eligibleError }, results] = await Promise.all([
+      eligibleQuery,
+      getAssessmentResults(assessment.id, opts),
+    ]);
+    if (eligibleError) throw new Error(eligibleError.message);
+
+    const satStudentIds = new Set(results.map((r) => r.studentId));
+    const missedIds = ((eligibleData ?? []) as EligibleRow[])
+      .map((e) => e.student_id)
+      .filter((id) => !satStudentIds.has(id));
+    if (missedIds.length === 0) return [];
+
+    const [{ data: profiles, error: profilesError }, { data: enrollments, error: enrollmentsError }] =
+      await Promise.all([
+        supabase
+          .from("profiles")
+          .select("id, system_id, first_name, middle_name, last_name")
+          .in("id", missedIds),
+        supabase
+          .from("current_enrollments")
+          .select("student_id, class_display_name, stream_name")
+          .in("student_id", missedIds),
+      ]);
+    if (profilesError) throw new Error(profilesError.message);
+    if (enrollmentsError) throw new Error(enrollmentsError.message);
+
+    const enrollmentByStudent = new Map(
+      ((enrollments ?? []) as MissedEnrollmentRow[]).map((e) => [e.student_id, e])
+    );
+    return ((profiles ?? []) as MissedProfileRow[]).map((p) => {
+      const enrollment = enrollmentByStudent.get(p.id);
+      return {
+        studentId: p.id,
+        studentName: fullName(p),
+        studentSystemId: p.system_id,
+        className: [enrollment?.class_display_name, enrollment?.stream_name].filter(Boolean).join(" "),
+      };
+    });
+  }
+
+  if (segment.type === "bucket") {
+    const [lo, hiRaw] = segment.bucket.split("-");
+    const hi = Number(hiRaw);
+    const lowerBound = Number(lo);
+    const results = await getAssessmentResults(assessment.id, opts);
+    return results
+      .filter((r) => r.percentage !== null && r.percentage >= lowerBound && r.percentage <= hi)
+      .map((r) => ({
+        studentId: r.studentId,
+        studentName: r.studentName,
+        studentSystemId: r.studentSystemId,
+        className: r.className,
+        value: `${r.percentage}%`,
+      }));
+  }
+
+  // segment.type === "question"
+  const rows = await readAllPages<QuestionAnswerRow>((from, to) => {
+    let query = supabase
+      .from("responses")
+      .select(QUESTION_ANSWERS_COLUMNS)
+      .eq("question_id", segment.questionId)
+      .eq("submission.assessment_id", assessment.id);
+    if (opts?.schoolId) query = query.eq("submission.enrollment.school_id", opts.schoolId);
+    return query.order("id", { ascending: true }).range(from, to);
+  });
+
+  return rows
+    .filter((r) => r.submission)
+    .map((r) => {
+      const submission = r.submission!;
+      const student = submission.student;
+      const enrollment = submission.enrollment;
+      return {
+        studentId: submission.student_id,
+        studentName: student ? fullName(student) : "",
+        studentSystemId: student?.system_id ?? null,
+        className: [
+          enrollment?.class?.alias ?? enrollment?.class?.grade_level?.code ?? "",
+          enrollment?.stream?.name ?? "",
+        ]
+          .filter(Boolean)
+          .join(" "),
+        value: r.score === null ? r.answer || "(no answer)" : `${r.answer || "(no answer)"} — ${r.score} pts`,
+      };
+    });
+}

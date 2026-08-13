@@ -46,7 +46,11 @@ export async function GET(
           isOwner: false,
           canDownloadPaper: true,
           canDownloadResults: true,
-          canDownloadAnswerKey: false,
+          // Scripts and the marking guide are only theirs to see once the
+          // assessment is closed — "authoring and marking stay with staff"
+          // while it's still live.
+          canDownloadAnswerKey: assessment.status === "closed",
+          canDownloadScripts: assessment.status === "closed",
         },
       },
     });

@@ -10,15 +10,16 @@ import { Modal } from '@/components/ui/Modal';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import {
-  ArrowLeft, Download, KeyRound, ListChecks, Printer, RotateCcw, Send, Trash2,
+  ArrowLeft, Download, FileText, KeyRound, ListChecks, Printer, RotateCcw, Send, Trash2,
 } from 'lucide-react';
 import { PdfPreviewModal } from '@/components/assessment/PdfPreviewModal';
 import { AssessmentSetupPanel } from '@/components/assessment/AssessmentSetupPanel';
+import { SegmentDrillDownModal } from '@/components/assessment/SegmentDrillDownModal';
 import { SatVsMissedChart } from '@/components/assessment/charts/SatVsMissedChart';
 import { QuestionPerformanceChart } from '@/components/assessment/charts/QuestionPerformanceChart';
 import { ScoreDistributionChart } from '@/components/assessment/charts/ScoreDistributionChart';
 import { PerformersChart } from '@/components/assessment/charts/PerformersChart';
-import type { AssessmentAnalytics as AnalyticsData } from '@/lib/entities/assessment-analytics';
+import type { AssessmentAnalytics as AnalyticsData, SegmentEntry } from '@/lib/entities/assessment-analytics';
 
 export type AssessmentRole = 'admin' | 'staff' | 'school_admin';
 
@@ -37,6 +38,7 @@ interface Capabilities {
   canDownloadPaper: boolean;
   canDownloadResults: boolean;
   canDownloadAnswerKey: boolean;
+  canDownloadScripts: boolean;
 }
 
 interface HeaderAssessment {
@@ -106,6 +108,12 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
   const [showSubmissions, setShowSubmissions] = useState(false);
   const [loading, setLoading] = useState(true);
   const [preview, setPreview] = useState<{ url: string; filename: string; title: string } | null>(null);
+  const [segment, setSegment] = useState<{
+    title: string;
+    valueHeader?: string;
+    loading: boolean;
+    entries: SegmentEntry[];
+  } | null>(null);
   const [closing, setClosing] = useState(false);
   const [publishAsEPaper, setPublishAsEPaper] = useState(false);
   const [showReopenForm, setShowReopenForm] = useState(false);
@@ -127,19 +135,48 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
     if (res.success) setAnalytics(res.data);
   }, [apiBase, systemId]);
 
+  async function openSegment(
+    params: URLSearchParams,
+    title: string,
+    valueHeader?: string
+  ) {
+    setSegment({ title, valueHeader, loading: true, entries: [] });
+    try {
+      const res = await fetch(`${apiBase}/${systemId}/analytics/segment?${params.toString()}`).then((r) =>
+        r.json()
+      );
+      if (res.success) {
+        setSegment({ title, valueHeader, loading: false, entries: res.data });
+      } else {
+        toast.error(res.message ?? 'Could not load that breakdown.');
+        setSegment(null);
+      }
+    } catch {
+      toast.error('Network error.');
+      setSegment(null);
+    }
+  }
+
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
       setLoading(true);
       try {
-        const tasks: Promise<unknown>[] = [loadHeader(), loadAnalytics()];
+        // Every role now gets the submissions table (scoped to their own
+        // school for school_admin, via apiBase) — that's how school_admin
+        // reaches the CSV/Excel/PDF export dialog already built into
+        // DataTable, rather than a bespoke export path.
+        const tasks: Promise<unknown>[] = [
+          loadHeader(),
+          loadAnalytics(),
+          fetch(`${apiBase}/${systemId}/results`).then((r) => r.json()).then((r) => {
+            if (r.success) setResults(r.data.results);
+          }),
+        ];
         if (!isSchoolAdmin) {
           tasks.push(
             fetch('/api/admin/system/schools').then((r) => r.json()).then((r) => {
               if (r.success) setSchools(r.data);
-            }),
-            fetch(`${apiBase}/${systemId}/results`).then((r) => r.json()).then((r) => {
-              if (r.success) setResults(r.data.results);
             }),
             fetch(`${apiBase}/${systemId}/release`).then((r) => r.json()).then((r) => {
               if (r.success) setRelease(r.data);
@@ -448,6 +485,22 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
             Answer key
           </Button>
         )}
+        {cap.canDownloadScripts && (
+          <Button
+            variant="outline"
+            title="Every learner's marked script, one PDF"
+            onClick={() =>
+              setPreview({
+                url: `${apiBase}/${systemId}/scripts`,
+                filename: `${systemId}-scripts.pdf`,
+                title: 'Scripts',
+              })
+            }
+          >
+            <FileText className="w-4 h-4 mr-1.5" aria-hidden />
+            Scripts
+          </Button>
+        )}
         {cap.canDownloadResults && (
           <Button
             variant="outline"
@@ -507,14 +560,31 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
                 ))}
               </div>
 
-              <Card>
-                <h2 className="font-semibold text-primary-900 mb-3">Who sat it</h2>
-                <SatVsMissedChart
-                  eligibleCount={analytics.summary.eligibleCount}
-                  satCount={analytics.summary.satCount}
-                  missedCount={analytics.summary.missedCount}
-                />
-              </Card>
+              {/* Sat/Missed and Performers are both fixed, compact shapes — pair
+                  them side by side on wide screens. Distribution (10 buckets)
+                  and Question performance (grows with the paper's question
+                  count) need real horizontal room to stay legible, so they
+                  stay full-width below. */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <Card>
+                  <h2 className="font-semibold text-primary-900 mb-3">Who sat it</h2>
+                  <SatVsMissedChart
+                    eligibleCount={analytics.summary.eligibleCount}
+                    satCount={analytics.summary.satCount}
+                    missedCount={analytics.summary.missedCount}
+                    onMissedClick={
+                      analytics.summary.missedCount > 0
+                        ? () => void openSegment(new URLSearchParams({ type: 'missed' }), 'Missed the paper')
+                        : undefined
+                    }
+                  />
+                </Card>
+
+                <Card>
+                  <h2 className="font-semibold text-primary-900 mb-3">Top and bottom performers</h2>
+                  <PerformersChart topPerformers={analytics.topPerformers} bottomPerformers={analytics.bottomPerformers} />
+                </Card>
+              </div>
 
               <Card>
                 <h2 className="font-semibold text-primary-900 mb-3">Score distribution</h2>
@@ -522,24 +592,31 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
                   distribution={analytics.distribution}
                   topPerformers={analytics.topPerformers}
                   bottomPerformers={analytics.bottomPerformers}
+                  onBucketClick={(bucket) =>
+                    void openSegment(new URLSearchParams({ type: 'bucket', bucket }), `Scored ${bucket}%`, 'Score')
+                  }
                 />
-              </Card>
-
-              <Card>
-                <h2 className="font-semibold text-primary-900 mb-3">Top and bottom performers</h2>
-                <PerformersChart topPerformers={analytics.topPerformers} bottomPerformers={analytics.bottomPerformers} />
               </Card>
 
               <Card>
                 <h2 className="font-semibold text-primary-900 mb-3">Question performance</h2>
                 <p className="text-xs text-text-muted mb-3">Sorted worst-done to best-done.</p>
-                <QuestionPerformanceChart questions={analytics.questionStats} />
+                <QuestionPerformanceChart
+                  questions={analytics.questionStats}
+                  onQuestionClick={(questionId) => {
+                    const q = analytics.questionStats.find((s) => s.questionId === questionId);
+                    void openSegment(
+                      new URLSearchParams({ type: 'question', questionId }),
+                      `${q?.code ?? 'Question'}${q?.questionText ? ` — ${q.questionText}` : ''}`,
+                      'Answer'
+                    );
+                  }}
+                />
               </Card>
             </>
           )}
 
-          {!isSchoolAdmin && (
-            <Card>
+          <Card>
               <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                 <h2 className="font-semibold text-primary-900">
                   All submissions
@@ -579,7 +656,7 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
                   </Button>
                 </div>
               </div>
-              {results.length > 0 && !release.releasedAt && !release.fullyMarked && (
+              {!isSchoolAdmin && results.length > 0 && !release.releasedAt && !release.fullyMarked && (
                 <p className="text-xs text-[#C26565] mb-3">
                   Results stay unreleased until every response has been marked — a learner opening a
                   half-scored paper reads it as their final result.
@@ -590,9 +667,13 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
                   rows={results}
                   columns={resultColumns}
                   rowKey={(r) => r.submissionId}
-                  rowActions={(r) => [
-                    { label: 'Allow resit', icon: RotateCcw, onClick: () => void allowResit(r), danger: true },
-                  ]}
+                  rowActions={
+                    cap.canManage
+                      ? (r) => [
+                          { label: 'Allow resit', icon: RotateCcw, onClick: () => void allowResit(r), danger: true },
+                        ]
+                      : undefined
+                  }
                   initialSort={{ key: 'studentName', direction: 'asc' }}
                   searchPlaceholder="Search results by student, ID, school or class…"
                   emptyMessage="Nobody has sat this assessment yet."
@@ -611,8 +692,7 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
                   ]}
                 />
               )}
-            </Card>
-          )}
+          </Card>
         </div>
       )}
 
@@ -622,6 +702,15 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
         url={preview?.url ?? null}
         filename={preview?.filename ?? 'document.pdf'}
         title={preview?.title ?? 'Preview'}
+      />
+
+      <SegmentDrillDownModal
+        open={segment !== null}
+        onClose={() => setSegment(null)}
+        title={segment?.title ?? ''}
+        loading={segment?.loading ?? false}
+        entries={segment?.entries ?? []}
+        valueHeader={segment?.valueHeader}
       />
 
       <Modal open={closing} onClose={() => setClosing(false)} title="Close this assessment">

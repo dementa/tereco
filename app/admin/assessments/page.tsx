@@ -97,6 +97,33 @@ export default function AdminAssessments() {
     }
   }
 
+  async function handleDuplicate(a: CardAssessment) {
+    try {
+      const res = await fetch(`/api/admin/assessments/${a.systemId}/duplicate`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message ?? 'Duplicated.');
+        router.push(`/admin/assessments/${data.data.systemId}`);
+      } else {
+        toast.error(data.message ?? 'Could not duplicate that assessment.');
+      }
+    } catch {
+      toast.error('Network error.');
+    }
+  }
+
+  async function handleDelete(a: CardAssessment) {
+    if (!confirm(`Delete "${a.title}"? This cannot be undone from here.`)) return;
+    const res = await fetch(`/api/admin/assessments/${a.systemId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      toast.success('Assessment deleted.');
+      setAssessments((prev) => prev.filter((x) => x.systemId !== a.systemId));
+    } else {
+      toast.error(data.message ?? 'Could not delete the assessment.');
+    }
+  }
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     return assessments.filter((a) => {
@@ -207,6 +234,8 @@ export default function AdminAssessments() {
               schools={schools}
               levels={levels}
               onClick={() => router.push(`/admin/assessments/${a.systemId}`)}
+              onDuplicate={() => void handleDuplicate(a)}
+              onDelete={() => void handleDelete(a)}
             />
           ))}
         </div>
