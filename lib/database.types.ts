@@ -297,6 +297,7 @@ export type Database = {
           deleted_at: string | null
           description: string
           e_paper_at: string | null
+          hidden_at: string | null
           id: string
           instructions: string
           opens_at: string | null
@@ -317,6 +318,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string
           e_paper_at?: string | null
+          hidden_at?: string | null
           id?: string
           instructions?: string
           opens_at?: string | null
@@ -337,6 +339,7 @@ export type Database = {
           deleted_at?: string | null
           description?: string
           e_paper_at?: string | null
+          hidden_at?: string | null
           id?: string
           instructions?: string
           opens_at?: string | null

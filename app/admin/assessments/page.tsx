@@ -6,11 +6,12 @@ import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { useToast } from '@/components/ui/ToastProvider';
-import { ClipboardList, Plus, Search, X } from 'lucide-react';
+import { ClipboardList, Eye, EyeOff, Plus, Search, X } from 'lucide-react';
 import { AssessmentCard, type CardAssessment } from '@/components/assessment/AssessmentCard';
 import { AssessmentTable } from '@/components/assessment/AssessmentTable';
 import { SortMenu, type SortDir, type SortField } from '@/components/ui/SortMenu';
 import { ViewToggle, type ListView } from '@/components/ui/ViewToggle';
+import { useAuth } from '@/components/auth/AuthContext';
 
 const emptyForm = {
   title: '',
@@ -30,6 +31,8 @@ const STATUS_FILTER_OPTIONS = [
 export default function AdminAssessments() {
   const router = useRouter();
   const toast = useToast();
+  const { user } = useAuth();
+  const isSuperAdmin = user?.role === 'super_admin';
   const [assessments, setAssessments] = useState<CardAssessment[]>([]);
   const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
   const [levels, setLevels] = useState<{ level: number; code: string }[]>([]);
@@ -45,11 +48,16 @@ export default function AdminAssessments() {
   const [sortField, setSortField] = useState<SortField>('created');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [view, setView] = useState<ListView>('card');
+  // super_admin-only: reveals assessments an earlier "Hide" hid from
+  // everyone else, including this same list by default.
+  const [showHidden, setShowHidden] = useState(false);
 
   const load = useCallback(async () => {
     try {
+      const assessmentsUrl =
+        isSuperAdmin && showHidden ? '/api/admin/assessments?hidden=1' : '/api/admin/assessments';
       const [assessmentsRes, schoolsRes, levelsRes] = await Promise.all([
-        fetch('/api/admin/assessments').then((r) => r.json()),
+        fetch(assessmentsUrl).then((r) => r.json()),
         fetch('/api/admin/system/schools').then((r) => r.json()),
         fetch('/api/admin/system/grade-levels').then((r) => r.json()),
       ]);
@@ -62,7 +70,7 @@ export default function AdminAssessments() {
     } finally {
       setLoading(false);
     }
-  }, [toast]);
+  }, [toast, isSuperAdmin, showHidden]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -130,6 +138,28 @@ export default function AdminAssessments() {
     } else {
       toast.error(data.message ?? 'Could not delete the assessment.');
     }
+  }
+
+  async function handleToggleHidden(a: CardAssessment) {
+    const nextHidden = !a.hiddenAt;
+    const res = await fetch(`/api/admin/assessments/${a.systemId}/visibility`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ hidden: nextHidden }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      toast.error(data.message ?? 'Could not update visibility.');
+      return;
+    }
+    toast.success(nextHidden ? 'Assessment hidden from everyone else.' : 'Assessment unhidden.');
+    // Hiding it while not showing hidden ones drops it from view entirely,
+    // same as any other filter change — no need for a second fetch.
+    setAssessments((prev) =>
+      nextHidden && !showHidden
+        ? prev.filter((x) => x.systemId !== a.systemId)
+        : prev.map((x) => (x.systemId === a.systemId ? { ...x, hiddenAt: nextHidden ? new Date().toISOString() : undefined } : x))
+    );
   }
 
   const visible = useMemo(() => {
@@ -256,6 +286,22 @@ export default function AdminAssessments() {
           }}
         />
 
+        {isSuperAdmin && (
+          <button
+            type="button"
+            onClick={() => setShowHidden((v) => !v)}
+            aria-pressed={showHidden}
+            className={`inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border px-2.5 text-sm transition-colors ${
+              showHidden
+                ? 'border-primary-700 bg-primary-50 text-primary-700'
+                : 'border-border-strong bg-bg-card text-text-muted hover:border-text-faint'
+            }`}
+          >
+            {showHidden ? <Eye className="h-3.5 w-3.5" aria-hidden /> : <EyeOff className="h-3.5 w-3.5" aria-hidden />}
+            Show hidden
+          </button>
+        )}
+
         <div className="flex items-center gap-2 md:ml-auto">
           <ViewToggle view={view} onChange={setView} />
           <Button onClick={() => setShowForm((v) => !v)} inline>
@@ -280,6 +326,7 @@ export default function AdminAssessments() {
               onClick={() => router.push(`/admin/assessments/${a.systemId}`)}
               onDuplicate={() => void handleDuplicate(a)}
               onDelete={() => void handleDelete(a)}
+              onToggleHidden={() => void handleToggleHidden(a)}
             />
           ))}
         </div>
@@ -291,6 +338,7 @@ export default function AdminAssessments() {
           onRowClick={(a) => router.push(`/admin/assessments/${a.systemId}`)}
           onDuplicate={(a) => void handleDuplicate(a)}
           onDelete={(a) => void handleDelete(a)}
+          onToggleHidden={(a) => void handleToggleHidden(a)}
         />
       )}
     </div>

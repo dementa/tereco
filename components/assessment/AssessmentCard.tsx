@@ -13,8 +13,10 @@ export interface CardAssessment {
   opensAt?: string;
   closesAt?: string;
   resultsReleasedAt?: string;
+  /** Set once a super_admin hides this assessment. Only a super_admin ever receives it in a list at all. */
+  hiddenAt?: string;
   /** Absent for school_admin's read-only list — card menu falls back to a plain "Open". */
-  capabilities?: { canManage: boolean; isOwner: boolean };
+  capabilities?: { canManage: boolean; isOwner: boolean; canHide: boolean };
 }
 
 export const STATUS_VARIANT: Record<string, 'default' | 'accent' | 'success' | 'muted'> = {
@@ -62,6 +64,7 @@ interface AssessmentCardProps {
   onClick: () => void;
   onDuplicate?: () => void;
   onDelete?: () => void;
+  onToggleHidden?: () => void;
 }
 
 export function AssessmentCard({
@@ -71,6 +74,7 @@ export function AssessmentCard({
   onClick,
   onDuplicate,
   onDelete,
+  onToggleHidden,
 }: AssessmentCardProps) {
   // Card itself doesn't forward onClick, so the click/keyboard target wraps
   // it rather than trying to thread the handler through.
@@ -94,9 +98,11 @@ export function AssessmentCard({
             <Badge variant={STATUS_VARIANT[assessment.status]}>{assessment.status}</Badge>
             <CardMenu
               capabilities={assessment.capabilities}
+              hidden={Boolean(assessment.hiddenAt)}
               onOpen={onClick}
               onDuplicate={onDuplicate}
               onDelete={onDelete}
+              onToggleHidden={onToggleHidden}
             />
           </div>
         </div>
@@ -104,7 +110,10 @@ export function AssessmentCard({
         <div className="space-y-1 text-xs text-[#666666]">
           <p>{describeAudience(assessment.targets, schools, levels)}</p>
           <p>{formatWindow(assessment)}</p>
-          {assessment.resultsReleasedAt && <Badge variant="success">Results released</Badge>}
+          <div className="flex flex-wrap gap-1">
+            {assessment.resultsReleasedAt && <Badge variant="success">Results released</Badge>}
+            {assessment.hiddenAt && <Badge variant="muted">Hidden</Badge>}
+          </div>
         </div>
       </Card>
     </div>

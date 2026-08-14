@@ -25,6 +25,8 @@ export interface Assessment {
   resultsReleasedAt?: string;
   /** When this closed paper was published for untimed practice. Undefined = not an E-Paper. */
   ePaperAt?: string;
+  /** Set by a super_admin to remove this assessment from every other role's lists. */
+  hiddenAt?: string;
   targets: AssessmentTarget[];
   /** Staff granted edit+mark access by the owner. See lib/auth/access.ts. */
   collaboratorIds: string[];
@@ -129,6 +131,7 @@ interface AssessmentRow {
   instructions: string;
   results_released_at: string | null;
   e_paper_at: string | null;
+  hidden_at: string | null;
   targets:
     | {
         id: string;
@@ -144,7 +147,7 @@ interface AssessmentRow {
 // Single string literal — concatenation would widen it to `string` and silently
 // disable the client's column checking.
 const ASSESSMENT_COLUMNS =
-  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, e_paper_at, targets:assessment_targets(id, school_id, level, class_id, student_id), collaborators:assessment_collaborators(staff_id)";
+  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, e_paper_at, hidden_at, targets:assessment_targets(id, school_id, level, class_id, student_id), collaborators:assessment_collaborators(staff_id)";
 
 const QUESTION_COLUMNS =
   "id, position, code, question_text, type, options, correct_answer, model_answer, image_url, image_public_id, max_score, config";
@@ -165,6 +168,7 @@ function rowToAssessment(row: AssessmentRow): Assessment {
     instructions: row.instructions ?? "",
     resultsReleasedAt: row.results_released_at ?? undefined,
     ePaperAt: row.e_paper_at ?? undefined,
+    hiddenAt: row.hidden_at ?? undefined,
     targets: (row.targets ?? []).map((t) => ({
       id: t.id,
       schoolId: t.school_id,
@@ -215,10 +219,19 @@ function rowToQuestion(row: QuestionRow): Question {
  *
  * `createdBy` narrows the list to one author — teachers see only the papers
  * they wrote, while admins see everything.
+ *
+ * `includeHidden` defaults to false — a super_admin-hidden assessment (see
+ * hideAssessment) stays out of every list, including a super_admin's own,
+ * unless the caller explicitly opts in. That keeps hiding an actual decluttering
+ * tool rather than something a super_admin has to look past every time.
  */
-export async function getAssessments(createdBy?: string): Promise<Assessment[]> {
+export async function getAssessments(
+  createdBy?: string,
+  opts?: { includeHidden?: boolean }
+): Promise<Assessment[]> {
   const supabase = getSupabaseAdmin();
   let query = supabase.from("assessments").select(ASSESSMENT_COLUMNS).is("deleted_at", null);
+  if (!opts?.includeHidden) query = query.is("hidden_at", null);
   if (createdBy) query = query.eq("created_by", createdBy);
   const { data, error } = await query.order("created_at", { ascending: false });
 
@@ -479,6 +492,31 @@ export async function softDeleteAssessment(systemId: string): Promise<void> {
   const { error } = await supabase
     .from("assessments")
     .update({ deleted_at: new Date().toISOString() })
+    .eq("system_id", systemId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Removes an assessment from every other role's lists without deleting it —
+ * for test-phase papers a super_admin wants out of everyone's way. Reversible
+ * via unhideAssessment. Distinct from softDeleteAssessment: a hidden
+ * assessment is still fully live (still gradeable, still counted in
+ * analytics) for whoever already has it open by id.
+ */
+export async function hideAssessment(systemId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("assessments")
+    .update({ hidden_at: new Date().toISOString() })
+    .eq("system_id", systemId);
+  if (error) throw new Error(error.message);
+}
+
+export async function unhideAssessment(systemId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("assessments")
+    .update({ hidden_at: null })
     .eq("system_id", systemId);
   if (error) throw new Error(error.message);
 }
