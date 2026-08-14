@@ -5,10 +5,12 @@ import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { useToast } from '@/components/ui/ToastProvider';
-import { ClipboardList, Plus, X } from 'lucide-react';
+import { ClipboardList, Plus, Search, X } from 'lucide-react';
 import { AssessmentCard, type CardAssessment } from '@/components/assessment/AssessmentCard';
+import { AssessmentTable } from '@/components/assessment/AssessmentTable';
+import { SortMenu, type SortDir, type SortField } from '@/components/ui/SortMenu';
+import { ViewToggle, type ListView } from '@/components/ui/ViewToggle';
 
 const emptyForm = {
   title: '',
@@ -37,6 +39,12 @@ export default function StaffAssessments() {
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+  // 'created'/'desc' matches the API's own default order (newest first), so
+  // picking these as the initial state changes nothing until someone opens
+  // the sort menu.
+  const [sortField, setSortField] = useState<SortField>('created');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [view, setView] = useState<ListView>('card');
 
   const load = useCallback(async () => {
     try {
@@ -126,12 +134,22 @@ export default function StaffAssessments() {
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return assessments.filter((a) => {
+    const filtered = assessments.filter((a) => {
       if (statusFilter !== 'all' && a.status !== statusFilter) return false;
       if (q && !a.title.toLowerCase().includes(q) && !a.systemId.toLowerCase().includes(q)) return false;
       return true;
     });
-  }, [assessments, search, statusFilter]);
+    const sorted = [...filtered];
+    if (sortField === 'name') {
+      sorted.sort((a, b) => a.title.localeCompare(b.title));
+      if (sortDir === 'desc') sorted.reverse();
+    } else if (sortDir === 'asc') {
+      // 'created': the API already returns newest-first, so descending needs
+      // no work and ascending is just that order reversed.
+      sorted.reverse();
+    }
+    return sorted;
+  }, [assessments, search, statusFilter, sortField, sortDir]);
 
   return (
     <div className="space-y-4">
@@ -198,34 +216,60 @@ export default function StaffAssessments() {
         </Card>
       )}
 
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="flex-1 min-w-[220px]">
-          <Input
-            label="Search"
+      <div className="flex flex-col md:flex-row md:items-center gap-2">
+        <div className="relative w-full md:w-64 shrink-0">
+          <Search
+            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
+            aria-hidden
+          />
+          <input
+            type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search assessments by title or ID…"
+            aria-label="Search assessments"
+            className="w-full h-9 rounded-lg border border-border-strong bg-bg-card pl-9 pr-3 text-sm transition-colors focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-700/15"
           />
         </div>
-        <div className="w-48">
-          <Select
-            label="Status"
-            options={STATUS_FILTER_OPTIONS}
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-          />
+
+        <select
+          aria-label="Status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className={`h-9 shrink-0 rounded-lg border border-border-strong bg-bg-card px-2.5 text-sm transition-colors focus:border-primary-700 focus:outline-none ${
+            statusFilter !== 'all' ? 'text-text-primary font-medium' : 'text-text-muted'
+          }`}
+        >
+          {STATUS_FILTER_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        <SortMenu
+          field={sortField}
+          dir={sortDir}
+          onChange={(f, d) => {
+            setSortField(f);
+            setSortDir(d);
+          }}
+        />
+
+        <div className="flex items-center gap-2 md:ml-auto">
+          <ViewToggle view={view} onChange={setView} />
+          <Button onClick={() => setShowForm((v) => !v)} inline>
+            <Plus className="w-4 h-4 mr-1.5" aria-hidden />
+            New assessment
+          </Button>
         </div>
-        <Button onClick={() => setShowForm((v) => !v)}>
-          <Plus className="w-4 h-4 mr-1.5" aria-hidden />
-          New assessment
-        </Button>
       </div>
 
       {loading ? (
         <p className="text-text-muted">Loading…</p>
       ) : visible.length === 0 ? (
         <p className="text-text-muted">No assessments yet.</p>
-      ) : (
+      ) : view === 'card' ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {visible.map((a) => (
             <AssessmentCard
@@ -239,6 +283,15 @@ export default function StaffAssessments() {
             />
           ))}
         </div>
+      ) : (
+        <AssessmentTable
+          assessments={visible}
+          schools={schools}
+          levels={levels}
+          onRowClick={(a) => router.push(`/staff/assessments/${a.systemId}`)}
+          onDuplicate={(a) => void handleDuplicate(a)}
+          onDelete={(a) => void handleDelete(a)}
+        />
       )}
     </div>
   );

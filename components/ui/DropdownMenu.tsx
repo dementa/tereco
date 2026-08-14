@@ -26,6 +26,7 @@ export function DropdownMenu({
   items,
   label = 'Actions',
   triggerClassName,
+  icon: Icon = MoreHorizontal,
 }: {
   items: DropdownMenuItem[];
   label?: string;
@@ -35,6 +36,8 @@ export function DropdownMenu({
    * and their height, or the row stops reading as one row.
    */
   triggerClassName?: string;
+  /** Swaps the trigger glyph — cards read as "⋮" (vertical), table rows as "⋯" (horizontal). */
+  icon?: React.ElementType;
 }) {
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState<{ top: number; right: number } | null>(null);
@@ -96,7 +99,7 @@ export function DropdownMenu({
           }`
         }
       >
-        <MoreHorizontal className="h-4 w-4" aria-hidden />
+        <Icon className="h-4 w-4" aria-hidden />
       </button>
 
       {open &&

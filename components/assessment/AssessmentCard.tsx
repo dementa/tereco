@@ -13,7 +13,7 @@ export interface CardAssessment {
   opensAt?: string;
   closesAt?: string;
   resultsReleasedAt?: string;
-  /** Absent for school_admin's read-only list — no menu is shown when it's missing. */
+  /** Absent for school_admin's read-only list — card menu falls back to a plain "Open". */
   capabilities?: { canManage: boolean; isOwner: boolean };
 }
 
@@ -92,14 +92,12 @@ export function AssessmentCard({
           <h3 className="font-semibold text-primary-900 min-w-0 truncate">{assessment.title}</h3>
           <div className="flex items-center gap-1 shrink-0">
             <Badge variant={STATUS_VARIANT[assessment.status]}>{assessment.status}</Badge>
-            {assessment.capabilities && onDuplicate && onDelete && (
-              <CardMenu
-                capabilities={assessment.capabilities}
-                onOpen={onClick}
-                onDuplicate={onDuplicate}
-                onDelete={onDelete}
-              />
-            )}
+            <CardMenu
+              capabilities={assessment.capabilities}
+              onOpen={onClick}
+              onDuplicate={onDuplicate}
+              onDelete={onDelete}
+            />
           </div>
         </div>
         <p className="text-xs text-text-muted mb-3">{assessment.systemId}</p>
