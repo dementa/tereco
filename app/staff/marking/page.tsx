@@ -307,6 +307,7 @@ export default function MarkingPage() {
         header: '%',
         align: 'right',
         value: (r) => r.percentage ?? -1,
+        pdfValue: (r) => (r.percentage === null ? 'To mark' : `${Math.round(r.percentage)}%`),
         render: (r) =>
           r.percentage === null ? (
             <Badge variant="accent">To mark</Badge>

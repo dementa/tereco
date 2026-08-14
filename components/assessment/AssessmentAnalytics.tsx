@@ -303,6 +303,9 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
         header: 'Mark',
         align: 'right',
         value: (r) => r.percentage ?? -1,
+        // CSV/Excel keep the full-precision figure; the printed PDF rounds
+        // to a whole percent, same convention as the dedicated results PDFs.
+        pdfValue: (r) => (r.percentage === null ? 'pending' : `${Math.round(r.percentage)}%`),
         render: (r) =>
           r.percentage === null ? (
             <span className="text-[#A3A3A3]">pending</span>
