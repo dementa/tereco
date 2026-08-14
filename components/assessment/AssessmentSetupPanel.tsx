@@ -218,7 +218,12 @@ export function AssessmentSetupPanel({ systemId, apiBase, onSaved }: AssessmentS
         schoolId: pendingTargetSchool || undefined,
         level: pendingTargetLevel ? Number(pendingTargetLevel) : undefined,
       });
-      setPendingTargetSchool('');
+      // Deliberately leaves the school selected — adding several grade
+      // levels for the same school is the common case, and clearing it
+      // here meant re-picking the school before every level or silently
+      // creating a level-only row that leaks eligibility to every OTHER
+      // school too. Only the level resets, so the next click stays scoped
+      // to the school already chosen.
       setPendingTargetLevel('');
     } finally {
       setAddingTarget(false);
