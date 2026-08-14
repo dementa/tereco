@@ -30,6 +30,10 @@ export async function GET(
       return errorResponse("Assessment not found", 404);
     }
 
+    if (!assessment.resultsReleasedAt) {
+      return errorResponse("Results for this assessment have not been released to your school yet.", 403);
+    }
+
     const results = await getAssessmentResults(assessment.id, { schoolId: profile.schoolId });
 
     const buffer = await renderToBuffer(

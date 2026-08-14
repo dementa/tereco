@@ -48,6 +48,7 @@ interface HeaderAssessment {
   status: 'draft' | 'published' | 'closed';
   ePaperAt?: string;
   closesAt?: string;
+  resultsReleasedAt?: string | null;
   createdBy: string | null;
   targets: AssessmentTarget[];
   questions: unknown[];
@@ -125,9 +126,10 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
     const detail = await fetch(`${apiBase}/${systemId}`).then((r) => r.json());
     if (detail.success) {
       setAssessment(detail.data);
-    } else {
-      toast.error(detail.message ?? 'Failed to load assessment.');
+      return detail.data as HeaderAssessment;
     }
+    toast.error(detail.message ?? 'Failed to load assessment.');
+    return null;
   }, [apiBase, systemId, toast]);
 
   const loadAnalytics = useCallback(async () => {
@@ -165,16 +167,23 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
         // Every role now gets the submissions table (scoped to their own
         // school for school_admin, via apiBase) — that's how school_admin
         // reaches the CSV/Excel/PDF export dialog already built into
-        // DataTable, rather than a bespoke export path.
-        const tasks: Promise<unknown>[] = [
-          loadHeader(),
-          loadAnalytics(),
+        // DataTable, rather than a bespoke export path. For school_admin
+        // specifically, the results endpoint 403s until the owner releases
+        // results, so the header loads first to check resultsReleasedAt
+        // before deciding whether to even ask for scores.
+        const loadResults = () =>
           fetch(`${apiBase}/${systemId}/results`).then((r) => r.json()).then((r) => {
             if (r.success) setResults(r.data.results);
-          }),
-        ];
-        if (!isSchoolAdmin) {
+          });
+
+        const tasks: Promise<unknown>[] = [loadAnalytics()];
+        if (isSchoolAdmin) {
+          const header = await loadHeader();
+          if (header?.resultsReleasedAt) tasks.push(loadResults());
+        } else {
           tasks.push(
+            loadHeader(),
+            loadResults(),
             fetch('/api/admin/system/schools').then((r) => r.json()).then((r) => {
               if (r.success) setSchools(r.data);
             }),
@@ -654,9 +663,11 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
                       Release results
                     </Button>
                   )}
-                  <Button variant="outline" onClick={() => setShowSubmissions((v) => !v)}>
-                    {showSubmissions ? 'Hide list' : 'View list'}
-                  </Button>
+                  {(!isSchoolAdmin || assessment.resultsReleasedAt) && (
+                    <Button variant="outline" onClick={() => setShowSubmissions((v) => !v)}>
+                      {showSubmissions ? 'Hide list' : 'View list'}
+                    </Button>
+                  )}
                 </div>
               </div>
               {!isSchoolAdmin && results.length > 0 && !release.releasedAt && !release.fullyMarked && (
@@ -665,7 +676,12 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
                   half-scored paper reads it as their final result.
                 </p>
               )}
-              {showSubmissions && (
+              {isSchoolAdmin && !assessment.resultsReleasedAt && (
+                <p className="text-sm text-text-muted">
+                  Results have not been released to your school yet.
+                </p>
+              )}
+              {showSubmissions && (!isSchoolAdmin || assessment.resultsReleasedAt) && (
                 <DataTable
                   rows={results}
                   columns={resultColumns}
