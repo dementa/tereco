@@ -79,9 +79,12 @@ export function ResultsDocument({
   generatedBy,
 }: ResultsDocumentProps) {
   const marked = results.filter((r) => r.percentage !== null);
+  // Rounded to a whole percent in the PDF specifically — the on-screen and
+  // JSON-API figures elsewhere keep their 1dp precision, this is a printed-
+  // document-only convention.
   const average =
     marked.length > 0
-      ? Math.round((marked.reduce((sum, r) => sum + (r.percentage ?? 0), 0) / marked.length) * 10) / 10
+      ? Math.round(marked.reduce((sum, r) => sum + (r.percentage ?? 0), 0) / marked.length)
       : null;
 
   return (
@@ -147,7 +150,7 @@ export function ResultsDocument({
                   unmarked paper says so rather than showing a misleading
                   number. */}
               <Text style={r.percentage === null ? [styles.cellPct, styles.pending] : styles.cellPct}>
-                {r.percentage === null ? 'pending' : `${r.percentage}%`}
+                {r.percentage === null ? 'pending' : `${Math.round(r.percentage)}%`}
               </Text>
               <Text style={styles.cellScore}>
                 {r.totalScore === null ? '—' : `${r.totalScore} / ${r.maxScore ?? '—'}`}

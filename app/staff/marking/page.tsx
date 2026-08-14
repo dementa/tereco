@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Select } from '@/components/ui/Select';
@@ -97,6 +98,7 @@ function formatAnswer(value: string, type: string): string {
 
 export default function MarkingPage() {
   const toast = useToast();
+  const searchParams = useSearchParams();
   const [assessments, setAssessments] = useState<AssessmentOption[]>([]);
   const [selected, setSelected] = useState('');
   const [results, setResults] = useState<Result[]>([]);
@@ -150,6 +152,24 @@ export default function MarkingPage() {
     },
     [toast]
   );
+
+  // Lets the assessment detail page's "Mark this paper" button land straight
+  // on that paper's submissions, instead of making the marker pick it again
+  // from the dropdown. Waits on `assessments` so the id can be checked
+  // against the real list first — a stale or mistyped id in the URL falls
+  // back to the ordinary empty state rather than silently loading nothing.
+  // The state update is nested inside the async callback (not a direct
+  // statement in the effect body) for the same reason noted elsewhere in
+  // this codebase — see app/staff/practical/page.tsx — react-hooks/set-state-in-effect.
+  useEffect(() => {
+    const requested = searchParams.get('assessmentId');
+    if (!requested || assessments.length === 0) return;
+    if (!assessments.some((a) => a.systemId === requested)) return;
+    void (async () => {
+      setSelected(requested);
+      await loadResults(requested);
+    })();
+  }, [assessments, searchParams, loadResults]);
 
   /** Opens one learner's paper, with the response ids needed to score it. */
   const openPaper = useCallback(
@@ -287,6 +307,7 @@ export default function MarkingPage() {
         header: '%',
         align: 'right',
         value: (r) => r.percentage ?? -1,
+        pdfValue: (r) => (r.percentage === null ? 'To mark' : `${Math.round(r.percentage)}%`),
         render: (r) =>
           r.percentage === null ? (
             <Badge variant="accent">To mark</Badge>

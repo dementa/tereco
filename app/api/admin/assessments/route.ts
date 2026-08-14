@@ -6,6 +6,7 @@ import {
   createAssessment,
   saveQuestions,
 } from '@/lib/assessments';
+import { canManageAssessment, isAssessmentOwner } from '@/lib/auth/access';
 import { errorResponse, handleApiError, successResponse } from '@/lib/apiResponse';
 import { getCurrentProfile, requireRole } from '@/lib/auth/session';
 import { z } from 'zod';
@@ -22,13 +23,30 @@ export async function GET(request: NextRequest) {
     // it, since an admin may have written it. Admins are never scoped either
     // way — they see everything regardless of this flag.
     const markable = request.nextUrl.searchParams.get('markable') === '1';
+    // ?hidden=1 reveals super_admin-hidden (e.g. test-phase) assessments —
+    // ignored for everyone else, and off by default even for a super_admin,
+    // so hiding actually declutters the default view rather than only
+    // hiding from other roles.
+    const includeHidden = profile.role === 'super_admin' && request.nextUrl.searchParams.get('hidden') === '1';
     const assessments =
       profile.role !== 'staff'
-        ? await getAssessments()
+        ? await getAssessments(undefined, { includeHidden })
         : markable
           ? await getMarkableAssessments(profile.id, profile.schoolId)
           : await getEditableAssessments(profile.id);
-    return successResponse({ data: assessments });
+
+    // Cheap in-memory computation (no extra queries) — the card list's
+    // three-dot menu needs to know per-card whether Duplicate/Delete/Hide
+    // apply without re-deriving owner/collaborator/role logic client-side.
+    const withCapabilities = assessments.map((a) => ({
+      ...a,
+      capabilities: {
+        canManage: canManageAssessment(profile, a),
+        isOwner: isAssessmentOwner(profile, a),
+        canHide: profile.role === 'super_admin',
+      },
+    }));
+    return successResponse({ data: withCapabilities });
   } catch (error) {
     console.error('Error fetching assessments:', error);
     return errorResponse('Failed to fetch assessments', 500);

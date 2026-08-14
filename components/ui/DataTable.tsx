@@ -32,6 +32,13 @@ export interface DataTableColumn<T> {
   value?: (row: T) => string | number | null | undefined;
   /** Plain value written to exported files. Defaults to `value`. */
   exportValue?: (row: T) => string | number | null | undefined;
+  /**
+   * Overrides `exportValue` for the PDF export specifically — CSV and Excel
+   * keep using `exportValue`/`value` unchanged. For a column whose printed
+   * form should differ from its data form (e.g. a percentage rounded to a
+   * whole number on the printed page, kept at full precision in CSV/Excel).
+   */
+  pdfValue?: (row: T) => string | number | null | undefined;
   sortable?: boolean;
   /** Hide below the `sm` breakpoint — the card layout shows it regardless. */
   hideOnMobile?: boolean;
@@ -329,7 +336,7 @@ export function DataTable<T>({
         : chosenColumns;
       const headers = finalColumns.map((c) => c.header);
       const exportCells: ExportCell[][] = exportRows.map((row) =>
-        finalColumns.map((c) => exportValueFor(row, c) ?? '')
+        finalColumns.map((c) => (format === 'pdf' && c.pdfValue ? c.pdfValue(row) : exportValueFor(row, c)) ?? '')
       );
       if (format === 'csv') exportToCsv(exportFileName, headers, exportCells);
       else if (format === 'excel') await exportToExcel(exportFileName, headers, exportCells);
