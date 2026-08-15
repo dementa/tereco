@@ -19,6 +19,8 @@ interface TermsManagerProps {
   /** Fully scoped — e.g. "/api/school-admin/terms" or "/api/admin/system/schools/<id>/terms". */
   apiBasePath: string;
   academicYearId: string;
+  /** Hides add/edit/delete — for a school_admin, whose terms API is view-only (creating/editing/deleting a term is super_admin-only). */
+  readOnly?: boolean;
 }
 
 const emptyForm = { number: 1, name: '', startsOn: '', endsOn: '' };
@@ -34,7 +36,7 @@ function formatDate(iso: string): string {
  * Shared between the school-admin terms page (own school) and the
  * super-admin academic-years page (school picker + this, per selected school).
  */
-export function TermsManager({ apiBasePath, academicYearId }: TermsManagerProps) {
+export function TermsManager({ apiBasePath, academicYearId, readOnly = false }: TermsManagerProps) {
   const toast = useToast();
   const [terms, setTerms] = useState<Term[]>([]);
   const [loading, setLoading] = useState(true);
@@ -146,29 +148,33 @@ export function TermsManager({ apiBasePath, academicYearId }: TermsManagerProps)
               </span>
               <span className="flex items-center gap-3 text-text-secondary">
                 {formatDate(t.startsOn)} – {formatDate(t.endsOn)}
-                <button
-                  type="button"
-                  onClick={() => setEditing(t)}
-                  title="Edit"
-                  className="text-primary-700 hover:text-primary-700/70"
-                >
-                  <Pencil className="w-3.5 h-3.5" aria-hidden />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void remove(t)}
-                  title="Delete"
-                  className="text-error hover:text-error/70"
-                >
-                  <Trash2 className="w-3.5 h-3.5" aria-hidden />
-                </button>
+                {!readOnly && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setEditing(t)}
+                      title="Edit"
+                      className="text-primary-700 hover:text-primary-700/70"
+                    >
+                      <Pencil className="w-3.5 h-3.5" aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void remove(t)}
+                      title="Delete"
+                      className="text-error hover:text-error/70"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" aria-hidden />
+                    </button>
+                  </>
+                )}
               </span>
             </li>
           ))}
         </ul>
       )}
 
-      {showForm && (
+      {!readOnly && showForm && (
         <form onSubmit={submit} className="grid grid-cols-1 sm:grid-cols-4 gap-3 pt-2 border-t border-border">
           <div>
             <label className="block text-xs font-medium text-text-muted tracking-wide mb-1">Term number</label>
@@ -213,7 +219,7 @@ export function TermsManager({ apiBasePath, academicYearId }: TermsManagerProps)
         </form>
       )}
 
-      {editing && (
+      {!readOnly && editing && (
         <form onSubmit={saveEdit} className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2 border-t border-border">
           <Input label="Name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
           <Input
@@ -241,7 +247,7 @@ export function TermsManager({ apiBasePath, academicYearId }: TermsManagerProps)
         </form>
       )}
 
-      {!showForm && !editing && terms.length < 3 && (
+      {!readOnly && !showForm && !editing && terms.length < 3 && (
         <Button variant="outline" onClick={() => setShowForm(true)}>
           <Plus className="w-4 h-4 mr-1.5" aria-hidden />
           Add term

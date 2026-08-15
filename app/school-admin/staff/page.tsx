@@ -2,17 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Card } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Select } from '@/components/ui/Select';
 import { Badge } from '@/components/ui/Badge';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { type DropdownMenuItem } from '@/components/ui/DropdownMenu';
-import { ImageUpload } from '@/components/ui/ImageUpload';
-import { CredentialsCard } from '@/components/admin/CredentialsCard';
 import { useToast } from '@/components/ui/ToastProvider';
-import { chunk } from '@/lib/chunk';
-import { Eye, KeyRound, Pencil, Power, PowerOff, Trash2, UserPlus, X } from 'lucide-react';
+import { Eye, X } from 'lucide-react';
 
 interface StaffAccount {
   id: string;
@@ -25,17 +19,6 @@ interface StaffAccount {
   isActive: boolean;
   createdAt: string;
 }
-
-interface NewCredentials {
-  name: string;
-  systemId: string;
-  temporaryPassword: string;
-  emailSent: boolean;
-  emailError?: string;
-  hasEmail: boolean;
-}
-
-const emptyForm = { name: '', email: '', gender: '' };
 
 const VIEW_FIELDS: [string, (a: StaffAccount) => string][] = [
   ['System ID', (a) => a.systemId ?? ''],
@@ -55,20 +38,15 @@ function initials(name: string): string {
     .join('');
 }
 
+// Read-only: adding, editing, deactivating, deleting a staff account or
+// resetting its password is super_admin-only (see /api/admin/system/staff
+// and /api/admin/system/accounts/[id]). A school_admin views their school's
+// staff roster here, same as every other data type in this portal.
 export default function SchoolAdminStaffPage() {
   const toast = useToast();
   const [accounts, setAccounts] = useState<StaffAccount[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState(emptyForm);
-  const [creating, setCreating] = useState(false);
-  const [newCredentials, setNewCredentials] = useState<NewCredentials | null>(null);
-  const [busyId, setBusyId] = useState<string | null>(null);
   const [viewing, setViewing] = useState<StaffAccount | null>(null);
-  const [editing, setEditing] = useState<StaffAccount | null>(null);
-  const [savingEdit, setSavingEdit] = useState(false);
-  const [photoFor, setPhotoFor] = useState<StaffAccount | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -91,157 +69,6 @@ export default function SchoolAdminStaffPage() {
     return () => controller.abort();
   }, [load]);
 
-  async function handleCreate(e: React.FormEvent) {
-    e.preventDefault();
-    setCreating(true);
-    try {
-      const res = await fetch('/api/school-admin/staff', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...form, gender: form.gender || undefined }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setNewCredentials({ name: form.name, ...data.data });
-        toast.success(`Staff account created for ${form.name}.`);
-        setForm(emptyForm);
-        setShowForm(false);
-        await load();
-      } else {
-        toast.error(data.message ?? 'Failed to create account.');
-      }
-    } catch {
-      toast.error('Network error — please try again.');
-    } finally {
-      setCreating(false);
-    }
-  }
-
-  async function handleResetPassword(account: StaffAccount) {
-    if (!confirm(`Reset ${account.name}'s password? They'll need to set a new one on next login.`))
-      return;
-    setBusyId(account.id);
-    try {
-      const res = await fetch(`/api/school-admin/accounts/${account.id}/reset-password`, {
-        method: 'POST',
-      });
-      const data = await res.json();
-      if (data.success) {
-        setNewCredentials({
-          name: account.name,
-          systemId: account.systemId ?? '',
-          temporaryPassword: data.data.temporaryPassword,
-          emailSent: false,
-          hasEmail: !!account.contactEmail,
-        });
-        await load();
-        toast.success(`Password reset for ${account.name}.`);
-      } else {
-        toast.error(data.message ?? 'Reset failed.');
-      }
-    } finally {
-      setBusyId(null);
-    }
-  }
-
-  async function saveEdit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editing) return;
-    setSavingEdit(true);
-    try {
-      const [firstName, ...rest] = editing.name.trim().split(/\s+/);
-      const res = await fetch(`/api/school-admin/accounts/${editing.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          firstName,
-          lastName: rest.join(' '),
-          contactEmail: editing.contactEmail ?? '',
-          gender: editing.gender,
-        }),
-      });
-      const data = await res.json();
-      if (data.success) {
-        setAccounts((current) => current.map((a) => (a.id === editing.id ? editing : a)));
-        setEditing(null);
-        toast.success('Account updated.');
-      } else {
-        toast.error(data.message ?? 'Failed to update account.');
-      }
-    } catch {
-      toast.error('Network error.');
-    } finally {
-      setSavingEdit(false);
-    }
-  }
-
-  async function toggleActive(account: StaffAccount) {
-    const next = !account.isActive;
-    const res = await fetch(`/api/school-admin/accounts/${account.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ isActive: next }),
-    });
-    const data = await res.json();
-    if (data.success) {
-      setAccounts((current) => current.map((a) => (a.id === account.id ? { ...a, isActive: next } : a)));
-      toast.success(`${account.name} ${next ? 'reactivated' : 'deactivated'}.`);
-    } else {
-      toast.error(data.message ?? 'Failed to update account.');
-    }
-  }
-
-  async function removeAccount(account: StaffAccount) {
-    if (!confirm(`Permanently delete ${account.name}? This cannot be undone.`)) return;
-    const res = await fetch(`/api/school-admin/accounts/${account.id}?hard=true`, { method: 'DELETE' });
-    const data = await res.json();
-    if (data.success) {
-      setAccounts((current) => current.filter((a) => a.id !== account.id));
-      if (viewing?.id === account.id) setViewing(null);
-      if (editing?.id === account.id) setEditing(null);
-      toast.success(`${account.name} deleted.`);
-    } else {
-      toast.error(data.message ?? 'Failed to delete account.');
-    }
-  }
-
-  // Real passwords are never stored anywhere retrievable, so the only way to
-  // put one in an export is to reset it right here and capture the fresh
-  // value. Staff are forced to change it on next login (see
-  // resetAccountPassword) — the exported one is for that first sign-in only.
-  async function fetchPasswordsForExport(
-    rows: StaffAccount[],
-    onProgress: (done: number, total: number) => void
-  ): Promise<Record<string, string>> {
-    const passwords: Record<string, string> = {};
-    let failed = 0;
-    let done = 0;
-    for (const batch of chunk(rows, 10)) {
-      const results = await Promise.all(
-        batch.map(async (a) => {
-          try {
-            const res = await fetch(`/api/school-admin/accounts/${a.id}/reset-password`, { method: 'POST' });
-            const data = await res.json();
-            return { id: a.id, password: data.success ? (data.data.temporaryPassword as string) : '' };
-          } catch {
-            return { id: a.id, password: '' };
-          }
-        })
-      );
-      for (const r of results) {
-        passwords[r.id] = r.password;
-        if (!r.password) failed += 1;
-      }
-      done += batch.length;
-      onProgress(done, rows.length);
-    }
-    if (failed > 0) {
-      toast.warning(`${failed} password reset(s) failed — those row(s) will be blank in the export.`);
-    }
-    await load();
-    return passwords;
-  }
-
   const columns: DataTableColumn<StaffAccount>[] = useMemo(
     () => [
       {
@@ -249,12 +76,7 @@ export default function SchoolAdminStaffPage() {
         header: 'Name',
         value: (a) => a.name,
         render: (a) => (
-          <button
-            type="button"
-            onClick={() => setPhotoFor(a)}
-            className="flex items-center gap-2.5 text-left group"
-            title="Change photo"
-          >
+          <span className="flex items-center gap-2.5">
             {a.photoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
@@ -263,7 +85,7 @@ export default function SchoolAdminStaffPage() {
                 className="w-8 h-8 rounded-full object-cover border border-[#EAEAEA] shrink-0"
               />
             ) : (
-              <span className="w-8 h-8 rounded-full bg-[#FAFAFA] text-[#666666] text-xs font-medium flex items-center justify-center shrink-0 group-hover:bg-[#EAEAEA]">
+              <span className="w-8 h-8 rounded-full bg-[#FAFAFA] text-[#666666] text-xs font-medium flex items-center justify-center shrink-0">
                 {initials(a.name) || '—'}
               </span>
             )}
@@ -272,7 +94,7 @@ export default function SchoolAdminStaffPage() {
               {!a.isActive && <Badge variant="muted">Deactivated</Badge>}
               {a.mustChangePassword && a.isActive && <Badge variant="accent">Pending first login</Badge>}
             </span>
-          </button>
+          </span>
         ),
       },
       { key: 'systemId', header: 'System ID', value: (a) => a.systemId ?? '—' },
@@ -282,25 +104,8 @@ export default function SchoolAdminStaffPage() {
   );
 
   const rowActions = useCallback(
-    (a: StaffAccount): DropdownMenuItem[] => [
-      { label: 'View profile', icon: Eye, onClick: () => setViewing(a) },
-      { label: 'Edit details', icon: Pencil, onClick: () => setEditing(a) },
-      {
-        label: 'Reset password',
-        icon: KeyRound,
-        disabled: busyId === a.id,
-        onClick: () => void handleResetPassword(a),
-      },
-      {
-        label: a.isActive ? 'Deactivate account' : 'Reactivate account',
-        icon: a.isActive ? PowerOff : Power,
-        separatorBefore: true,
-        onClick: () => void toggleActive(a),
-      },
-      { label: 'Delete', icon: Trash2, danger: true, onClick: () => void removeAccount(a) },
-    ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [busyId]
+    (a: StaffAccount): DropdownMenuItem[] => [{ label: 'View profile', icon: Eye, onClick: () => setViewing(a) }],
+    []
   );
 
   return (
@@ -308,42 +113,9 @@ export default function SchoolAdminStaffPage() {
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Staff</h1>
         <p className="text-sm text-text-muted">
-          Accounts get a system-generated ID and password — there are no signups.
+          Read-only — a super_admin adds staff, resets passwords, and manages accounts.
         </p>
       </div>
-
-      {newCredentials && <CredentialsCard {...newCredentials} onDismiss={() => setNewCredentials(null)} />}
-
-      {showForm && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-primary-900 flex items-center gap-2">
-              <UserPlus className="w-5 h-5 text-primary-700" aria-hidden /> Add staff
-            </h2>
-            <button type="button" onClick={() => setShowForm(false)} aria-label="Close">
-              <X className="w-4 h-4 text-text-muted" aria-hidden />
-            </button>
-          </div>
-          <form onSubmit={handleCreate} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
-              <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} required />
-              <Select
-                label="Gender"
-                options={[
-                  { value: '', label: 'Not recorded' },
-                  { value: 'male', label: 'Male' },
-                  { value: 'female', label: 'Female' },
-                ]}
-                value={form.gender}
-                onChange={(e) => setForm({ ...form, gender: e.target.value })}
-              />
-            </div>
-            <p className="text-xs text-text-muted">A photo can be added from the list once the account exists.</p>
-            <Button type="submit" isLoading={creating}>Create account</Button>
-          </form>
-        </Card>
-      )}
 
       <DataTable
         rows={accounts}
@@ -356,12 +128,6 @@ export default function SchoolAdminStaffPage() {
         emptyMessage="No staff accounts yet."
         exportFileName="staff-accounts"
         mobileTitle={(a) => a.name}
-        passwordColumn={{
-          label: 'Temporary password',
-          confirmMessage: (count) =>
-            `This resets the password for ${count} account(s) and puts the new one in the export — their previous password stops working, and they'll be asked to set a new one on next login. Continue?`,
-          fetchPasswords: fetchPasswordsForExport,
-        }}
         filters={[
           {
             key: 'status',
@@ -374,12 +140,6 @@ export default function SchoolAdminStaffPage() {
             matches: (a, v) => (v === 'active' ? a.isActive : v === 'inactive' ? !a.isActive : a.isActive && a.mustChangePassword),
           },
         ]}
-        actions={
-          <Button onClick={() => setShowForm((v) => !v)}>
-            <UserPlus className="w-4 h-4 mr-1.5" aria-hidden />
-            New staff
-          </Button>
-        }
       />
 
       {viewing && (
@@ -408,59 +168,6 @@ export default function SchoolAdminStaffPage() {
               ))}
             </dl>
           </div>
-        </Card>
-      )}
-
-      {editing && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-primary-900">Edit — {editing.systemId}</h2>
-            <button type="button" onClick={() => setEditing(null)} aria-label="Close">
-              <X className="w-4 h-4 text-text-muted" aria-hidden />
-            </button>
-          </div>
-          <form onSubmit={saveEdit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input label="Full name" value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} required />
-              <Input label="Email" type="email" value={editing.contactEmail ?? ''} onChange={(e) => setEditing({ ...editing, contactEmail: e.target.value })} />
-              <Select
-                label="Gender"
-                options={[
-                  { value: '', label: 'Not recorded' },
-                  { value: 'male', label: 'Male' },
-                  { value: 'female', label: 'Female' },
-                ]}
-                value={editing.gender ?? ''}
-                onChange={(e) => setEditing({ ...editing, gender: (e.target.value || null) as 'male' | 'female' | null })}
-              />
-            </div>
-            <p className="text-xs text-text-muted">System ID cannot be changed — it is referenced by lesson reports and audit records.</p>
-            <div className="flex flex-col xs:flex-row gap-2">
-              <Button type="submit" isLoading={savingEdit}>Save changes</Button>
-              <Button type="button" variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
-            </div>
-          </form>
-        </Card>
-      )}
-
-      {photoFor && (
-        <Card>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-primary-900">Photo — {photoFor.name}</h2>
-            <button type="button" onClick={() => setPhotoFor(null)} aria-label="Close">
-              <X className="w-4 h-4 text-text-muted" aria-hidden />
-            </button>
-          </div>
-          <ImageUpload
-            kind="profile"
-            entityId={photoFor.id}
-            value={photoFor.photoUrl}
-            label="Identity photo"
-            onChange={(url) => {
-              setPhotoFor({ ...photoFor, photoUrl: url });
-              setAccounts((current) => current.map((a) => (a.id === photoFor.id ? { ...a, photoUrl: url } : a)));
-            }}
-          />
         </Card>
       )}
     </div>

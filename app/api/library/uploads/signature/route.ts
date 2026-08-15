@@ -20,7 +20,7 @@ const SignSchema = z.object({
  * at our own API layer (canViewLibraryContent), not a Cloudinary-side lock.
  */
 export async function POST(request: NextRequest) {
-  const denied = await requireRole(request, ["staff", "school_admin", "admin", "super_admin"]);
+  const denied = await requireRole(request, ["staff", "admin", "super_admin"]);
   if (denied) return denied;
 
   try {
