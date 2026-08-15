@@ -76,14 +76,35 @@ type ScoreMode = 'band' | 'number';
  * each portal has its own layout gate, so this can't live under /admin
  * alone. `backHref` lets each page point back to its own assessment detail
  * route.
+ *
+ * Also the scoring screen behind the standalone "Behaviour Rating" form
+ * (/staff/behaviour) — that flow resolves its own backing assessment
+ * invisibly (see getOrCreateBehaviorAssessment) and passes `fixedSchoolId`
+ * so a teacher only ever picks a class/stream, never a school, and
+ * `lockToBandMode` so the number-entry toggle (meaningless for a rating)
+ * never appears.
  */
-export function EnterMarksPanel({ assessmentSystemId, backHref }: { assessmentSystemId: string; backHref: string }) {
+export function EnterMarksPanel({
+  assessmentSystemId,
+  backHref,
+  backLabel = 'Back to assessment',
+  heading = 'Enter marks directly',
+  fixedSchoolId,
+  lockToBandMode = false,
+}: {
+  assessmentSystemId: string;
+  backHref: string;
+  backLabel?: string;
+  heading?: string;
+  fixedSchoolId?: string;
+  lockToBandMode?: boolean;
+}) {
   const router = useRouter();
   const toast = useToast();
 
   const [assessment, setAssessment] = useState<AssessmentSummary | null>(null);
   const [schools, setSchools] = useState<SchoolDirectoryEntry[]>([]);
-  const [schoolId, setSchoolId] = useState('');
+  const [schoolId, setSchoolId] = useState(fixedSchoolId ?? '');
   const [classId, setClassId] = useState('');
   const [streamId, setStreamId] = useState('');
   const [maxScore, setMaxScore] = useState(100);
@@ -272,39 +293,41 @@ export function EnterMarksPanel({ assessmentSystemId, backHref }: { assessmentSy
   return (
     <div className="max-w-3xl space-y-4">
       <div>
-        <h1 className="text-2xl font-bold text-primary-900 mb-1">Enter marks directly</h1>
+        <h1 className="text-2xl font-bold text-primary-900 mb-1">{heading}</h1>
         <p className="text-sm text-text-muted">
-          {assessment ? `For "${assessment.title}"` : 'Loading assessment…'} — a stop-gap for
-          learners with no online sitting. Rate or score each learner below; it counts as this
-          assessment&rsquo;s marks, same as a normal marked submission.
+          {lockToBandMode
+            ? 'Pick a class or stream below, then rate each learner — no online sitting, no separate form to fill.'
+            : `${assessment ? `For "${assessment.title}"` : 'Loading…'} — a stop-gap for learners with no online sitting. Rate or score each learner below; it counts as this assessment’s marks, same as a normal marked submission.`}
         </p>
       </div>
 
       <Card className="space-y-4">
-        <div>
-          <p className="text-xs font-medium text-text-muted tracking-wide mb-2">HOW ARE YOU SCORING</p>
-          <div className="inline-flex rounded-lg border border-border-strong p-0.5">
-            <button
-              type="button"
-              onClick={() => setMode('band')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'band' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
-            >
-              Rate behaviour
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('number')}
-              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'number' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
-            >
-              Type a number
-            </button>
+        {!lockToBandMode && (
+          <div>
+            <p className="text-xs font-medium text-text-muted tracking-wide mb-2">HOW ARE YOU SCORING</p>
+            <div className="inline-flex rounded-lg border border-border-strong p-0.5">
+              <button
+                type="button"
+                onClick={() => setMode('band')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'band' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
+              >
+                Rate behaviour
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode('number')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'number' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
+              >
+                Type a number
+              </button>
+            </div>
+            <p className="text-xs text-text-muted mt-2">
+              {mode === 'band'
+                ? 'Pick a band per learner — Outstanding, Moderate, or Needs support — converted to a score out of 100 (100 / 50 / 0), same convention as the lab practical rubric.'
+                : 'For a paper or oral test you already have a raw score for.'}
+            </p>
           </div>
-          <p className="text-xs text-text-muted mt-2">
-            {mode === 'band'
-              ? 'Pick a band per learner — Outstanding, Moderate, or Needs support — converted to a score out of 100 (100 / 50 / 0), same convention as the lab practical rubric.'
-              : 'For a paper or oral test you already have a raw score for.'}
-          </p>
-        </div>
+        )}
 
         {mode === 'number' && (
           <Input
@@ -318,16 +341,18 @@ export function EnterMarksPanel({ assessmentSystemId, backHref }: { assessmentSy
 
         <div>
           <p className="text-xs font-medium text-text-muted tracking-wide mb-2">ADD A WHOLE CLASS / STREAM</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Select
-              options={[{ value: '', label: 'Select a school…' }, ...schools.map((s) => ({ value: s.id, label: s.name }))]}
-              value={schoolId}
-              onChange={(e) => {
-                setSchoolId(e.target.value);
-                setClassId('');
-                setStreamId('');
-              }}
-            />
+          <div className={`grid grid-cols-1 gap-3 ${fixedSchoolId ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+            {!fixedSchoolId && (
+              <Select
+                options={[{ value: '', label: 'Select a school…' }, ...schools.map((s) => ({ value: s.id, label: s.name }))]}
+                value={schoolId}
+                onChange={(e) => {
+                  setSchoolId(e.target.value);
+                  setClassId('');
+                  setStreamId('');
+                }}
+              />
+            )}
             <Select
               options={[
                 { value: '', label: 'Select a class…' },
@@ -481,7 +506,7 @@ export function EnterMarksPanel({ assessmentSystemId, backHref }: { assessmentSy
               </p>
               <div className="flex gap-2 shrink-0">
                 <Button variant="outline" onClick={() => router.push(backHref)}>
-                  Back to assessment
+                  {backLabel}
                 </Button>
                 <Button onClick={() => void handleSave()} isLoading={saving}>
                   Save marks
