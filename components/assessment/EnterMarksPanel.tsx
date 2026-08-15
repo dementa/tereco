@@ -42,10 +42,30 @@ interface PickedStudent {
   streamName: string | null;
 }
 
+// Same three bands and the same 100/50/0 conversion the lab practical-
+// observation rubric already uses (lib/entities/practical-observations.ts,
+// BAND_SCORE) — duplicated here rather than imported, since that module
+// pulls in server-only Supabase code a client component can't bundle.
+// Kept in sync deliberately: one established banding language across the
+// app, not a second one that happens to mean something slightly different.
+const BEHAVIOR_BANDS = [
+  { code: 'outstanding', label: 'Outstanding' },
+  { code: 'moderate', label: 'Moderate' },
+  { code: 'needs_support', label: 'Needs support' },
+] as const;
+type BehaviorBand = (typeof BEHAVIOR_BANDS)[number]['code'];
+const BAND_SCORE: Record<BehaviorBand, number> = { outstanding: 100, moderate: 50, needs_support: 0 };
+
+type ScoreMode = 'band' | 'number';
+
 /**
  * Stop-gap for a class with no marks yet: build a list of learners — a
  * whole class/stream roster, individual students picked by search, or both
- * mixed together — type a score per learner, save. Skips the whole "create
+ * mixed together — then rate or score each one, save. Two input modes:
+ * band ratings (Outstanding/Moderate/Needs support, tap-to-pick, no typing
+ * — for "how has this learner been", converted to a score with the same
+ * 100/50/0 the lab practical rubric uses) or a raw number (for a paper or
+ * oral test that already has one). Either way this skips the whole "create
  * questions, students sit it online" flow — the scores land as normal
  * marked assessment_submissions rows, so they count as "written" everywhere
  * marks already do (the attendance blend, leaderboards, exports) without
@@ -70,8 +90,15 @@ export function EnterMarksPanel({ assessmentSystemId, backHref }: { assessmentSy
   const [loadingRoster, setLoadingRoster] = useState(false);
   const [saving, setSaving] = useState(false);
 
+  // Band mode is the default — rating a learner's behaviour ("how have they
+  // been"), same interaction as the lab practical rubric: tap a band, no
+  // typing, no pre-selected default. Number mode is still here for a case
+  // that genuinely has a raw score already (e.g. an oral test out of 20).
+  const [mode, setMode] = useState<ScoreMode>('band');
+
   const [picked, setPicked] = useState<PickedStudent[]>([]);
   const [scores, setScores] = useState<Record<string, string>>({});
+  const [bands, setBands] = useState<Record<string, BehaviorBand>>({});
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PickedStudent[]>([]);
@@ -121,6 +148,21 @@ export function EnterMarksPanel({ assessmentSystemId, backHref }: { assessmentSy
     setScores((current) => {
       const next = { ...current };
       delete next[studentId];
+      return next;
+    });
+    setBands((current) => {
+      const next = { ...current };
+      delete next[studentId];
+      return next;
+    });
+  }
+
+  function markRemainingModerate() {
+    const remaining = picked.filter((p) => !bands[p.studentId]);
+    if (remaining.length === 0) return;
+    setBands((current) => {
+      const next = { ...current };
+      for (const p of remaining) next[p.studentId] = 'moderate';
       return next;
     });
   }
@@ -174,17 +216,25 @@ export function EnterMarksPanel({ assessmentSystemId, backHref }: { assessmentSy
     return () => clearTimeout(t);
   }, [searchQuery, runSearch]);
 
-  const entries = useMemo(
-    () =>
-      picked
-        .map((p) => ({ ...p, score: scores[p.studentId] }))
-        .filter((p): p is PickedStudent & { score: string } => p.score !== undefined && p.score.trim() !== ''),
-    [picked, scores]
-  );
+  // Band mode is always out of 100 (the fixed 100/50/0 conversion) — the
+  // maxScore field only applies to number mode, where the teacher's own
+  // scale (e.g. an oral test out of 20) needs one.
+  const effectiveMaxScore = mode === 'band' ? 100 : maxScore;
+
+  const entries = useMemo(() => {
+    if (mode === 'band') {
+      return picked
+        .filter((p) => bands[p.studentId])
+        .map((p) => ({ ...p, score: String(BAND_SCORE[bands[p.studentId]]) }));
+    }
+    return picked
+      .map((p) => ({ ...p, score: scores[p.studentId] }))
+      .filter((p): p is PickedStudent & { score: string } => p.score !== undefined && p.score.trim() !== '');
+  }, [picked, scores, bands, mode]);
 
   async function handleSave() {
     if (entries.length === 0) {
-      toast.error('Enter at least one score.');
+      toast.error(mode === 'band' ? 'Rate at least one learner.' : 'Enter at least one score.');
       return;
     }
     const parsed = entries.map((e) => ({
@@ -192,8 +242,8 @@ export function EnterMarksPanel({ assessmentSystemId, backHref }: { assessmentSy
       enrollmentId: e.enrollmentId,
       score: Number(e.score),
     }));
-    if (parsed.some((e) => Number.isNaN(e.score) || e.score < 0 || e.score > maxScore)) {
-      toast.error(`Every score must be a number between 0 and ${maxScore}.`);
+    if (parsed.some((e) => Number.isNaN(e.score) || e.score < 0 || e.score > effectiveMaxScore)) {
+      toast.error(`Every score must be a number between 0 and ${effectiveMaxScore}.`);
       return;
     }
 
@@ -202,12 +252,13 @@ export function EnterMarksPanel({ assessmentSystemId, backHref }: { assessmentSy
       const res = await fetch(`/api/admin/assessments/${assessmentSystemId}/enter-marks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ maxScore, entries: parsed }),
+        body: JSON.stringify({ maxScore: effectiveMaxScore, entries: parsed }),
       });
       const data = await res.json();
       if (data.success) {
         toast.success(data.message ?? 'Marks recorded.');
         setScores({});
+        setBands({});
       } else {
         toast.error(data.message ?? 'Failed to enter marks.');
       }
@@ -224,19 +275,46 @@ export function EnterMarksPanel({ assessmentSystemId, backHref }: { assessmentSy
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Enter marks directly</h1>
         <p className="text-sm text-text-muted">
           {assessment ? `For "${assessment.title}"` : 'Loading assessment…'} — a stop-gap for
-          learners with no online sitting. Scores here count as this assessment&rsquo;s marks, same
-          as a normal marked submission.
+          learners with no online sitting. Rate or score each learner below; it counts as this
+          assessment&rsquo;s marks, same as a normal marked submission.
         </p>
       </div>
 
       <Card className="space-y-4">
-        <Input
-          label="Max score"
-          type="number"
-          min={1}
-          value={maxScore}
-          onChange={(e) => setMaxScore(Number(e.target.value))}
-        />
+        <div>
+          <p className="text-xs font-medium text-text-muted tracking-wide mb-2">HOW ARE YOU SCORING</p>
+          <div className="inline-flex rounded-lg border border-border-strong p-0.5">
+            <button
+              type="button"
+              onClick={() => setMode('band')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'band' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
+            >
+              Rate behaviour
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('number')}
+              className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${mode === 'number' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
+            >
+              Type a number
+            </button>
+          </div>
+          <p className="text-xs text-text-muted mt-2">
+            {mode === 'band'
+              ? 'Pick a band per learner — Outstanding, Moderate, or Needs support — converted to a score out of 100 (100 / 50 / 0), same convention as the lab practical rubric.'
+              : 'For a paper or oral test you already have a raw score for.'}
+          </p>
+        </div>
+
+        {mode === 'number' && (
+          <Input
+            label="Max score"
+            type="number"
+            min={1}
+            value={maxScore}
+            onChange={(e) => setMaxScore(Number(e.target.value))}
+          />
+        )}
 
         <div>
           <p className="text-xs font-medium text-text-muted tracking-wide mb-2">ADD A WHOLE CLASS / STREAM</p>
@@ -350,22 +428,56 @@ export function EnterMarksPanel({ assessmentSystemId, backHref }: { assessmentSy
                     </p>
                   </div>
                 </div>
-                <input
-                  type="number"
-                  min={0}
-                  max={maxScore}
-                  placeholder={`0-${maxScore}`}
-                  value={scores[p.studentId] ?? ''}
-                  onChange={(e) => setScores((cur) => ({ ...cur, [p.studentId]: e.target.value }))}
-                  className="w-24 rounded-lg border border-border-strong px-2.5 py-1.5 text-sm text-right focus:border-primary-700 focus:outline-none shrink-0"
-                  aria-label={`Score for ${p.name}`}
-                />
+                {mode === 'band' ? (
+                  <div className="flex gap-1 shrink-0" role="radiogroup" aria-label={`Band for ${p.name}`}>
+                    {BEHAVIOR_BANDS.map((band) => {
+                      const active = bands[p.studentId] === band.code;
+                      return (
+                        <button
+                          key={band.code}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          onClick={() => setBands((cur) => ({ ...cur, [p.studentId]: band.code }))}
+                          className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                            active
+                              ? 'bg-primary-700 text-white border-primary-700'
+                              : 'border-border-strong text-text-secondary hover:bg-bg-muted'
+                          }`}
+                        >
+                          {band.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    min={0}
+                    max={maxScore}
+                    placeholder={`0-${maxScore}`}
+                    value={scores[p.studentId] ?? ''}
+                    onChange={(e) => setScores((cur) => ({ ...cur, [p.studentId]: e.target.value }))}
+                    className="w-24 rounded-lg border border-border-strong px-2.5 py-1.5 text-sm text-right focus:border-primary-700 focus:outline-none shrink-0"
+                    aria-label={`Score for ${p.name}`}
+                  />
+                )}
               </div>
             ))}
 
+            {mode === 'band' && picked.some((p) => !bands[p.studentId]) && (
+              <button
+                type="button"
+                onClick={markRemainingModerate}
+                className="text-xs text-primary-700 hover:underline"
+              >
+                Mark the remaining {picked.filter((p) => !bands[p.studentId]).length} as Moderate
+              </button>
+            )}
+
             <div className="pt-3 flex items-center justify-between gap-3">
               <p className="text-xs text-text-muted">
-                {entries.length} of {picked.length} learner{picked.length === 1 ? '' : 's'} have a score entered.
+                {entries.length} of {picked.length} learner{picked.length === 1 ? '' : 's'} rated.
               </p>
               <div className="flex gap-2 shrink-0">
                 <Button variant="outline" onClick={() => router.push(backHref)}>
