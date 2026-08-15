@@ -40,6 +40,23 @@ interface Term {
   endsOn: string;
 }
 
+interface Stream {
+  id: string;
+  name: string;
+}
+
+interface SchoolClass {
+  id: string;
+  displayName: string;
+  streams: Stream[];
+}
+
+interface SchoolDirectoryEntry {
+  id: string;
+  name: string;
+  classes: SchoolClass[];
+}
+
 /** One (year, number) pair across every school — for the cross-school benchmark picker. See listDistinctTerms. */
 interface DistinctTerm {
   termId: string;
@@ -134,6 +151,9 @@ export default function AdminPerformancePage() {
   const [drillDownLoading, setDrillDownLoading] = useState(false);
   const [drillDownTerms, setDrillDownTerms] = useState<Term[]>([]);
   const [drillDownTermId, setDrillDownTermId] = useState('');
+  const [schoolsDirectory, setSchoolsDirectory] = useState<SchoolDirectoryEntry[]>([]);
+  const [classId, setClassId] = useState('');
+  const [streamId, setStreamId] = useState('');
 
   const loadBenchmark = useCallback(
     async (selectedTermId: string) => {
@@ -174,12 +194,26 @@ export default function AdminPerformancePage() {
     })();
   }, []);
 
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/directory/schools');
+        const data = await res.json();
+        if (data.success) setSchoolsDirectory(data.data);
+      } catch {
+        // Silent — the class/stream pickers just stay empty (school-wide only).
+      }
+    })();
+  }, []);
+
   const loadDrillDown = useCallback(
-    async (selectedSchoolId: string, selectedTermId: string) => {
+    async (selectedSchoolId: string, selectedTermId: string, selectedClassId: string, selectedStreamId: string) => {
       setDrillDownLoading(true);
       try {
         const params = new URLSearchParams({ schoolId: selectedSchoolId });
         if (selectedTermId) params.set('termId', selectedTermId);
+        if (selectedClassId) params.set('classId', selectedClassId);
+        if (selectedStreamId) params.set('streamId', selectedStreamId);
         const res = await fetch(`/api/admin/system/performance?${params.toString()}`);
         const data = await res.json();
         if (data.success) setDrillDown(data.data);
@@ -197,10 +231,10 @@ export default function AdminPerformancePage() {
     if (!schoolId) return;
     const controller = new AbortController();
     void (async () => {
-      if (!controller.signal.aborted) await loadDrillDown(schoolId, drillDownTermId);
+      if (!controller.signal.aborted) await loadDrillDown(schoolId, drillDownTermId, classId, streamId);
     })();
     return () => controller.abort();
-  }, [schoolId, drillDownTermId, loadDrillDown]);
+  }, [schoolId, drillDownTermId, classId, streamId, loadDrillDown]);
 
   // A new school's own terms replace the old ones — any term chosen for the
   // PREVIOUS school is reset where schoolId is set (see the school <select>
@@ -224,6 +258,8 @@ export default function AdminPerformancePage() {
   }, [schoolId]);
 
   const chartHeight = Math.max(120, benchmark.length * 44);
+  const drillDownClasses = schoolsDirectory.find((s) => s.id === schoolId)?.classes ?? [];
+  const selectedDrillDownClass = drillDownClasses.find((c) => c.id === classId);
 
   return (
     <div className="space-y-6">
@@ -327,6 +363,8 @@ export default function AdminPerformancePage() {
               onChange={(e) => {
                 setSchoolId(e.target.value);
                 setDrillDownTermId('');
+                setClassId('');
+                setStreamId('');
               }}
               className="border border-border rounded-lg px-3 py-2 text-sm"
             >
@@ -348,6 +386,39 @@ export default function AdminPerformancePage() {
                 {drillDownTerms.map((t) => (
                   <option key={t.id} value={t.id}>
                     {termLabel(t)}
+                  </option>
+                ))}
+              </select>
+            )}
+            {schoolId && drillDownClasses.length > 0 && (
+              <select
+                value={classId}
+                onChange={(e) => {
+                  setClassId(e.target.value);
+                  setStreamId('');
+                }}
+                className="border border-border rounded-lg px-3 py-2 text-sm"
+                aria-label="Class"
+              >
+                <option value="">All classes</option>
+                {drillDownClasses.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.displayName}
+                  </option>
+                ))}
+              </select>
+            )}
+            {schoolId && selectedDrillDownClass && selectedDrillDownClass.streams.length > 0 && (
+              <select
+                value={streamId}
+                onChange={(e) => setStreamId(e.target.value)}
+                className="border border-border rounded-lg px-3 py-2 text-sm"
+                aria-label="Stream"
+              >
+                <option value="">All streams</option>
+                {selectedDrillDownClass.streams.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
                   </option>
                 ))}
               </select>

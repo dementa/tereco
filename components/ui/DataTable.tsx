@@ -110,11 +110,12 @@ interface DataTableProps<T> {
   /** Adds an opt-in "include passwords" toggle to the export menu — see DataTablePasswordColumn. */
   passwordColumn?: DataTablePasswordColumn<T>;
   /**
-   * Adds a leading "No." column, on screen and in every export format — a
-   * plain 1-based row position in the filtered/sorted set (continuing across
-   * pages, not resetting per page), distinct from any caller-defined ranking
-   * column. Not part of `columns`, so it can't be hidden via the export
-   * column picker — a row's position in its own export is not optional.
+   * Adds a leading "No." column to every export format (CSV/Excel/PDF) only
+   * — never on screen. A plain 1-based row position in the filtered/sorted
+   * set (continuing across pages, not resetting per page), distinct from any
+   * caller-defined ranking column. Not part of `columns`, so it can't be
+   * hidden via the export column picker — a row's position in its own
+   * export is not optional.
    */
   numbered?: boolean;
 }
@@ -134,7 +135,7 @@ function exportValueFor<T>(row: T, column: DataTableColumn<T>): string | number 
   return defaultValue(row, column);
 }
 
-const PAGE_SIZE_OPTIONS = [15, 30, 50];
+const PAGE_SIZE_OPTIONS = [15, 30, 50, 100, 200];
 
 /**
  * A default max-width constraint, so a long free-text cell ellipsizes instead
@@ -537,11 +538,6 @@ export function DataTable<T>({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-bg-subtle">
-              {numbered && (
-                <th scope="col" className="text-left font-medium text-text-muted text-xs tracking-wide px-3 h-9 w-12">
-                  No.
-                </th>
-              )}
               {columns.map((column) => {
                 const isSorted = sort?.key === column.key;
                 const sortable = column.sortable !== false;
@@ -584,14 +580,14 @@ export function DataTable<T>({
             {visible.length === 0 ? (
               <tr>
                 <td
-                  colSpan={columns.length + (numbered ? 1 : 0) + (rowActions ? 1 : 0)}
+                  colSpan={columns.length + (rowActions ? 1 : 0)}
                   className="px-3 py-10 text-center text-text-muted"
                 >
                   {loading ? 'Loading…' : emptyMessage}
                 </td>
               </tr>
             ) : (
-              visible.map((row, i) => (
+              visible.map((row) => (
                 <tr
                   key={rowKey(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
@@ -599,9 +595,6 @@ export function DataTable<T>({
                     onRowClick ? 'cursor-pointer hover:bg-bg-subtle transition-colors' : ''
                   }`}
                 >
-                  {numbered && (
-                    <td className="px-3 py-2 text-text-secondary tabular-nums">{safePage * pageSize + i + 1}</td>
-                  )}
                   {columns.map((column) => {
                     const rawValue = defaultValue(row, column);
                     return (
