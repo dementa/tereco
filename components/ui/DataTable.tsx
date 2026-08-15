@@ -109,6 +109,14 @@ interface DataTableProps<T> {
   exportFileName?: string;
   /** Adds an opt-in "include passwords" toggle to the export menu — see DataTablePasswordColumn. */
   passwordColumn?: DataTablePasswordColumn<T>;
+  /**
+   * Adds a leading "No." column, on screen and in every export format — a
+   * plain 1-based row position in the filtered/sorted set (continuing across
+   * pages, not resetting per page), distinct from any caller-defined ranking
+   * column. Not part of `columns`, so it can't be hidden via the export
+   * column picker — a row's position in its own export is not optional.
+   */
+  numbered?: boolean;
 }
 
 function defaultValue<T>(row: T, column: DataTableColumn<T>): string | number | null | undefined {
@@ -165,6 +173,7 @@ export function DataTable<T>({
   mobileTitle,
   exportFileName = 'export',
   passwordColumn,
+  numbered = false,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState(initialSort ?? null);
@@ -334,10 +343,11 @@ export function DataTable<T>({
             },
           ]
         : chosenColumns;
-      const headers = finalColumns.map((c) => c.header);
-      const exportCells: ExportCell[][] = exportRows.map((row) =>
-        finalColumns.map((c) => (format === 'pdf' && c.pdfValue ? c.pdfValue(row) : exportValueFor(row, c)) ?? '')
-      );
+      const headers = [...(numbered ? ['No.'] : []), ...finalColumns.map((c) => c.header)];
+      const exportCells: ExportCell[][] = exportRows.map((row, i) => [
+        ...(numbered ? [i + 1] : []),
+        ...finalColumns.map((c) => (format === 'pdf' && c.pdfValue ? c.pdfValue(row) : exportValueFor(row, c)) ?? ''),
+      ]);
       if (format === 'csv') exportToCsv(exportFileName, headers, exportCells);
       else if (format === 'excel') await exportToExcel(exportFileName, headers, exportCells);
       else await exportToPdf(exportFileName, exportFileName, headers, exportCells);
@@ -527,6 +537,11 @@ export function DataTable<T>({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border bg-bg-subtle">
+              {numbered && (
+                <th scope="col" className="text-left font-medium text-text-muted text-xs tracking-wide px-3 h-9 w-12">
+                  No.
+                </th>
+              )}
               {columns.map((column) => {
                 const isSorted = sort?.key === column.key;
                 const sortable = column.sortable !== false;
@@ -568,12 +583,15 @@ export function DataTable<T>({
           <tbody>
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (rowActions ? 1 : 0)} className="px-3 py-10 text-center text-text-muted">
+                <td
+                  colSpan={columns.length + (numbered ? 1 : 0) + (rowActions ? 1 : 0)}
+                  className="px-3 py-10 text-center text-text-muted"
+                >
                   {loading ? 'Loading…' : emptyMessage}
                 </td>
               </tr>
             ) : (
-              visible.map((row) => (
+              visible.map((row, i) => (
                 <tr
                   key={rowKey(row)}
                   onClick={onRowClick ? () => onRowClick(row) : undefined}
@@ -581,6 +599,9 @@ export function DataTable<T>({
                     onRowClick ? 'cursor-pointer hover:bg-bg-subtle transition-colors' : ''
                   }`}
                 >
+                  {numbered && (
+                    <td className="px-3 py-2 text-text-secondary tabular-nums">{safePage * pageSize + i + 1}</td>
+                  )}
                   {columns.map((column) => {
                     const rawValue = defaultValue(row, column);
                     return (

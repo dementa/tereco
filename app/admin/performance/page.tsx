@@ -312,6 +312,7 @@ export default function AdminPerformancePage() {
             searchPlaceholder="Search by school name…"
             emptyMessage="No marked assessments yet."
             mobileTitle={(e) => e.schoolName}
+            numbered
             exportFileName="school-benchmark"
           />
         )}
@@ -366,6 +367,7 @@ export default function AdminPerformancePage() {
             searchPlaceholder="Search by student name…"
             emptyMessage="No marked assessments yet for this school."
             mobileTitle={(e) => e.studentName}
+            numbered
             exportFileName="school-performance"
           />
         )}

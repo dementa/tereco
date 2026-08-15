@@ -231,6 +231,7 @@ export default function StaffPerformancePage() {
           searchPlaceholder="Search by student name…"
           emptyMessage="No marked assessments yet for this class."
           mobileTitle={(e) => e.studentName}
+          numbered
           exportFileName="class-performance"
         />
       </Card>

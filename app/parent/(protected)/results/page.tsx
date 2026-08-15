@@ -159,6 +159,7 @@ export default function ParentResultsPage() {
         initialSort={{ key: 'submittedAt', direction: 'desc' }}
         searchPlaceholder="Search by assessment title…"
         emptyMessage="No results yet."
+        numbered
         exportFileName="child-results"
       />
     </div>
