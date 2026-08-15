@@ -222,24 +222,21 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
   // The term narrows by submission date, not by assessment.term_id — see
   // inTerm(). A term belonging to another school is treated as matching
   // nothing rather than ignored, so a mismatched filter cannot quietly widen
-  // the result to the whole year.
+  // the result to the whole year. Only an EXPLICIT termId narrows the written
+  // side this way — the caller asked for exactly that term's comparison.
   //
-  // When no termId is given, the CURRENT term is resolved anyway rather than
-  // left unbounded — every entry here is blended with attendance, and
-  // attendance is inherently per-term (attendance_sessions.term_id). Blending
-  // a whole academic year of assessments against just this term's attendance
-  // would mix two different windows into one number. A school that has not
-  // defined its current term falls back to the old unbounded behaviour, with
-  // no attendance blend, rather than failing.
+  // With no explicit termId, the written side stays whole-year (unbounded),
+  // same as always. Attendance is still blended in below, scoped to the
+  // school's current term on a best-effort basis — but that resolution must
+  // never gate which submissions count. A school with no current term
+  // defined, or one whose marked work falls outside it, would otherwise show
+  // an empty leaderboard despite having a full year of real written data —
+  // exactly backwards for a page with no term picker to work around it.
   let term: TermWindow | null = null;
   if (termId) {
     term = await getTermWindow(termId);
     if (!term || term.school_id !== schoolId) return [];
     query = query.gte("submitted_at", term.starts_on).lt("submitted_at", nextDay(term.ends_on));
-  } else {
-    const currentTermId = await getCurrentTermId(schoolId);
-    if (currentTermId) term = await getTermWindow(currentTermId);
-    if (term) query = query.gte("submitted_at", term.starts_on).lt("submitted_at", nextDay(term.ends_on));
   }
 
   const { data, error } = await query;
@@ -264,8 +261,14 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
     }
   }
 
-  const attendanceRates = term
-    ? await getAttendanceRatesForTerm(Array.from(byStudent.keys()), term.id)
+  // The attendance-blend term: reuse the explicit term if one was given,
+  // otherwise resolve the school's current term purely to blend attendance
+  // in — never to decide who appears above. No resolvable current term just
+  // means no attendance blend, the same null-safe fallback as no attendance
+  // data existing at all (see blendWithAttendance).
+  const attendanceTerm = term ?? (await getCurrentTermId(schoolId).then((id) => (id ? getTermWindow(id) : null)));
+  const attendanceRates = attendanceTerm
+    ? await getAttendanceRatesForTerm(Array.from(byStudent.keys()), attendanceTerm.id)
     : new Map<string, number>();
 
   const entries: Omit<LeaderboardEntry, "rank">[] = Array.from(byStudent.entries()).map(([studentId, agg]) => {
@@ -667,36 +670,22 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
 
   const rows = (data ?? []) as unknown as BenchmarkRow[];
 
-  // Every entry here is blended with attendance (see blendWithAttendance),
-  // and attendance is inherently per-term. When no termId was given, each
-  // school's OWN current term is resolved instead of leaving the query
-  // unbounded — same reasoning as termsBySchool above: a school's Term II
-  // is not another school's, so there is no single "current term" that
-  // applies across all of them.
-  if (!termId) {
-    const schoolIds = Array.from(
-      new Set(rows.map((r) => r.enrollment?.school_id).filter((id): id is string => !!id))
-    );
-    const resolved = await Promise.all(
-      schoolIds.map(async (id) => {
-        const currentId = await getCurrentTermId(id);
-        if (!currentId) return null;
-        const window = await getTermWindow(currentId);
-        return window ? ([id, window] as const) : null;
-      })
-    );
-    for (const entry of resolved) if (entry) termsBySchool.set(entry[0], entry[1]);
-  }
-
   // First pass: per-student average, same as queryLeaderboard, so one
-  // prolific test-taker or one heavily-weighted paper doesn't dominate. A
-  // school with no resolvable term (explicit or current) contributes nothing,
-  // same as the "not defined" case above — never compared on a guess.
+  // prolific test-taker or one heavily-weighted paper doesn't dominate. Only
+  // an EXPLICIT termId gates rows by term here — the caller asked for exactly
+  // that term's comparison. With no explicit termId this is whole-year,
+  // unbounded, same as always; attendance is blended in below on a
+  // best-effort basis further down, but never used to decide who appears —
+  // a school with no current term defined, or whose marked work falls
+  // outside it, must still show up with its written average, not vanish
+  // from a comparison that has no term picker to work around that.
   const byStudent = new Map<string, { schoolId: string; schoolName: string; percentages: number[] }>();
   for (const row of rows) {
     if (!isRankable(row) || !row.enrollment) continue;
-    const own = termsBySchool.get(row.enrollment.school_id);
-    if (!own || !inTerm(own, row.submitted_at)) continue;
+    if (termId) {
+      const own = termsBySchool.get(row.enrollment.school_id);
+      if (!own || !inTerm(own, row.submitted_at)) continue;
+    }
     const percentage = percentOf(row.total_score as number, row.max_score as number);
     const existing = byStudent.get(row.student_id);
     if (existing) {
@@ -708,6 +697,24 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
         percentages: [percentage],
       });
     }
+  }
+
+  // Attendance-blend terms: reuse the explicit term-per-school map if one was
+  // given, otherwise resolve each school's own current term purely to blend
+  // attendance in — never to decide who appears above. A school with no
+  // resolvable current term just gets no attendance blend for its students,
+  // the same null-safe fallback as no attendance data existing at all.
+  if (!termId) {
+    const schoolIds = Array.from(new Set(Array.from(byStudent.values()).map((v) => v.schoolId)));
+    const resolved = await Promise.all(
+      schoolIds.map(async (id) => {
+        const currentId = await getCurrentTermId(id);
+        if (!currentId) return null;
+        const window = await getTermWindow(currentId);
+        return window ? ([id, window] as const) : null;
+      })
+    );
+    for (const entry of resolved) if (entry) termsBySchool.set(entry[0], entry[1]);
   }
 
   // Attendance rates, batched per resolved term (schools may be on different
