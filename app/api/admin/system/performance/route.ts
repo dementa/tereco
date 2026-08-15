@@ -18,12 +18,16 @@ export async function GET(request: NextRequest) {
     const termId = searchParams.get("termId") ?? undefined;
     const assessmentId = searchParams.get("assessmentId") ?? undefined;
     const schoolId = searchParams.get("schoolId") ?? undefined;
+    const classId = searchParams.get("classId") ?? undefined;
+    const streamId = searchParams.get("streamId") ?? undefined;
 
     // A drill-down into one school's own leaderboard — still names-included,
     // since super-admin is in the "sees names" set, but an explicit action
-    // distinct from the default cross-school view below.
+    // distinct from the default cross-school view below. classId/streamId
+    // only make sense scoped to a chosen school, so they're read but ignored
+    // on the cross-school benchmark branch below.
     if (schoolId) {
-      const entries = await getSchoolLeaderboard({ schoolId, academicYearId, termId, assessmentId });
+      const entries = await getSchoolLeaderboard({ schoolId, classId, streamId, academicYearId, termId, assessmentId });
       return successResponse({ data: entries });
     }
 

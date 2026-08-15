@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
 import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 
@@ -92,7 +93,12 @@ export default function SchoolAdminPerformancePage() {
   const [classEntries, setClassEntries] = useState<LeaderboardEntry[]>([]);
   const [classLoading, setClassLoading] = useState(false);
   const [schoolEntries, setSchoolEntries] = useState<LeaderboardEntry[]>([]);
-  const [schoolLoading, setSchoolLoading] = useState(true);
+  const [schoolLoading, setSchoolLoading] = useState(false);
+  // Whole-school rankings are every learner in the school compared against
+  // each other — a bigger reveal than the class view, and not what most
+  // visits here are for. Kept behind an explicit click rather than loading
+  // (and showing) automatically.
+  const [showSchoolWide, setShowSchoolWide] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -173,12 +179,13 @@ export default function SchoolAdminPerformancePage() {
   }, [classId, streamId, termId, loadClassLeaderboard]);
 
   useEffect(() => {
+    if (!showSchoolWide) return;
     const controller = new AbortController();
     void (async () => {
       if (!controller.signal.aborted) await loadSchoolLeaderboard(termId);
     })();
     return () => controller.abort();
-  }, [termId, loadSchoolLeaderboard]);
+  }, [showSchoolWide, termId, loadSchoolLeaderboard]);
 
   const selectedClass = classes.find((c) => c.id === classId);
 
@@ -256,19 +263,42 @@ export default function SchoolAdminPerformancePage() {
       </Card>
 
       <Card>
-        <h2 className="text-sm font-semibold text-primary-900 mb-4">Whole school</h2>
-        <DataTable
-          rows={schoolEntries}
-          columns={performanceColumns}
-          rowKey={(e) => e.studentId}
-          loading={schoolLoading}
-          initialSort={{ key: 'rank', direction: 'asc' }}
-          searchPlaceholder="Search by student name…"
-          emptyMessage="No marked assessments yet for this school."
-          mobileTitle={(e) => e.studentName}
-          numbered
-          exportFileName="school-performance"
-        />
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-sm font-semibold text-primary-900">Whole school</h2>
+          {showSchoolWide && (
+            <button
+              type="button"
+              onClick={() => setShowSchoolWide(false)}
+              className="text-xs text-text-muted hover:text-text-primary hover:underline"
+            >
+              Hide
+            </button>
+          )}
+        </div>
+
+        {!showSchoolWide ? (
+          <div className="flex flex-col items-start gap-2">
+            <p className="text-sm text-text-muted">
+              Every learner in the school, ranked against each other — a bigger view than one class.
+            </p>
+            <Button variant="outline" onClick={() => setShowSchoolWide(true)}>
+              Show whole-school leaderboard
+            </Button>
+          </div>
+        ) : (
+          <DataTable
+            rows={schoolEntries}
+            columns={performanceColumns}
+            rowKey={(e) => e.studentId}
+            loading={schoolLoading}
+            initialSort={{ key: 'rank', direction: 'asc' }}
+            searchPlaceholder="Search by student name…"
+            emptyMessage="No marked assessments yet for this school."
+            mobileTitle={(e) => e.studentName}
+            numbered
+            exportFileName="school-performance"
+          />
+        )}
       </Card>
     </div>
   );

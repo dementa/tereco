@@ -29,6 +29,7 @@ export interface ClassLeaderboardParams {
 export interface SchoolLeaderboardParams {
   schoolId: string;
   classId?: string;
+  streamId?: string;
   academicYearId?: string;
   termId?: string;
   assessmentId?: string;
