@@ -42,19 +42,21 @@ interface PickedStudent {
   streamName: string | null;
 }
 
-// Same three bands and the same 100/50/0 conversion the lab practical-
-// observation rubric already uses (lib/entities/practical-observations.ts,
-// BAND_SCORE) — duplicated here rather than imported, since that module
-// pulls in server-only Supabase code a client component can't bundle.
-// Kept in sync deliberately: one established banding language across the
-// app, not a second one that happens to mean something slightly different.
+// Same three bands as the lab practical-observation rubric
+// (lib/entities/practical-observations.ts) — duplicated here rather than
+// imported, since that module pulls in server-only Supabase code a client
+// component can't bundle. The conversion is deliberately its own, though:
+// this is a behaviour rating, not a lab skills score, and a school scoring
+// this feature never puts a genuine 0 or 100 on a report card — needs
+// support still means "not nothing" (30), and outstanding leaves room above
+// it (80) rather than claiming perfection.
 const BEHAVIOR_BANDS = [
   { code: 'outstanding', label: 'Outstanding' },
   { code: 'moderate', label: 'Moderate' },
   { code: 'needs_support', label: 'Needs support' },
 ] as const;
 type BehaviorBand = (typeof BEHAVIOR_BANDS)[number]['code'];
-const BAND_SCORE: Record<BehaviorBand, number> = { outstanding: 100, moderate: 50, needs_support: 0 };
+const BAND_SCORE: Record<BehaviorBand, number> = { outstanding: 80, moderate: 50, needs_support: 30 };
 
 type ScoreMode = 'band' | 'number';
 
@@ -63,10 +65,10 @@ type ScoreMode = 'band' | 'number';
  * whole class/stream roster, individual students picked by search, or both
  * mixed together — then rate or score each one, save. Two input modes:
  * band ratings (Outstanding/Moderate/Needs support, tap-to-pick, no typing
- * — for "how has this learner been", converted to a score with the same
- * 100/50/0 the lab practical rubric uses) or a raw number (for a paper or
- * oral test that already has one). Either way this skips the whole "create
- * questions, students sit it online" flow — the scores land as normal
+ * — for "how has this learner been", converted to a score via BAND_SCORE
+ * below) or a raw number (for a paper or oral test that already has one).
+ * Either way this skips the whole "create questions, students sit it
+ * online" flow — the scores land as normal
  * marked assessment_submissions rows, so they count as "written" everywhere
  * marks already do (the attendance blend, leaderboards, exports) without
  * either system needing to know this assessment was never sat online.
@@ -237,7 +239,7 @@ export function EnterMarksPanel({
     return () => clearTimeout(t);
   }, [searchQuery, runSearch]);
 
-  // Band mode is always out of 100 (the fixed 100/50/0 conversion) — the
+  // Band mode is always out of 100 (BAND_SCORE's fixed conversion) — the
   // maxScore field only applies to number mode, where the teacher's own
   // scale (e.g. an oral test out of 20) needs one.
   const effectiveMaxScore = mode === 'band' ? 100 : maxScore;
@@ -323,7 +325,7 @@ export function EnterMarksPanel({
             </div>
             <p className="text-xs text-text-muted mt-2">
               {mode === 'band'
-                ? 'Pick a band per learner — Outstanding, Moderate, or Needs support — converted to a score out of 100 (100 / 50 / 0), same convention as the lab practical rubric.'
+                ? 'Pick a band per learner — Outstanding, Moderate, or Needs support — converted to a score out of 100 (80 / 50 / 30).'
                 : 'For a paper or oral test you already have a raw score for.'}
             </p>
           </div>
@@ -494,7 +496,7 @@ export function EnterMarksPanel({
               <button
                 type="button"
                 onClick={markRemainingModerate}
-                className="text-xs text-primary-700 hover:underline"
+                className="w-full py-2.5 rounded-lg border border-border-strong text-sm font-semibold text-text-primary hover:bg-bg-muted"
               >
                 Mark the remaining {picked.filter((p) => !bands[p.studentId]).length} as Moderate
               </button>
