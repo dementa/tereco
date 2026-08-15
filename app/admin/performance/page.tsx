@@ -26,6 +26,9 @@ interface LeaderboardEntry {
   studentName: string;
   assessmentsCount: number;
   averagePercentage: number;
+  written: number;
+  attendanceRate: number | null;
+  attendanceWeight: number;
   rank: number;
 }
 
@@ -33,7 +36,10 @@ function toRows(entries: LeaderboardEntry[]): LeaderboardRowData[] {
   return entries.map((entry) => ({
     rank: entry.rank,
     name: entry.studentName,
-    subtitle: `${entry.assessmentsCount} assessment${entry.assessmentsCount === 1 ? '' : 's'}`,
+    subtitle:
+      entry.attendanceRate !== null
+        ? `${entry.written}% written, ${entry.attendanceRate}% attendance`
+        : `${entry.assessmentsCount} assessment${entry.assessmentsCount === 1 ? '' : 's'} · no attendance recorded yet`,
     value: entry.averagePercentage,
     valueLabel: `${entry.averagePercentage}%`,
   }));

@@ -28,6 +28,9 @@ interface LeaderboardEntry {
   studentName: string;
   assessmentsCount: number;
   averagePercentage: number;
+  written: number;
+  attendanceRate: number | null;
+  attendanceWeight: number;
   rank: number;
 }
 
@@ -35,7 +38,10 @@ function toRows(entries: LeaderboardEntry[]): LeaderboardRowData[] {
   return entries.map((entry) => ({
     rank: entry.rank,
     name: entry.studentName,
-    subtitle: `${entry.assessmentsCount} assessment${entry.assessmentsCount === 1 ? '' : 's'}`,
+    subtitle:
+      entry.attendanceRate !== null
+        ? `${entry.written}% written, ${entry.attendanceRate}% attendance`
+        : `${entry.assessmentsCount} assessment${entry.assessmentsCount === 1 ? '' : 's'} · no attendance recorded yet`,
     value: entry.averagePercentage,
     valueLabel: `${entry.averagePercentage}%`,
   }));
@@ -105,7 +111,9 @@ export default function StaffPerformancePage() {
     <div className="space-y-4">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Performance</h1>
-        <p className="text-sm text-text-muted">Class leaderboard, ranked by average marked-assessment percentage this academic year.</p>
+        <p className="text-sm text-text-muted">
+          Class leaderboard, ranked by this term&rsquo;s performance — written assessments and attendance, blended 50/50.
+        </p>
       </div>
 
       <Card>

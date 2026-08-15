@@ -6,7 +6,14 @@ export interface LeaderboardEntry {
   studentName: string;
   studentSystemId: string | null;
   assessmentsCount: number;
+  /** The blended figure — written and attendance combined. What every marks display shows. */
   averagePercentage: number;
+  /** Mean of marked assessment percentages alone, before the attendance blend — kept for transparency. */
+  written: number;
+  /** % of this term's lesson-attendance sessions the student was present for, or null with no attendance data recorded (never treated as 0). */
+  attendanceRate: number | null;
+  /** Share of averagePercentage taken from attendance, 0..1. 0 whenever attendanceRate is null. */
+  attendanceWeight: number;
   rank: number;
 }
 
@@ -113,6 +120,73 @@ function studentName(student: SubmissionAggRow["student"]): string {
   return [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(" ").trim();
 }
 
+/**
+ * Every marks display blends in attendance, not just the written average — a
+ * learner who has been in class all term should not read the same as one who
+ * has not, and a learner who has sat every paper should not be punished for a
+ * school that has not logged attendance. Fixed here rather than a per-school
+ * column (the way schools.practical_weight is): turning this on was the
+ * explicit ask, not a gradual rollout, so there's no "still at zero" state to
+ * protect. Promote to a column later if a school ever needs to opt out.
+ */
+export const ATTENDANCE_WEIGHT = 0.5;
+
+export interface AttendanceBlend {
+  written: number;
+  attendanceRate: number | null;
+  weight: number;
+  overall: number;
+}
+
+/**
+ * Same null-safety rule practical observations uses for its own blend: a
+ * learner with no attendance rows this term is never dragged toward 0 for it
+ * — the overall figure is simply the written one until attendance exists to
+ * blend with.
+ */
+export function blendWithAttendance(
+  written: number,
+  attendanceRate: number | null,
+  weight: number = ATTENDANCE_WEIGHT
+): AttendanceBlend {
+  const w = attendanceRate === null ? 0 : Math.min(1, Math.max(0, weight));
+  const overall =
+    attendanceRate === null ? written : Math.round((written * (1 - w) + attendanceRate * w) * 10) / 10;
+  return { written, attendanceRate, weight: w, overall };
+}
+
+/**
+ * Present/total across a term's LESSON attendance sessions only — never the
+ * supervised-sitting registers taken while a student sits an assessment,
+ * which measure something else and would double-count with the written side
+ * of the blend. One query for every student on a leaderboard, not one per row.
+ */
+async function getAttendanceRatesForTerm(studentIds: string[], termId: string): Promise<Map<string, number>> {
+  const rates = new Map<string, number>();
+  if (studentIds.length === 0) return rates;
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("lesson_attendance")
+    .select("student_id, is_present, session:attendance_sessions!inner(term_id, kind)")
+    .in("student_id", studentIds)
+    .eq("session.term_id", termId)
+    .eq("session.kind", "lesson");
+  if (error) throw new Error(error.message);
+
+  const counts = new Map<string, { present: number; total: number }>();
+  for (const row of (data ?? []) as unknown as { student_id: string; is_present: boolean }[]) {
+    const bucket = counts.get(row.student_id) ?? { present: 0, total: 0 };
+    bucket.total += 1;
+    if (row.is_present) bucket.present += 1;
+    counts.set(row.student_id, bucket);
+  }
+  for (const [studentId, { present, total }] of counts) {
+    rates.set(studentId, Math.round((present / total) * 1000) / 10);
+  }
+  return rates;
+}
+
 interface LeaderboardFilters {
   schoolId: string;
   classId?: string;
@@ -149,11 +223,23 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
   // inTerm(). A term belonging to another school is treated as matching
   // nothing rather than ignored, so a mismatched filter cannot quietly widen
   // the result to the whole year.
+  //
+  // When no termId is given, the CURRENT term is resolved anyway rather than
+  // left unbounded — every entry here is blended with attendance, and
+  // attendance is inherently per-term (attendance_sessions.term_id). Blending
+  // a whole academic year of assessments against just this term's attendance
+  // would mix two different windows into one number. A school that has not
+  // defined its current term falls back to the old unbounded behaviour, with
+  // no attendance blend, rather than failing.
   let term: TermWindow | null = null;
   if (termId) {
     term = await getTermWindow(termId);
     if (!term || term.school_id !== schoolId) return [];
     query = query.gte("submitted_at", term.starts_on).lt("submitted_at", nextDay(term.ends_on));
+  } else {
+    const currentTermId = await getCurrentTermId(schoolId);
+    if (currentTermId) term = await getTermWindow(currentTermId);
+    if (term) query = query.gte("submitted_at", term.starts_on).lt("submitted_at", nextDay(term.ends_on));
   }
 
   const { data, error } = await query;
@@ -178,13 +264,24 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
     }
   }
 
-  const entries: Omit<LeaderboardEntry, "rank">[] = Array.from(byStudent.entries()).map(([studentId, agg]) => ({
-    studentId,
-    studentName: agg.name,
-    studentSystemId: agg.systemId,
-    assessmentsCount: agg.percentages.length,
-    averagePercentage: Math.round((agg.percentages.reduce((sum, p) => sum + p, 0) / agg.percentages.length) * 10) / 10,
-  }));
+  const attendanceRates = term
+    ? await getAttendanceRatesForTerm(Array.from(byStudent.keys()), term.id)
+    : new Map<string, number>();
+
+  const entries: Omit<LeaderboardEntry, "rank">[] = Array.from(byStudent.entries()).map(([studentId, agg]) => {
+    const written = Math.round((agg.percentages.reduce((sum, p) => sum + p, 0) / agg.percentages.length) * 10) / 10;
+    const blend = blendWithAttendance(written, attendanceRates.get(studentId) ?? null);
+    return {
+      studentId,
+      studentName: agg.name,
+      studentSystemId: agg.systemId,
+      assessmentsCount: agg.percentages.length,
+      averagePercentage: blend.overall,
+      written: blend.written,
+      attendanceRate: blend.attendanceRate,
+      attendanceWeight: blend.weight,
+    };
+  });
 
   entries.sort((a, b) => b.averagePercentage - a.averagePercentage);
 
@@ -361,6 +458,53 @@ export async function getCurrentTermId(schoolId: string): Promise<string | null>
     .limit(1);
   if (error) throw new Error(error.message);
   return data?.[0]?.id ?? null;
+}
+
+export interface StudentTermPerformance {
+  termId: string;
+  termNumber: number;
+  written: number;
+  attendanceRate: number | null;
+  weight: number;
+  overall: number;
+}
+
+/**
+ * One learner's own current-term blended performance — written assessments
+ * and attendance, same 50/50 blend as the leaderboards (see
+ * blendWithAttendance), for their own report. Null when there is no current
+ * term for their school, or nothing marked yet this term to build a written
+ * figure from — same "no number beats a misleading one" rule the rest of this
+ * feature follows, not a fabricated 0.
+ */
+export async function getStudentCurrentTermPerformance(studentId: string): Promise<StudentTermPerformance | null> {
+  const supabase = getSupabaseAdmin();
+  const { data: enrollment, error } = await supabase
+    .from("current_enrollments")
+    .select("school_id, academic_year_id")
+    .eq("student_id", studentId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!enrollment?.school_id) return null;
+
+  const termId = await getCurrentTermId(enrollment.school_id);
+  if (!termId) return null;
+
+  const termAverages = await getStudentTermAverages(studentId, enrollment.academic_year_id ?? undefined);
+  const current = termAverages.find((t) => t.termId === termId);
+  if (!current) return null;
+
+  const attendanceRates = await getAttendanceRatesForTerm([studentId], termId);
+  const blend = blendWithAttendance(current.averagePercentage, attendanceRates.get(studentId) ?? null);
+
+  return {
+    termId,
+    termNumber: current.termNumber,
+    written: blend.written,
+    attendanceRate: blend.attendanceRate,
+    weight: blend.weight,
+    overall: blend.overall,
+  };
 }
 
 function buildMotivationalMessage(trend: TermAverage[]): string {

@@ -6,7 +6,9 @@ import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useParentChildren } from '@/components/parent/ParentChildrenContext';
 import { PracticalCard } from '@/components/ui/PracticalCard';
+import { TermPerformanceCard } from '@/components/ui/TermPerformanceCard';
 import type { BlendedPerformance, PracticalTermScore } from '@/lib/entities/practical-observations';
+import type { StudentTermPerformance } from '@/lib/entities/performance';
 
 interface Attempt {
   assessmentSystemId: string;
@@ -54,6 +56,10 @@ export default function ParentResultsPage() {
     score: PracticalTermScore | null;
     performance: BlendedPerformance | null;
   } | null>(null);
+  const [termPerformance, setTermPerformance] = useState<{
+    studentId: string;
+    performance: StudentTermPerformance | null;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async (studentId: string) => {
@@ -97,6 +103,23 @@ export default function ParentResultsPage() {
     };
   }, [selectedId]);
 
+  // Fetched separately, same failure posture as practical above: this term's
+  // blended performance is a supplement to the assessment table, not its
+  // subject, so a failed lookup just leaves the card empty.
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    fetch(`/api/performance/summary?studentId=${selectedId}`)
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && d.success) setTermPerformance({ studentId: selectedId, performance: d.data ?? null });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
+
   return (
     <div className="space-y-4">
       <div>
@@ -107,6 +130,11 @@ export default function ParentResultsPage() {
       {/* Kept above and visually separate from the assessment table: practical
           skills are observed in the lab, not sat as a paper, and must not read
           as one combined mark with the written results below. */}
+      <TermPerformanceCard
+        performance={termPerformance?.studentId === selectedId ? termPerformance.performance : null}
+        voice="parent"
+      />
+
       <PracticalCard
         score={practical?.studentId === selectedId ? practical.score : null}
         performance={practical?.studentId === selectedId ? practical.performance : null}
