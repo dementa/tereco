@@ -43,6 +43,7 @@ export default function BehaviourRatingPage() {
     <EnterMarksPanel
       assessmentSystemId={assessmentSystemId}
       backHref="/staff/forms"
+      backLabel="Back to Data Forms"
       heading="Behaviour Rating"
       fixedSchoolId={user.schoolId}
       lockToBandMode

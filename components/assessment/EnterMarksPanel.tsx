@@ -87,12 +87,14 @@ type ScoreMode = 'band' | 'number';
 export function EnterMarksPanel({
   assessmentSystemId,
   backHref,
+  backLabel = 'Back to assessment',
   heading = 'Enter marks directly',
   fixedSchoolId,
   lockToBandMode = false,
 }: {
   assessmentSystemId: string;
   backHref: string;
+  backLabel?: string;
   heading?: string;
   fixedSchoolId?: string;
   lockToBandMode?: boolean;
@@ -293,9 +295,9 @@ export function EnterMarksPanel({
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">{heading}</h1>
         <p className="text-sm text-text-muted">
-          {assessment ? `For "${assessment.title}"` : 'Loading…'}
-          {!lockToBandMode &&
-            ' — a stop-gap for learners with no online sitting. Rate or score each learner below; it counts as this assessment’s marks, same as a normal marked submission.'}
+          {lockToBandMode
+            ? 'Pick a class or stream below, then rate each learner — no online sitting, no separate form to fill.'
+            : `${assessment ? `For "${assessment.title}"` : 'Loading…'} — a stop-gap for learners with no online sitting. Rate or score each learner below; it counts as this assessment’s marks, same as a normal marked submission.`}
         </p>
       </div>
 
@@ -504,7 +506,7 @@ export function EnterMarksPanel({
               </p>
               <div className="flex gap-2 shrink-0">
                 <Button variant="outline" onClick={() => router.push(backHref)}>
-                  Back to assessment
+                  {backLabel}
                 </Button>
                 <Button onClick={() => void handleSave()} isLoading={saving}>
                   Save marks

@@ -378,7 +378,7 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
             <Button
               variant="outline"
               onClick={() => router.push(`/${role}/assessments/${systemId}/enter-marks`)}
-              title="Rate or score a class with no online sitting — e.g. a behaviour rating, or a quick in-person evaluation."
+              title="Record marks for this assessment directly, for a class that never sat it online. For a general behaviour rating (not tied to this assessment), use Behaviour Rating under Data Forms instead."
             >
               Enter marks directly
             </Button>
