@@ -6,7 +6,7 @@ import { errorResponse, handleApiError, successResponse } from "@/lib/apiRespons
 
 /** draft -> pending_approval. Only the item's own creator (or admin/super_admin) may submit it. */
 export async function POST(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await requireRole(request, ["staff", "school_admin", "admin", "super_admin"]);
+  const denied = await requireRole(request, ["staff", "admin", "super_admin"]);
   if (denied) return denied;
 
   try {

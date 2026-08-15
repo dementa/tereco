@@ -41,7 +41,7 @@ const PutSchema = z.object({ targets: z.array(TargetSchema) });
  * per epic #11's data-model decision.
  */
 export async function PUT(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await requireRole(request, ["staff", "school_admin", "admin", "super_admin"]);
+  const denied = await requireRole(request, ["staff", "admin", "super_admin"]);
   if (denied) return denied;
 
   try {

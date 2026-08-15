@@ -39,7 +39,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
  * silently lets an edited item skip re-review.
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await requireRole(request, ["staff", "school_admin", "admin", "super_admin"]);
+  const denied = await requireRole(request, ["staff", "admin", "super_admin"]);
   if (denied) return denied;
 
   try {
@@ -67,7 +67,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
  * from every list.
  */
 export async function DELETE(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const denied = await requireRole(request, ["staff", "school_admin", "admin", "super_admin"]);
+  const denied = await requireRole(request, ["staff", "admin", "super_admin"]);
   if (denied) return denied;
 
   try {
