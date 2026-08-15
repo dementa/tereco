@@ -47,7 +47,8 @@ interface LeaderboardEntry {
 // Rank/Student/Written/Attendance/Overall — a roster shape fit for handing to
 // a school as-is, so this is also what the Export button (CSV/Excel/PDF)
 // hands out. exportValue keeps attendanceRate numeric (blank when there's no
-// data, never a literal "null"); pdfValue is the printed, %-suffixed form.
+// data, never a literal "null"); pdfValue rounds to a whole percent for
+// print, same convention as the results PDFs — the 1dp figure stays on screen and in CSV/Excel.
 const performanceColumns: DataTableColumn<LeaderboardEntry>[] = [
   { key: 'rank', header: 'Rank', value: (e) => e.rank, sortable: true, className: 'w-14' },
   { key: 'studentName', header: 'Student', value: (e) => e.studentName, sortable: true },
@@ -58,7 +59,7 @@ const performanceColumns: DataTableColumn<LeaderboardEntry>[] = [
     sortable: true,
     align: 'right',
     render: (e) => `${e.written}%`,
-    pdfValue: (e) => `${e.written}%`,
+    pdfValue: (e) => `${Math.round(e.written)}%`,
   },
   {
     key: 'attendanceRate',
@@ -68,7 +69,7 @@ const performanceColumns: DataTableColumn<LeaderboardEntry>[] = [
     align: 'right',
     render: (e) => (e.attendanceRate !== null ? `${e.attendanceRate}%` : '—'),
     exportValue: (e) => e.attendanceRate,
-    pdfValue: (e) => (e.attendanceRate !== null ? `${e.attendanceRate}%` : '—'),
+    pdfValue: (e) => (e.attendanceRate !== null ? `${Math.round(e.attendanceRate)}%` : '—'),
   },
   {
     key: 'averagePercentage',
@@ -77,7 +78,7 @@ const performanceColumns: DataTableColumn<LeaderboardEntry>[] = [
     sortable: true,
     align: 'right',
     render: (e) => <span className="font-semibold text-primary-900">{e.averagePercentage}%</span>,
-    pdfValue: (e) => `${e.averagePercentage}%`,
+    pdfValue: (e) => `${Math.round(e.averagePercentage)}%`,
   },
 ];
 
