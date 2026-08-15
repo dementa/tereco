@@ -32,6 +32,31 @@ interface LeaderboardEntry {
   rank: number;
 }
 
+/** A specific school's own term — for the single-school drill-down picker. */
+interface Term {
+  id: string;
+  number: number;
+  startsOn: string;
+  endsOn: string;
+}
+
+/** One (year, number) pair across every school — for the cross-school benchmark picker. See listDistinctTerms. */
+interface DistinctTerm {
+  termId: string;
+  academicYearLabel: string;
+  number: number;
+}
+
+function isCurrentTerm(t: Term): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  return t.startsOn <= today && today <= t.endsOn;
+}
+
+function termLabel(t: Term): string {
+  const year = new Date(t.startsOn).getUTCFullYear();
+  return `${year} Term ${t.number}${isCurrentTerm(t) ? ' (current)' : ''}`;
+}
+
 // Rank/Student/Written/Attendance/Overall — a roster shape fit for handing to
 // a school as-is, so this is also what the Export button (CSV/Excel/PDF)
 // hands out. exportValue keeps attendanceRate numeric (blank when there's no
@@ -100,37 +125,61 @@ export default function AdminPerformancePage() {
   const [view, setView] = useState<'chart' | 'table'>('chart');
   const isPhone = useIsPhone();
 
+  const [benchmarkTerms, setBenchmarkTerms] = useState<DistinctTerm[]>([]);
+  const [benchmarkTermId, setBenchmarkTermId] = useState('');
+
   const [schoolId, setSchoolId] = useState('');
   const [drillDown, setDrillDown] = useState<LeaderboardEntry[]>([]);
   const [drillDownLoading, setDrillDownLoading] = useState(false);
+  const [drillDownTerms, setDrillDownTerms] = useState<Term[]>([]);
+  const [drillDownTermId, setDrillDownTermId] = useState('');
 
-  const loadBenchmark = useCallback(async () => {
-    setBenchmarkLoading(true);
-    try {
-      const res = await fetch('/api/admin/system/performance');
-      const data = await res.json();
-      if (data.success) setBenchmark(data.data);
-      else toast.error(data.message ?? 'Failed to load school benchmark.');
-    } catch {
-      toast.error('Network error while loading school benchmark.');
-    } finally {
-      setBenchmarkLoading(false);
-    }
-  }, [toast]);
+  const loadBenchmark = useCallback(
+    async (selectedTermId: string) => {
+      setBenchmarkLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (selectedTermId) params.set('termId', selectedTermId);
+        const res = await fetch(`/api/admin/system/performance?${params.toString()}`);
+        const data = await res.json();
+        if (data.success) setBenchmark(data.data);
+        else toast.error(data.message ?? 'Failed to load school benchmark.');
+      } catch {
+        toast.error('Network error while loading school benchmark.');
+      } finally {
+        setBenchmarkLoading(false);
+      }
+    },
+    [toast],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
-      if (!controller.signal.aborted) await loadBenchmark();
+      if (!controller.signal.aborted) await loadBenchmark(benchmarkTermId);
     })();
     return () => controller.abort();
-  }, [loadBenchmark]);
+  }, [benchmarkTermId, loadBenchmark]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/system/terms');
+        const data = await res.json();
+        if (data.success) setBenchmarkTerms(data.data);
+      } catch {
+        // Silent — the term picker just falls back to "Default (current)".
+      }
+    })();
+  }, []);
 
   const loadDrillDown = useCallback(
-    async (selectedSchoolId: string) => {
+    async (selectedSchoolId: string, selectedTermId: string) => {
       setDrillDownLoading(true);
       try {
-        const res = await fetch(`/api/admin/system/performance?schoolId=${selectedSchoolId}`);
+        const params = new URLSearchParams({ schoolId: selectedSchoolId });
+        if (selectedTermId) params.set('termId', selectedTermId);
+        const res = await fetch(`/api/admin/system/performance?${params.toString()}`);
         const data = await res.json();
         if (data.success) setDrillDown(data.data);
         else toast.error(data.message ?? 'Failed to load school leaderboard.');
@@ -147,10 +196,31 @@ export default function AdminPerformancePage() {
     if (!schoolId) return;
     const controller = new AbortController();
     void (async () => {
-      if (!controller.signal.aborted) await loadDrillDown(schoolId);
+      if (!controller.signal.aborted) await loadDrillDown(schoolId, drillDownTermId);
     })();
     return () => controller.abort();
-  }, [schoolId, loadDrillDown]);
+  }, [schoolId, drillDownTermId, loadDrillDown]);
+
+  // A new school's own terms replace the old ones — any term chosen for the
+  // PREVIOUS school is reset where schoolId is set (see the school <select>
+  // below), since it would otherwise silently reuse an id that belongs to a
+  // different school's calendar. With no school selected there is nothing to
+  // fetch; the stale terms list stays unused since the picker that reads it
+  // only renders once schoolId is set.
+  useEffect(() => {
+    if (!schoolId) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const res = await fetch(`/api/admin/system/terms?schoolId=${schoolId}`);
+        const data = await res.json();
+        if (!controller.signal.aborted && data.success) setDrillDownTerms(data.data);
+      } catch {
+        // Silent — the term picker just falls back to "Default (current)".
+      }
+    })();
+    return () => controller.abort();
+  }, [schoolId]);
 
   const chartHeight = Math.max(120, benchmark.length * 44);
 
@@ -164,21 +234,36 @@ export default function AdminPerformancePage() {
       </div>
 
       <Card>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="text-sm font-semibold text-primary-900">School benchmark</h2>
-          <div className="flex gap-1 text-xs">
-            <button
-              onClick={() => setView('chart')}
-              className={`px-2.5 py-1 rounded-lg ${view === 'chart' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={benchmarkTermId}
+              onChange={(e) => setBenchmarkTermId(e.target.value)}
+              className="border border-border rounded-lg px-3 py-2 text-sm"
+              aria-label="Term"
             >
-              Chart
-            </button>
-            <button
-              onClick={() => setView('table')}
-              className={`px-2.5 py-1 rounded-lg ${view === 'table' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
-            >
-              Table
-            </button>
+              <option value="">Default (current)</option>
+              {benchmarkTerms.map((t) => (
+                <option key={t.termId} value={t.termId}>
+                  {t.academicYearLabel} Term {t.number}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-1 text-xs">
+              <button
+                onClick={() => setView('chart')}
+                className={`px-2.5 py-1 rounded-lg ${view === 'chart' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
+              >
+                Chart
+              </button>
+              <button
+                onClick={() => setView('table')}
+                className={`px-2.5 py-1 rounded-lg ${view === 'table' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
+              >
+                Table
+              </button>
+            </div>
           </div>
         </div>
 
@@ -234,18 +319,38 @@ export default function AdminPerformancePage() {
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="text-sm font-semibold text-primary-900">Drill into a school</h2>
-          <select
-            value={schoolId}
-            onChange={(e) => setSchoolId(e.target.value)}
-            className="border border-border rounded-lg px-3 py-2 text-sm"
-          >
-            <option value="">Select a school…</option>
-            {benchmark.map((row) => (
-              <option key={row.schoolId} value={row.schoolId}>
-                {row.schoolName}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap gap-3">
+            <select
+              value={schoolId}
+              onChange={(e) => {
+                setSchoolId(e.target.value);
+                setDrillDownTermId('');
+              }}
+              className="border border-border rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Select a school…</option>
+              {benchmark.map((row) => (
+                <option key={row.schoolId} value={row.schoolId}>
+                  {row.schoolName}
+                </option>
+              ))}
+            </select>
+            {schoolId && (
+              <select
+                value={drillDownTermId}
+                onChange={(e) => setDrillDownTermId(e.target.value)}
+                className="border border-border rounded-lg px-3 py-2 text-sm"
+                aria-label="Term"
+              >
+                <option value="">Default (current)</option>
+                {drillDownTerms.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {termLabel(t)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
 
         {!schoolId ? (

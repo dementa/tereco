@@ -53,6 +53,51 @@ export async function getTerm(termId: string): Promise<Term | null> {
   return data ? rowToTerm(data as unknown as TermRow) : null;
 }
 
+export interface DistinctTerm {
+  /** One representative term id for this (year, number) pair — schools don't share exact dates, but getSchoolBenchmark resolves peers by number, so any one id is enough. */
+  termId: string;
+  academicYearId: string;
+  academicYearLabel: string;
+  number: number;
+}
+
+/**
+ * Every (academic year, term number) combination that exists for ANY school,
+ * newest first — the option list for the super-admin cross-school benchmark's
+ * term picker. Deliberately not scoped to one school: "Term II" there means
+ * every school's own Term II (see getSchoolBenchmark), so the picker offers
+ * the (year, number) pair, not a specific school's term.
+ */
+export async function listDistinctTerms(): Promise<DistinctTerm[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("terms")
+    .select("id, academic_year_id, number, starts_on, academic_year:academic_years(label)")
+    .order("starts_on", { ascending: false });
+  if (error) throw new Error(error.message);
+
+  const rows = data as unknown as {
+    id: string;
+    academic_year_id: string;
+    number: number;
+    academic_year: { label: string } | null;
+  }[];
+
+  const seen = new Map<string, DistinctTerm>();
+  for (const row of rows) {
+    const key = `${row.academic_year_id}:${row.number}`;
+    if (!seen.has(key)) {
+      seen.set(key, {
+        termId: row.id,
+        academicYearId: row.academic_year_id,
+        academicYearLabel: row.academic_year?.label ?? "",
+        number: row.number,
+      });
+    }
+  }
+  return Array.from(seen.values());
+}
+
 /**
  * Translates the database's structural guarantees into sentences a person can
  * act on — same approach as describeYearError in lib/entities/academic-years.ts.

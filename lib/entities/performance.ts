@@ -50,6 +50,7 @@ interface TermWindow {
   id: string;
   number: number;
   school_id: string;
+  academic_year_id: string;
   starts_on: string;
   ends_on: string;
 }
@@ -94,7 +95,7 @@ async function getTermWindow(termId: string): Promise<TermWindow | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("terms")
-    .select("id, number, school_id, starts_on, ends_on")
+    .select("id, number, school_id, academic_year_id, starts_on, ends_on")
     .eq("id", termId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -199,8 +200,20 @@ interface LeaderboardFilters {
 /** Shared query + aggregation behind both the class and school leaderboards. */
 async function queryLeaderboard(filters: LeaderboardFilters): Promise<LeaderboardEntry[]> {
   const { schoolId, classId, streamId, termId, assessmentId } = filters;
+
+  // An explicit term is authoritative about its own academic year — a caller
+  // picking "2025 Term 2" means exactly that year's Term 2, not whatever
+  // filters.academicYearId (or the current year, if that's absent) happens
+  // to be. Resolving the term FIRST and deriving the year from it, rather
+  // than defaulting the year independently, is what stops those two filters
+  // from silently contradicting each other and returning nothing.
+  let term: TermWindow | null = null;
   let academicYearId = filters.academicYearId;
-  if (!academicYearId) {
+  if (termId) {
+    term = await getTermWindow(termId);
+    if (!term || term.school_id !== schoolId) return [];
+    academicYearId = term.academic_year_id;
+  } else if (!academicYearId) {
     const currentYear = await getCurrentAcademicYear();
     if (!currentYear) return [];
     academicYearId = currentYear.id;
@@ -233,10 +246,7 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
   // defined, or one whose marked work falls outside it, would otherwise show
   // an empty leaderboard despite having a full year of real written data —
   // exactly backwards for a page with no term picker to work around it.
-  let term: TermWindow | null = null;
-  if (termId) {
-    term = await getTermWindow(termId);
-    if (!term || term.school_id !== schoolId) return [];
+  if (term) {
     query = query.gte("submitted_at", term.starts_on).lt("submitted_at", nextDay(term.ends_on));
   }
 
@@ -620,14 +630,44 @@ function median(sorted: number[]): number {
  */
 export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise<SchoolBenchmarkEntry[]> {
   const { termId, assessmentId } = params;
+  const supabase = getSupabaseAdmin();
+
+  // An explicit term is authoritative about its own academic year — a caller
+  // picking "2025 Term 2" means exactly that year's Term 2, not whatever
+  // params.academicYearId (or the current year, if that's absent) happens to
+  // be. Resolving the term FIRST and deriving the year from it, rather than
+  // defaulting the year independently, is what stops those two filters from
+  // silently contradicting each other and returning nothing.
   let academicYearId = params.academicYearId;
-  if (!academicYearId) {
+  const termsBySchool = new Map<string, TermWindow>();
+  if (termId) {
+    const selected = await getTermWindow(termId);
+    if (!selected) return [];
+    academicYearId = selected.academic_year_id;
+
+    // "Term II" means each school's OWN Term II, not one school's dates
+    // imposed on everyone. The schools do not sit their terms on the same
+    // days — Ebenezer's Term 2 ends 12 August and Little Pine's on the 21st
+    // — so a single date window would judge one school on nine days of work
+    // the other never had, in a view whose entire purpose is comparing them
+    // fairly. So the selected term is resolved to its NUMBER, and every
+    // school is then matched against its own term of that number. A school
+    // that has not defined that term contributes nothing rather than being
+    // compared on a guess.
+    const { data: peers, error: termError } = await supabase
+      .from("terms")
+      .select("id, number, school_id, academic_year_id, starts_on, ends_on")
+      .eq("academic_year_id", academicYearId)
+      .eq("number", selected.number);
+    if (termError) throw new Error(termError.message);
+    for (const t of (peers ?? []) as TermWindow[]) termsBySchool.set(t.school_id, t);
+    if (termsBySchool.size === 0) return [];
+  } else if (!academicYearId) {
     const currentYear = await getCurrentAcademicYear();
     if (!currentYear) return [];
     academicYearId = currentYear.id;
   }
 
-  const supabase = getSupabaseAdmin();
   let query = supabase
     .from("assessment_submissions")
     .select(BENCHMARK_COLUMNS)
@@ -638,28 +678,7 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
 
   if (assessmentId) query = query.eq("assessment_id", assessmentId);
 
-  // "Term II" means each school's OWN Term II, not one school's dates imposed
-  // on everyone. The schools do not sit their terms on the same days —
-  // Ebenezer's Term 2 ends 12 August and Little Pine's on the 21st — so a
-  // single date window would judge one school on nine days of work the other
-  // never had, in a view whose entire purpose is comparing them fairly.
-  //
-  // So the selected term is resolved to its NUMBER, and every school is then
-  // matched against its own term of that number. A school that has not defined
-  // that term contributes nothing rather than being compared on a guess.
-  const termsBySchool = new Map<string, TermWindow>();
   if (termId) {
-    const selected = await getTermWindow(termId);
-    if (!selected) return [];
-    const { data: peers, error: termError } = await supabase
-      .from("terms")
-      .select("id, number, school_id, starts_on, ends_on")
-      .eq("academic_year_id", academicYearId)
-      .eq("number", selected.number);
-    if (termError) throw new Error(termError.message);
-    for (const t of (peers ?? []) as TermWindow[]) termsBySchool.set(t.school_id, t);
-    if (termsBySchool.size === 0) return [];
-
     // Narrow in SQL to the widest window any school uses, so the row count
     // stays bounded; the per-school check below is what makes it exact.
     const windows = Array.from(termsBySchool.values());
