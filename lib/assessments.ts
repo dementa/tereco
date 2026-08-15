@@ -27,6 +27,8 @@ export interface Assessment {
   ePaperAt?: string;
   /** Set by a super_admin to remove this assessment from every other role's lists. */
   hiddenAt?: string;
+  /** Whether marks from this assessment count toward the blended performance figure. Defaults true — a super_admin opts an assessment OUT, never in. */
+  includeInEvaluation: boolean;
   targets: AssessmentTarget[];
   /** Staff granted edit+mark access by the owner. See lib/auth/access.ts. */
   collaboratorIds: string[];
@@ -132,6 +134,7 @@ interface AssessmentRow {
   results_released_at: string | null;
   e_paper_at: string | null;
   hidden_at: string | null;
+  include_in_evaluation: boolean;
   targets:
     | {
         id: string;
@@ -147,7 +150,7 @@ interface AssessmentRow {
 // Single string literal — concatenation would widen it to `string` and silently
 // disable the client's column checking.
 const ASSESSMENT_COLUMNS =
-  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, e_paper_at, hidden_at, targets:assessment_targets(id, school_id, level, class_id, student_id), collaborators:assessment_collaborators(staff_id)";
+  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, e_paper_at, hidden_at, include_in_evaluation, targets:assessment_targets(id, school_id, level, class_id, student_id), collaborators:assessment_collaborators(staff_id)";
 
 const QUESTION_COLUMNS =
   "id, position, code, question_text, type, options, correct_answer, model_answer, image_url, image_public_id, max_score, config";
@@ -169,6 +172,7 @@ function rowToAssessment(row: AssessmentRow): Assessment {
     resultsReleasedAt: row.results_released_at ?? undefined,
     ePaperAt: row.e_paper_at ?? undefined,
     hiddenAt: row.hidden_at ?? undefined,
+    includeInEvaluation: row.include_in_evaluation,
     targets: (row.targets ?? []).map((t) => ({
       id: t.id,
       schoolId: t.school_id,
@@ -517,6 +521,21 @@ export async function unhideAssessment(systemId: string): Promise<void> {
   const { error } = await supabase
     .from("assessments")
     .update({ hidden_at: null })
+    .eq("system_id", systemId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Flips whether this assessment's marks count toward the blended performance
+ * figure — super_admin-only, same as hide/unhide. Sitting, marking, and
+ * results-release are untouched; this only changes what the leaderboards,
+ * benchmark, and student/parent "overall" figure include.
+ */
+export async function setAssessmentEvaluation(systemId: string, includeInEvaluation: boolean): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("assessments")
+    .update({ include_in_evaluation: includeInEvaluation })
     .eq("system_id", systemId);
   if (error) throw new Error(error.message);
 }

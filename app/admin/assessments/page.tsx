@@ -163,6 +163,26 @@ export default function AdminAssessments() {
     );
   }
 
+  async function handleToggleEvaluation(a: CardAssessment) {
+    const nextIncluded = a.includeInEvaluation === false;
+    const res = await fetch(`/api/admin/assessments/${a.systemId}/evaluation`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ includeInEvaluation: nextIncluded }),
+    });
+    const data = await res.json();
+    if (!data.success) {
+      toast.error(data.message ?? 'Could not update evaluation setting.');
+      return;
+    }
+    toast.success(
+      nextIncluded ? 'Included in the evaluation again.' : 'Excluded from the evaluation.'
+    );
+    setAssessments((prev) =>
+      prev.map((x) => (x.systemId === a.systemId ? { ...x, includeInEvaluation: nextIncluded } : x))
+    );
+  }
+
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
     const filtered = assessments.filter((a) => {
@@ -329,6 +349,7 @@ export default function AdminAssessments() {
                 onDuplicate={() => void handleDuplicate(a)}
                 onDelete={() => void handleDelete(a)}
                 onToggleHidden={() => void handleToggleHidden(a)}
+                onToggleEvaluation={() => void handleToggleEvaluation(a)}
               />
             ))}
           </div>
@@ -341,6 +362,7 @@ export default function AdminAssessments() {
             onDuplicate={(a) => void handleDuplicate(a)}
             onDelete={(a) => void handleDelete(a)}
             onToggleHidden={(a) => void handleToggleHidden(a)}
+            onToggleEvaluation={(a) => void handleToggleEvaluation(a)}
           />
         )}
       </div>

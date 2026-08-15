@@ -44,7 +44,7 @@ interface SubmissionAggRow {
 }
 
 const LEADERBOARD_COLUMNS =
-  "student_id, total_score, max_score, status, submitted_at, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments!inner(school_id, class_id, stream_id, academic_year_id), assessment:assessments!inner(id, deleted_at)";
+  "student_id, total_score, max_score, status, submitted_at, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments!inner(school_id, class_id, stream_id, academic_year_id), assessment:assessments!inner(id, deleted_at, include_in_evaluation)";
 
 interface TermWindow {
   id: string;
@@ -213,7 +213,8 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
     .eq("status", "marked")
     .eq("enrollment.school_id", schoolId)
     .eq("enrollment.academic_year_id", academicYearId)
-    .is("assessment.deleted_at", null);
+    .is("assessment.deleted_at", null)
+    .eq("assessment.include_in_evaluation", true);
 
   if (classId) query = query.eq("enrollment.class_id", classId);
   if (streamId) query = query.eq("enrollment.stream_id", streamId);
@@ -358,7 +359,7 @@ interface StudentTrendRow {
 const STUDENT_TREND_COLUMNS =
   "total_score, max_score, status, submitted_at, " +
   "enrollment:enrollments!inner(school_id, academic_year_id), " +
-  "assessment:assessments!inner(deleted_at)";
+  "assessment:assessments!inner(deleted_at, include_in_evaluation)";
 
 /**
  * A student's own average percentage per term, oldest first — their own
@@ -394,7 +395,8 @@ export async function getStudentTermAverages(studentId: string, academicYearId?:
     .select(STUDENT_TREND_COLUMNS)
     .eq("student_id", studentId)
     .eq("status", "marked")
-    .is("assessment.deleted_at", null);
+    .is("assessment.deleted_at", null)
+    .eq("assessment.include_in_evaluation", true);
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as unknown as StudentTrendRow[];
@@ -598,7 +600,7 @@ interface BenchmarkRow {
 // doesn't need any student's name, so the query can't return one. This is the
 // actual privacy boundary for the cross-school view, not a later field-strip.
 const BENCHMARK_COLUMNS =
-  "student_id, total_score, max_score, status, submitted_at, enrollment:enrollments!inner(school_id, academic_year_id, school:schools(name)), assessment:assessments!inner(id, deleted_at)";
+  "student_id, total_score, max_score, status, submitted_at, enrollment:enrollments!inner(school_id, academic_year_id, school:schools(name)), assessment:assessments!inner(id, deleted_at, include_in_evaluation)";
 
 function median(sorted: number[]): number {
   const mid = Math.floor(sorted.length / 2);
@@ -631,7 +633,8 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
     .select(BENCHMARK_COLUMNS)
     .eq("status", "marked")
     .eq("enrollment.academic_year_id", academicYearId)
-    .is("assessment.deleted_at", null);
+    .is("assessment.deleted_at", null)
+    .eq("assessment.include_in_evaluation", true);
 
   if (assessmentId) query = query.eq("assessment_id", assessmentId);
 

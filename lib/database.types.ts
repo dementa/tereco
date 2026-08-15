@@ -299,6 +299,7 @@ export type Database = {
           e_paper_at: string | null
           hidden_at: string | null
           id: string
+          include_in_evaluation: boolean
           instructions: string
           opens_at: string | null
           results_released_at: string | null
@@ -320,6 +321,7 @@ export type Database = {
           e_paper_at?: string | null
           hidden_at?: string | null
           id?: string
+          include_in_evaluation?: boolean
           instructions?: string
           opens_at?: string | null
           results_released_at?: string | null
@@ -341,6 +343,7 @@ export type Database = {
           e_paper_at?: string | null
           hidden_at?: string | null
           id?: string
+          include_in_evaluation?: boolean
           instructions?: string
           opens_at?: string | null
           results_released_at?: string | null
