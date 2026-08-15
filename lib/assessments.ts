@@ -1562,6 +1562,54 @@ export async function getSchoolMarkingProgress(schoolId: string): Promise<School
   };
 }
 
+/**
+ * Same totals as {@link getSchoolMarkingProgress}, but across every school —
+ * the super_admin assessments list's marking-progress panel, unscoped.
+ */
+export async function getSystemMarkingProgress(): Promise<SchoolMarkingProgress> {
+  const supabase = getSupabaseAdmin();
+
+  interface Row {
+    assessment_id: string;
+    status: string;
+  }
+  const rows = await readAllPages<Row>((from, to) =>
+    supabase
+      .from("assessment_submissions")
+      .select("assessment_id, status")
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
+
+  const byAssessment = new Map<string, { total: number; marked: number }>();
+  let markedScripts = 0;
+  let pendingScripts = 0;
+  for (const row of rows) {
+    const bucket = byAssessment.get(row.assessment_id) ?? { total: 0, marked: 0 };
+    bucket.total += 1;
+    if (row.status === "marked") {
+      bucket.marked += 1;
+      markedScripts += 1;
+    } else if (row.status === "submitted") {
+      pendingScripts += 1;
+    }
+    byAssessment.set(row.assessment_id, bucket);
+  }
+
+  let fullyMarkedPapers = 0;
+  for (const bucket of byAssessment.values()) {
+    if (bucket.total > 0 && bucket.total === bucket.marked) fullyMarkedPapers += 1;
+  }
+
+  return {
+    totalScripts: rows.length,
+    markedScripts,
+    pendingScripts,
+    fullyMarkedPapers,
+    totalPapers: byAssessment.size,
+  };
+}
+
 /** One assessment as it appears in a person's reminder. */
 export interface MarkingReminderItem {
   systemId: string;
