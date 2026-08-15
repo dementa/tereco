@@ -19,7 +19,7 @@ const NAV = [
     label: 'Data Forms',
     short: 'Forms',
     icon: FileText,
-    activePrefixes: ['/staff/forms', '/staff/lessons', '/staff/attendance', '/staff/practical'],
+    activePrefixes: ['/staff/forms', '/staff/lessons', '/staff/attendance', '/staff/practical', '/staff/behaviour'],
   },
   { href: '/staff/assessments', label: 'My Assessments', icon: ClipboardList },
   { href: '/staff/marking', label: 'Marking', icon: CheckSquare },

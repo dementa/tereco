@@ -615,6 +615,59 @@ export async function enterMarksDirectly(
   }
 }
 
+const BEHAVIOR_ASSESSMENT_TITLE = "Behaviour Rating";
+
+/**
+ * The "Behaviour Rating" form's own backing assessment for one school —
+ * created once, reused forever. Lets a teacher rate learners (see
+ * enterMarksDirectly) without ever seeing the word "assessment": from their
+ * side this is a standalone form under Data Forms, not a step inside
+ * Assessments.
+ *
+ * One per school, not one per term: a mark's TERM is already resolved from
+ * its submitted_at timestamp wherever the blend reads it (see inTerm() in
+ * lib/entities/performance.ts), not from which assessment object it's
+ * attached to — so there is nothing a per-term assessment would buy beyond
+ * complexity. Hidden immediately after creation (hideAssessment) so it
+ * never clutters the ordinary assessments list; it stays fully live and
+ * fully counted everywhere marks already count, same as any other hidden
+ * assessment.
+ */
+export async function getOrCreateBehaviorAssessment(schoolId: string, createdBy: string): Promise<Assessment> {
+  const supabase = getSupabaseAdmin();
+  const { data: rows, error } = await supabase
+    .from("assessments")
+    .select("system_id, targets:assessment_targets(school_id, level, class_id, student_id)")
+    .eq("title", BEHAVIOR_ASSESSMENT_TITLE)
+    .is("deleted_at", null);
+  if (error) throw new Error(error.message);
+
+  const existing = (rows ?? []).find(
+    (r) =>
+      r.targets?.length === 1 &&
+      r.targets[0].school_id === schoolId &&
+      r.targets[0].level === null &&
+      r.targets[0].class_id === null &&
+      r.targets[0].student_id === null
+  );
+  if (existing) {
+    const found = await getAssessmentBySystemId(existing.system_id);
+    if (found) return found;
+  }
+
+  const created = await createAssessment({
+    title: BEHAVIOR_ASSESSMENT_TITLE,
+    description: "How learners have been behaving — rated by a teacher, not sat as a paper.",
+    timeLimit: 30,
+    status: "closed",
+    targets: [{ schoolId, level: null, classId: null, studentId: null }],
+    createdBy,
+  });
+  await hideAssessment(created.systemId);
+  const hidden = await getAssessmentBySystemId(created.systemId);
+  return hidden ?? created;
+}
+
 // ─── Collaborators ──────────────────────────────────────────
 
 export interface AssessmentCollaborator {
