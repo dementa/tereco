@@ -17,6 +17,7 @@ interface AssessmentTableProps {
   onDuplicate?: (a: CardAssessment) => void;
   onDelete?: (a: CardAssessment) => void;
   onToggleHidden?: (a: CardAssessment) => void;
+  onToggleEvaluation?: (a: CardAssessment) => void;
   emptyMessage?: string;
 }
 
@@ -33,6 +34,7 @@ export function AssessmentTable({
   onDuplicate,
   onDelete,
   onToggleHidden,
+  onToggleEvaluation,
   emptyMessage = 'No assessments yet.',
 }: AssessmentTableProps) {
   return (
@@ -84,6 +86,7 @@ export function AssessmentTable({
                     <Badge variant={STATUS_VARIANT[a.status]}>{a.status}</Badge>
                     {a.resultsReleasedAt && <Badge variant="success">Results released</Badge>}
                     {a.hiddenAt && <Badge variant="muted">Hidden</Badge>}
+                    {a.includeInEvaluation === false && <Badge variant="muted">Not evaluated</Badge>}
                   </div>
                 </td>
                 <td className="px-3 py-2.5 text-text-secondary hidden lg:table-cell">
@@ -96,10 +99,12 @@ export function AssessmentTable({
                   <CardMenu
                     capabilities={a.capabilities}
                     hidden={Boolean(a.hiddenAt)}
+                    excludedFromEvaluation={a.includeInEvaluation === false}
                     onOpen={() => onRowClick(a)}
                     onDuplicate={onDuplicate ? () => onDuplicate(a) : undefined}
                     onDelete={onDelete ? () => onDelete(a) : undefined}
                     onToggleHidden={onToggleHidden ? () => onToggleHidden(a) : undefined}
+                    onToggleEvaluation={onToggleEvaluation ? () => onToggleEvaluation(a) : undefined}
                   />
                 </td>
               </tr>

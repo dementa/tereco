@@ -44,6 +44,7 @@ export async function GET(request: NextRequest) {
         canManage: canManageAssessment(profile, a),
         isOwner: isAssessmentOwner(profile, a),
         canHide: profile.role === 'super_admin',
+        canToggleEvaluation: profile.role === 'super_admin',
       },
     }));
     return successResponse({ data: withCapabilities });

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card } from '@/components/ui/Card';
-import { Leaderboard, type LeaderboardRowData } from '@/components/ui/Leaderboard';
+import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useIsPhone } from '@/lib/useMediaQuery';
 
@@ -26,18 +26,98 @@ interface LeaderboardEntry {
   studentName: string;
   assessmentsCount: number;
   averagePercentage: number;
+  written: number;
+  attendanceRate: number | null;
+  attendanceWeight: number;
   rank: number;
 }
 
-function toRows(entries: LeaderboardEntry[]): LeaderboardRowData[] {
-  return entries.map((entry) => ({
-    rank: entry.rank,
-    name: entry.studentName,
-    subtitle: `${entry.assessmentsCount} assessment${entry.assessmentsCount === 1 ? '' : 's'}`,
-    value: entry.averagePercentage,
-    valueLabel: `${entry.averagePercentage}%`,
-  }));
+/** A specific school's own term — for the single-school drill-down picker. */
+interface Term {
+  id: string;
+  number: number;
+  startsOn: string;
+  endsOn: string;
 }
+
+/** One (year, number) pair across every school — for the cross-school benchmark picker. See listDistinctTerms. */
+interface DistinctTerm {
+  termId: string;
+  academicYearLabel: string;
+  number: number;
+}
+
+function isCurrentTerm(t: Term): boolean {
+  const today = new Date().toISOString().slice(0, 10);
+  return t.startsOn <= today && today <= t.endsOn;
+}
+
+function termLabel(t: Term): string {
+  const year = new Date(t.startsOn).getUTCFullYear();
+  return `${year} Term ${t.number}${isCurrentTerm(t) ? ' (current)' : ''}`;
+}
+
+// Rank/Student/Written/Attendance/Overall — a roster shape fit for handing to
+// a school as-is, so this is also what the Export button (CSV/Excel/PDF)
+// hands out. exportValue keeps attendanceRate numeric (blank when there's no
+// data, never a literal "null"); pdfValue rounds to a whole percent for
+// print, same convention as the results PDFs — the 1dp figure stays on screen and in CSV/Excel.
+const performanceColumns: DataTableColumn<LeaderboardEntry>[] = [
+  { key: 'rank', header: 'Rank', value: (e) => e.rank, sortable: true, className: 'w-14' },
+  { key: 'studentName', header: 'Student', value: (e) => e.studentName, sortable: true },
+  {
+    key: 'written',
+    header: 'Written',
+    value: (e) => e.written,
+    sortable: true,
+    align: 'right',
+    render: (e) => `${e.written}%`,
+    pdfValue: (e) => `${Math.round(e.written)}%`,
+  },
+  {
+    key: 'attendanceRate',
+    header: 'Attendance',
+    value: (e) => e.attendanceRate ?? undefined,
+    sortable: true,
+    align: 'right',
+    render: (e) => (e.attendanceRate !== null ? `${e.attendanceRate}%` : '—'),
+    exportValue: (e) => e.attendanceRate,
+    pdfValue: (e) => (e.attendanceRate !== null ? `${Math.round(e.attendanceRate)}%` : '—'),
+  },
+  {
+    key: 'averagePercentage',
+    header: 'Overall',
+    value: (e) => e.averagePercentage,
+    sortable: true,
+    align: 'right',
+    render: (e) => <span className="font-semibold text-primary-900">{e.averagePercentage}%</span>,
+    pdfValue: (e) => `${Math.round(e.averagePercentage)}%`,
+  },
+];
+
+const benchmarkColumns: DataTableColumn<SchoolBenchmarkEntry>[] = [
+  { key: 'rank', header: 'Rank', value: (e) => e.rank, sortable: true, className: 'w-14' },
+  { key: 'schoolName', header: 'School', value: (e) => e.schoolName, sortable: true },
+  { key: 'studentsAssessed', header: 'Students assessed', value: (e) => e.studentsAssessed, sortable: true, align: 'right' },
+  {
+    key: 'averagePercentage',
+    header: 'Average',
+    value: (e) => e.averagePercentage,
+    sortable: true,
+    align: 'right',
+    render: (e) => <span className="font-semibold text-primary-900">{e.averagePercentage}%</span>,
+    pdfValue: (e) => `${Math.round(e.averagePercentage)}%`,
+  },
+  {
+    key: 'medianPercentage',
+    header: 'Median',
+    value: (e) => e.medianPercentage,
+    sortable: true,
+    align: 'right',
+    render: (e) => `${e.medianPercentage}%`,
+    pdfValue: (e) => `${Math.round(e.medianPercentage)}%`,
+  },
+];
 
 export default function AdminPerformancePage() {
   const toast = useToast();
@@ -46,37 +126,61 @@ export default function AdminPerformancePage() {
   const [view, setView] = useState<'chart' | 'table'>('chart');
   const isPhone = useIsPhone();
 
+  const [benchmarkTerms, setBenchmarkTerms] = useState<DistinctTerm[]>([]);
+  const [benchmarkTermId, setBenchmarkTermId] = useState('');
+
   const [schoolId, setSchoolId] = useState('');
   const [drillDown, setDrillDown] = useState<LeaderboardEntry[]>([]);
   const [drillDownLoading, setDrillDownLoading] = useState(false);
+  const [drillDownTerms, setDrillDownTerms] = useState<Term[]>([]);
+  const [drillDownTermId, setDrillDownTermId] = useState('');
 
-  const loadBenchmark = useCallback(async () => {
-    setBenchmarkLoading(true);
-    try {
-      const res = await fetch('/api/admin/system/performance');
-      const data = await res.json();
-      if (data.success) setBenchmark(data.data);
-      else toast.error(data.message ?? 'Failed to load school benchmark.');
-    } catch {
-      toast.error('Network error while loading school benchmark.');
-    } finally {
-      setBenchmarkLoading(false);
-    }
-  }, [toast]);
+  const loadBenchmark = useCallback(
+    async (selectedTermId: string) => {
+      setBenchmarkLoading(true);
+      try {
+        const params = new URLSearchParams();
+        if (selectedTermId) params.set('termId', selectedTermId);
+        const res = await fetch(`/api/admin/system/performance?${params.toString()}`);
+        const data = await res.json();
+        if (data.success) setBenchmark(data.data);
+        else toast.error(data.message ?? 'Failed to load school benchmark.');
+      } catch {
+        toast.error('Network error while loading school benchmark.');
+      } finally {
+        setBenchmarkLoading(false);
+      }
+    },
+    [toast],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
     void (async () => {
-      if (!controller.signal.aborted) await loadBenchmark();
+      if (!controller.signal.aborted) await loadBenchmark(benchmarkTermId);
     })();
     return () => controller.abort();
-  }, [loadBenchmark]);
+  }, [benchmarkTermId, loadBenchmark]);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch('/api/admin/system/terms');
+        const data = await res.json();
+        if (data.success) setBenchmarkTerms(data.data);
+      } catch {
+        // Silent — the term picker just falls back to "Default (current)".
+      }
+    })();
+  }, []);
 
   const loadDrillDown = useCallback(
-    async (selectedSchoolId: string) => {
+    async (selectedSchoolId: string, selectedTermId: string) => {
       setDrillDownLoading(true);
       try {
-        const res = await fetch(`/api/admin/system/performance?schoolId=${selectedSchoolId}`);
+        const params = new URLSearchParams({ schoolId: selectedSchoolId });
+        if (selectedTermId) params.set('termId', selectedTermId);
+        const res = await fetch(`/api/admin/system/performance?${params.toString()}`);
         const data = await res.json();
         if (data.success) setDrillDown(data.data);
         else toast.error(data.message ?? 'Failed to load school leaderboard.');
@@ -93,10 +197,31 @@ export default function AdminPerformancePage() {
     if (!schoolId) return;
     const controller = new AbortController();
     void (async () => {
-      if (!controller.signal.aborted) await loadDrillDown(schoolId);
+      if (!controller.signal.aborted) await loadDrillDown(schoolId, drillDownTermId);
     })();
     return () => controller.abort();
-  }, [schoolId, loadDrillDown]);
+  }, [schoolId, drillDownTermId, loadDrillDown]);
+
+  // A new school's own terms replace the old ones — any term chosen for the
+  // PREVIOUS school is reset where schoolId is set (see the school <select>
+  // below), since it would otherwise silently reuse an id that belongs to a
+  // different school's calendar. With no school selected there is nothing to
+  // fetch; the stale terms list stays unused since the picker that reads it
+  // only renders once schoolId is set.
+  useEffect(() => {
+    if (!schoolId) return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const res = await fetch(`/api/admin/system/terms?schoolId=${schoolId}`);
+        const data = await res.json();
+        if (!controller.signal.aborted && data.success) setDrillDownTerms(data.data);
+      } catch {
+        // Silent — the term picker just falls back to "Default (current)".
+      }
+    })();
+    return () => controller.abort();
+  }, [schoolId]);
 
   const chartHeight = Math.max(120, benchmark.length * 44);
 
@@ -104,25 +229,42 @@ export default function AdminPerformancePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Performance</h1>
-        <p className="text-sm text-text-muted">Schools ranked by average student performance this academic year.</p>
+        <p className="text-sm text-text-muted">
+          Schools ranked by this term&rsquo;s performance — written assessments and attendance, blended 50/50.
+        </p>
       </div>
 
       <Card>
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="text-sm font-semibold text-primary-900">School benchmark</h2>
-          <div className="flex gap-1 text-xs">
-            <button
-              onClick={() => setView('chart')}
-              className={`px-2.5 py-1 rounded-lg ${view === 'chart' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
+          <div className="flex flex-wrap items-center gap-3">
+            <select
+              value={benchmarkTermId}
+              onChange={(e) => setBenchmarkTermId(e.target.value)}
+              className="border border-border rounded-lg px-3 py-2 text-sm"
+              aria-label="Term"
             >
-              Chart
-            </button>
-            <button
-              onClick={() => setView('table')}
-              className={`px-2.5 py-1 rounded-lg ${view === 'table' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
-            >
-              Table
-            </button>
+              <option value="">Default (current)</option>
+              {benchmarkTerms.map((t) => (
+                <option key={t.termId} value={t.termId}>
+                  {t.academicYearLabel} Term {t.number}
+                </option>
+              ))}
+            </select>
+            <div className="flex gap-1 text-xs">
+              <button
+                onClick={() => setView('chart')}
+                className={`px-2.5 py-1 rounded-lg ${view === 'chart' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
+              >
+                Chart
+              </button>
+              <button
+                onClick={() => setView('table')}
+                className={`px-2.5 py-1 rounded-lg ${view === 'table' ? 'bg-primary-700 text-white' : 'text-text-secondary hover:bg-bg-muted'}`}
+              >
+                Table
+              </button>
+            </div>
           </div>
         </div>
 
@@ -162,64 +304,72 @@ export default function AdminPerformancePage() {
             </ResponsiveContainer>
           </div>
         ) : (
-          // Five columns will not fit a phone, and sideways-scrolling a table on
-          // one is unusable — so the two supporting columns drop out below `sm`
-          // and fold into the school cell instead, the same trade DataTable makes.
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-text-muted border-b border-border">
-                <th className="py-2 pr-2 sm:pr-4">Rank</th>
-                <th className="py-2 pr-2 sm:pr-4">School</th>
-                <th className="py-2 pr-4 hidden sm:table-cell">Students assessed</th>
-                <th className="py-2 pr-2 sm:pr-4 text-right sm:text-left">Average</th>
-                <th className="py-2 pr-4 hidden sm:table-cell">Median</th>
-              </tr>
-            </thead>
-            <tbody>
-              {benchmark.map((row) => (
-                <tr key={row.schoolId} className="border-b border-primary-50 align-top">
-                  <td className="py-2 pr-2 sm:pr-4 text-text-primary tabular-nums">{row.rank}</td>
-                  <td className="py-2 pr-2 sm:pr-4 text-text-primary">
-                    {row.schoolName}
-                    <span className="block sm:hidden text-xs text-text-muted">
-                      {row.studentsAssessed} assessed · median {row.medianPercentage}%
-                    </span>
-                  </td>
-                  <td className="py-2 pr-4 text-text-secondary hidden sm:table-cell">{row.studentsAssessed}</td>
-                  <td className="py-2 pr-2 sm:pr-4 text-text-secondary tabular-nums text-right sm:text-left">
-                    {row.averagePercentage}%
-                  </td>
-                  <td className="py-2 pr-4 text-text-secondary hidden sm:table-cell">{row.medianPercentage}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            rows={benchmark}
+            columns={benchmarkColumns}
+            rowKey={(e) => e.schoolId}
+            initialSort={{ key: 'rank', direction: 'asc' }}
+            searchPlaceholder="Search by school name…"
+            emptyMessage="No marked assessments yet."
+            mobileTitle={(e) => e.schoolName}
+            numbered
+            exportFileName="school-benchmark"
+          />
         )}
       </Card>
 
       <Card>
         <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
           <h2 className="text-sm font-semibold text-primary-900">Drill into a school</h2>
-          <select
-            value={schoolId}
-            onChange={(e) => setSchoolId(e.target.value)}
-            className="border border-border rounded-lg px-3 py-2 text-sm"
-          >
-            <option value="">Select a school…</option>
-            {benchmark.map((row) => (
-              <option key={row.schoolId} value={row.schoolId}>
-                {row.schoolName}
-              </option>
-            ))}
-          </select>
+          <div className="flex flex-wrap gap-3">
+            <select
+              value={schoolId}
+              onChange={(e) => {
+                setSchoolId(e.target.value);
+                setDrillDownTermId('');
+              }}
+              className="border border-border rounded-lg px-3 py-2 text-sm"
+            >
+              <option value="">Select a school…</option>
+              {benchmark.map((row) => (
+                <option key={row.schoolId} value={row.schoolId}>
+                  {row.schoolName}
+                </option>
+              ))}
+            </select>
+            {schoolId && (
+              <select
+                value={drillDownTermId}
+                onChange={(e) => setDrillDownTermId(e.target.value)}
+                className="border border-border rounded-lg px-3 py-2 text-sm"
+                aria-label="Term"
+              >
+                <option value="">Default (current)</option>
+                {drillDownTerms.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {termLabel(t)}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
         </div>
 
         {!schoolId ? (
           <p className="text-sm text-text-muted">Choose a school above to see its student leaderboard.</p>
-        ) : drillDownLoading ? (
-          <p className="text-sm text-text-muted">Loading…</p>
         ) : (
-          <Leaderboard rows={toRows(drillDown)} emptyMessage="No marked assessments yet for this school." />
+          <DataTable
+            rows={drillDown}
+            columns={performanceColumns}
+            rowKey={(e) => e.studentId}
+            loading={drillDownLoading}
+            initialSort={{ key: 'rank', direction: 'asc' }}
+            searchPlaceholder="Search by student name…"
+            emptyMessage="No marked assessments yet for this school."
+            mobileTitle={(e) => e.studentName}
+            numbered
+            exportFileName="school-performance"
+          />
         )}
       </Card>
     </div>

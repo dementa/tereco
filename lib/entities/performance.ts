@@ -6,7 +6,14 @@ export interface LeaderboardEntry {
   studentName: string;
   studentSystemId: string | null;
   assessmentsCount: number;
+  /** The blended figure — written and attendance combined. What every marks display shows. */
   averagePercentage: number;
+  /** Mean of marked assessment percentages alone, before the attendance blend — kept for transparency. */
+  written: number;
+  /** % of this term's lesson-attendance sessions the student was present for, or null with no attendance data recorded (never treated as 0). */
+  attendanceRate: number | null;
+  /** Share of averagePercentage taken from attendance, 0..1. 0 whenever attendanceRate is null. */
+  attendanceWeight: number;
   rank: number;
 }
 
@@ -37,12 +44,13 @@ interface SubmissionAggRow {
 }
 
 const LEADERBOARD_COLUMNS =
-  "student_id, total_score, max_score, status, submitted_at, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments!inner(school_id, class_id, stream_id, academic_year_id), assessment:assessments!inner(id, deleted_at)";
+  "student_id, total_score, max_score, status, submitted_at, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments!inner(school_id, class_id, stream_id, academic_year_id), assessment:assessments!inner(id, deleted_at, include_in_evaluation)";
 
 interface TermWindow {
   id: string;
   number: number;
   school_id: string;
+  academic_year_id: string;
   starts_on: string;
   ends_on: string;
 }
@@ -87,7 +95,7 @@ async function getTermWindow(termId: string): Promise<TermWindow | null> {
   const supabase = getSupabaseAdmin();
   const { data, error } = await supabase
     .from("terms")
-    .select("id, number, school_id, starts_on, ends_on")
+    .select("id, number, school_id, academic_year_id, starts_on, ends_on")
     .eq("id", termId)
     .maybeSingle();
   if (error) throw new Error(error.message);
@@ -113,6 +121,73 @@ function studentName(student: SubmissionAggRow["student"]): string {
   return [student.first_name, student.middle_name, student.last_name].filter(Boolean).join(" ").trim();
 }
 
+/**
+ * Every marks display blends in attendance, not just the written average — a
+ * learner who has been in class all term should not read the same as one who
+ * has not, and a learner who has sat every paper should not be punished for a
+ * school that has not logged attendance. Fixed here rather than a per-school
+ * column (the way schools.practical_weight is): turning this on was the
+ * explicit ask, not a gradual rollout, so there's no "still at zero" state to
+ * protect. Promote to a column later if a school ever needs to opt out.
+ */
+export const ATTENDANCE_WEIGHT = 0.5;
+
+export interface AttendanceBlend {
+  written: number;
+  attendanceRate: number | null;
+  weight: number;
+  overall: number;
+}
+
+/**
+ * Same null-safety rule practical observations uses for its own blend: a
+ * learner with no attendance rows this term is never dragged toward 0 for it
+ * — the overall figure is simply the written one until attendance exists to
+ * blend with.
+ */
+export function blendWithAttendance(
+  written: number,
+  attendanceRate: number | null,
+  weight: number = ATTENDANCE_WEIGHT
+): AttendanceBlend {
+  const w = attendanceRate === null ? 0 : Math.min(1, Math.max(0, weight));
+  const overall =
+    attendanceRate === null ? written : Math.round((written * (1 - w) + attendanceRate * w) * 10) / 10;
+  return { written, attendanceRate, weight: w, overall };
+}
+
+/**
+ * Present/total across a term's LESSON attendance sessions only — never the
+ * supervised-sitting registers taken while a student sits an assessment,
+ * which measure something else and would double-count with the written side
+ * of the blend. One query for every student on a leaderboard, not one per row.
+ */
+async function getAttendanceRatesForTerm(studentIds: string[], termId: string): Promise<Map<string, number>> {
+  const rates = new Map<string, number>();
+  if (studentIds.length === 0) return rates;
+
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("lesson_attendance")
+    .select("student_id, is_present, session:attendance_sessions!inner(term_id, kind)")
+    .in("student_id", studentIds)
+    .eq("session.term_id", termId)
+    .eq("session.kind", "lesson");
+  if (error) throw new Error(error.message);
+
+  const counts = new Map<string, { present: number; total: number }>();
+  for (const row of (data ?? []) as unknown as { student_id: string; is_present: boolean }[]) {
+    const bucket = counts.get(row.student_id) ?? { present: 0, total: 0 };
+    bucket.total += 1;
+    if (row.is_present) bucket.present += 1;
+    counts.set(row.student_id, bucket);
+  }
+  for (const [studentId, { present, total }] of counts) {
+    rates.set(studentId, Math.round((present / total) * 1000) / 10);
+  }
+  return rates;
+}
+
 interface LeaderboardFilters {
   schoolId: string;
   classId?: string;
@@ -125,8 +200,20 @@ interface LeaderboardFilters {
 /** Shared query + aggregation behind both the class and school leaderboards. */
 async function queryLeaderboard(filters: LeaderboardFilters): Promise<LeaderboardEntry[]> {
   const { schoolId, classId, streamId, termId, assessmentId } = filters;
+
+  // An explicit term is authoritative about its own academic year — a caller
+  // picking "2025 Term 2" means exactly that year's Term 2, not whatever
+  // filters.academicYearId (or the current year, if that's absent) happens
+  // to be. Resolving the term FIRST and deriving the year from it, rather
+  // than defaulting the year independently, is what stops those two filters
+  // from silently contradicting each other and returning nothing.
+  let term: TermWindow | null = null;
   let academicYearId = filters.academicYearId;
-  if (!academicYearId) {
+  if (termId) {
+    term = await getTermWindow(termId);
+    if (!term || term.school_id !== schoolId) return [];
+    academicYearId = term.academic_year_id;
+  } else if (!academicYearId) {
     const currentYear = await getCurrentAcademicYear();
     if (!currentYear) return [];
     academicYearId = currentYear.id;
@@ -139,7 +226,8 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
     .eq("status", "marked")
     .eq("enrollment.school_id", schoolId)
     .eq("enrollment.academic_year_id", academicYearId)
-    .is("assessment.deleted_at", null);
+    .is("assessment.deleted_at", null)
+    .eq("assessment.include_in_evaluation", true);
 
   if (classId) query = query.eq("enrollment.class_id", classId);
   if (streamId) query = query.eq("enrollment.stream_id", streamId);
@@ -148,11 +236,17 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
   // The term narrows by submission date, not by assessment.term_id — see
   // inTerm(). A term belonging to another school is treated as matching
   // nothing rather than ignored, so a mismatched filter cannot quietly widen
-  // the result to the whole year.
-  let term: TermWindow | null = null;
-  if (termId) {
-    term = await getTermWindow(termId);
-    if (!term || term.school_id !== schoolId) return [];
+  // the result to the whole year. Only an EXPLICIT termId narrows the written
+  // side this way — the caller asked for exactly that term's comparison.
+  //
+  // With no explicit termId, the written side stays whole-year (unbounded),
+  // same as always. Attendance is still blended in below, scoped to the
+  // school's current term on a best-effort basis — but that resolution must
+  // never gate which submissions count. A school with no current term
+  // defined, or one whose marked work falls outside it, would otherwise show
+  // an empty leaderboard despite having a full year of real written data —
+  // exactly backwards for a page with no term picker to work around it.
+  if (term) {
     query = query.gte("submitted_at", term.starts_on).lt("submitted_at", nextDay(term.ends_on));
   }
 
@@ -178,13 +272,30 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
     }
   }
 
-  const entries: Omit<LeaderboardEntry, "rank">[] = Array.from(byStudent.entries()).map(([studentId, agg]) => ({
-    studentId,
-    studentName: agg.name,
-    studentSystemId: agg.systemId,
-    assessmentsCount: agg.percentages.length,
-    averagePercentage: Math.round((agg.percentages.reduce((sum, p) => sum + p, 0) / agg.percentages.length) * 10) / 10,
-  }));
+  // The attendance-blend term: reuse the explicit term if one was given,
+  // otherwise resolve the school's current term purely to blend attendance
+  // in — never to decide who appears above. No resolvable current term just
+  // means no attendance blend, the same null-safe fallback as no attendance
+  // data existing at all (see blendWithAttendance).
+  const attendanceTerm = term ?? (await getCurrentTermId(schoolId).then((id) => (id ? getTermWindow(id) : null)));
+  const attendanceRates = attendanceTerm
+    ? await getAttendanceRatesForTerm(Array.from(byStudent.keys()), attendanceTerm.id)
+    : new Map<string, number>();
+
+  const entries: Omit<LeaderboardEntry, "rank">[] = Array.from(byStudent.entries()).map(([studentId, agg]) => {
+    const written = Math.round((agg.percentages.reduce((sum, p) => sum + p, 0) / agg.percentages.length) * 10) / 10;
+    const blend = blendWithAttendance(written, attendanceRates.get(studentId) ?? null);
+    return {
+      studentId,
+      studentName: agg.name,
+      studentSystemId: agg.systemId,
+      assessmentsCount: agg.percentages.length,
+      averagePercentage: blend.overall,
+      written: blend.written,
+      attendanceRate: blend.attendanceRate,
+      attendanceWeight: blend.weight,
+    };
+  });
 
   entries.sort((a, b) => b.averagePercentage - a.averagePercentage);
 
@@ -258,7 +369,7 @@ interface StudentTrendRow {
 const STUDENT_TREND_COLUMNS =
   "total_score, max_score, status, submitted_at, " +
   "enrollment:enrollments!inner(school_id, academic_year_id), " +
-  "assessment:assessments!inner(deleted_at)";
+  "assessment:assessments!inner(deleted_at, include_in_evaluation)";
 
 /**
  * A student's own average percentage per term, oldest first — their own
@@ -294,7 +405,8 @@ export async function getStudentTermAverages(studentId: string, academicYearId?:
     .select(STUDENT_TREND_COLUMNS)
     .eq("student_id", studentId)
     .eq("status", "marked")
-    .is("assessment.deleted_at", null);
+    .is("assessment.deleted_at", null)
+    .eq("assessment.include_in_evaluation", true);
   if (error) throw new Error(error.message);
 
   const rows = (data ?? []) as unknown as StudentTrendRow[];
@@ -361,6 +473,53 @@ export async function getCurrentTermId(schoolId: string): Promise<string | null>
     .limit(1);
   if (error) throw new Error(error.message);
   return data?.[0]?.id ?? null;
+}
+
+export interface StudentTermPerformance {
+  termId: string;
+  termNumber: number;
+  written: number;
+  attendanceRate: number | null;
+  weight: number;
+  overall: number;
+}
+
+/**
+ * One learner's own current-term blended performance — written assessments
+ * and attendance, same 50/50 blend as the leaderboards (see
+ * blendWithAttendance), for their own report. Null when there is no current
+ * term for their school, or nothing marked yet this term to build a written
+ * figure from — same "no number beats a misleading one" rule the rest of this
+ * feature follows, not a fabricated 0.
+ */
+export async function getStudentCurrentTermPerformance(studentId: string): Promise<StudentTermPerformance | null> {
+  const supabase = getSupabaseAdmin();
+  const { data: enrollment, error } = await supabase
+    .from("current_enrollments")
+    .select("school_id, academic_year_id")
+    .eq("student_id", studentId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!enrollment?.school_id) return null;
+
+  const termId = await getCurrentTermId(enrollment.school_id);
+  if (!termId) return null;
+
+  const termAverages = await getStudentTermAverages(studentId, enrollment.academic_year_id ?? undefined);
+  const current = termAverages.find((t) => t.termId === termId);
+  if (!current) return null;
+
+  const attendanceRates = await getAttendanceRatesForTerm([studentId], termId);
+  const blend = blendWithAttendance(current.averagePercentage, attendanceRates.get(studentId) ?? null);
+
+  return {
+    termId,
+    termNumber: current.termNumber,
+    written: blend.written,
+    attendanceRate: blend.attendanceRate,
+    weight: blend.weight,
+    overall: blend.overall,
+  };
 }
 
 function buildMotivationalMessage(trend: TermAverage[]): string {
@@ -451,7 +610,7 @@ interface BenchmarkRow {
 // doesn't need any student's name, so the query can't return one. This is the
 // actual privacy boundary for the cross-school view, not a later field-strip.
 const BENCHMARK_COLUMNS =
-  "student_id, total_score, max_score, status, submitted_at, enrollment:enrollments!inner(school_id, academic_year_id, school:schools(name)), assessment:assessments!inner(id, deleted_at)";
+  "student_id, total_score, max_score, status, submitted_at, enrollment:enrollments!inner(school_id, academic_year_id, school:schools(name)), assessment:assessments!inner(id, deleted_at, include_in_evaluation)";
 
 function median(sorted: number[]): number {
   const mid = Math.floor(sorted.length / 2);
@@ -471,49 +630,60 @@ function median(sorted: number[]): number {
  */
 export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise<SchoolBenchmarkEntry[]> {
   const { termId, assessmentId } = params;
+  const supabase = getSupabaseAdmin();
+
+  // An explicit term is authoritative about its own academic year — a caller
+  // picking "2025 Term 2" means exactly that year's Term 2, not whatever
+  // params.academicYearId (or the current year, if that's absent) happens to
+  // be. Resolving the term FIRST and deriving the year from it, rather than
+  // defaulting the year independently, is what stops those two filters from
+  // silently contradicting each other and returning nothing.
   let academicYearId = params.academicYearId;
-  if (!academicYearId) {
+  const termsBySchool = new Map<string, TermWindow>();
+  if (termId) {
+    const selected = await getTermWindow(termId);
+    if (!selected) return [];
+    academicYearId = selected.academic_year_id;
+
+    // "Term II" means each school's OWN Term II, not one school's dates
+    // imposed on everyone. The schools do not sit their terms on the same
+    // days — Ebenezer's Term 2 ends 12 August and Little Pine's on the 21st
+    // — so a single date window would judge one school on nine days of work
+    // the other never had, in a view whose entire purpose is comparing them
+    // fairly. So the selected term is resolved to its NUMBER, and every
+    // school is then matched against its own term of that number. A school
+    // that has not defined that term contributes nothing rather than being
+    // compared on a guess.
+    const { data: peers, error: termError } = await supabase
+      .from("terms")
+      .select("id, number, school_id, academic_year_id, starts_on, ends_on")
+      .eq("academic_year_id", academicYearId)
+      .eq("number", selected.number);
+    if (termError) throw new Error(termError.message);
+    for (const t of (peers ?? []) as TermWindow[]) termsBySchool.set(t.school_id, t);
+    if (termsBySchool.size === 0) return [];
+  } else if (!academicYearId) {
     const currentYear = await getCurrentAcademicYear();
     if (!currentYear) return [];
     academicYearId = currentYear.id;
   }
 
-  const supabase = getSupabaseAdmin();
   let query = supabase
     .from("assessment_submissions")
     .select(BENCHMARK_COLUMNS)
     .eq("status", "marked")
     .eq("enrollment.academic_year_id", academicYearId)
-    .is("assessment.deleted_at", null);
+    .is("assessment.deleted_at", null)
+    .eq("assessment.include_in_evaluation", true);
 
   if (assessmentId) query = query.eq("assessment_id", assessmentId);
 
-  // "Term II" means each school's OWN Term II, not one school's dates imposed
-  // on everyone. The schools do not sit their terms on the same days —
-  // Ebenezer's Term 2 ends 12 August and Little Pine's on the 21st — so a
-  // single date window would judge one school on nine days of work the other
-  // never had, in a view whose entire purpose is comparing them fairly.
-  //
-  // So the selected term is resolved to its NUMBER, and every school is then
-  // matched against its own term of that number. A school that has not defined
-  // that term contributes nothing rather than being compared on a guess.
-  let termsByNumber: TermWindow[] = [];
   if (termId) {
-    const selected = await getTermWindow(termId);
-    if (!selected) return [];
-    const { data: peers, error: termError } = await supabase
-      .from("terms")
-      .select("id, number, school_id, starts_on, ends_on")
-      .eq("academic_year_id", academicYearId)
-      .eq("number", selected.number);
-    if (termError) throw new Error(termError.message);
-    termsByNumber = (peers ?? []) as TermWindow[];
-    if (termsByNumber.length === 0) return [];
-
     // Narrow in SQL to the widest window any school uses, so the row count
     // stays bounded; the per-school check below is what makes it exact.
-    const earliest = termsByNumber.reduce((a, t) => (t.starts_on < a ? t.starts_on : a), termsByNumber[0].starts_on);
-    const latest = termsByNumber.reduce((a, t) => (t.ends_on > a ? t.ends_on : a), termsByNumber[0].ends_on);
+    const windows = Array.from(termsBySchool.values());
+    const earliest = windows.reduce((a, t) => (t.starts_on < a ? t.starts_on : a), windows[0].starts_on);
+    const latest = windows.reduce((a, t) => (t.ends_on > a ? t.ends_on : a), windows[0].ends_on);
     query = query.gte("submitted_at", earliest).lt("submitted_at", nextDay(latest));
   }
 
@@ -523,12 +693,19 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
   const rows = (data ?? []) as unknown as BenchmarkRow[];
 
   // First pass: per-student average, same as queryLeaderboard, so one
-  // prolific test-taker or one heavily-weighted paper doesn't dominate.
+  // prolific test-taker or one heavily-weighted paper doesn't dominate. Only
+  // an EXPLICIT termId gates rows by term here — the caller asked for exactly
+  // that term's comparison. With no explicit termId this is whole-year,
+  // unbounded, same as always; attendance is blended in below on a
+  // best-effort basis further down, but never used to decide who appears —
+  // a school with no current term defined, or whose marked work falls
+  // outside it, must still show up with its written average, not vanish
+  // from a comparison that has no term picker to work around that.
   const byStudent = new Map<string, { schoolId: string; schoolName: string; percentages: number[] }>();
   for (const row of rows) {
     if (!isRankable(row) || !row.enrollment) continue;
     if (termId) {
-      const own = termsByNumber.find((t) => t.school_id === row.enrollment!.school_id);
+      const own = termsBySchool.get(row.enrollment.school_id);
       if (!own || !inTerm(own, row.submitted_at)) continue;
     }
     const percentage = percentOf(row.total_score as number, row.max_score as number);
@@ -544,16 +721,52 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
     }
   }
 
-  // Second pass: group student averages by school.
+  // Attendance-blend terms: reuse the explicit term-per-school map if one was
+  // given, otherwise resolve each school's own current term purely to blend
+  // attendance in — never to decide who appears above. A school with no
+  // resolvable current term just gets no attendance blend for its students,
+  // the same null-safe fallback as no attendance data existing at all.
+  if (!termId) {
+    const schoolIds = Array.from(new Set(Array.from(byStudent.values()).map((v) => v.schoolId)));
+    const resolved = await Promise.all(
+      schoolIds.map(async (id) => {
+        const currentId = await getCurrentTermId(id);
+        if (!currentId) return null;
+        const window = await getTermWindow(currentId);
+        return window ? ([id, window] as const) : null;
+      })
+    );
+    for (const entry of resolved) if (entry) termsBySchool.set(entry[0], entry[1]);
+  }
+
+  // Attendance rates, batched per resolved term (schools may be on different
+  // terms), then blended into each student's written average before it is
+  // folded into its school's aggregate — same blend as the leaderboards.
+  const studentIdsByTerm = new Map<string, string[]>();
+  for (const [studentId, agg] of byStudent) {
+    const term = termsBySchool.get(agg.schoolId);
+    if (!term) continue;
+    const list = studentIdsByTerm.get(term.id) ?? [];
+    list.push(studentId);
+    studentIdsByTerm.set(term.id, list);
+  }
+  const attendanceRates = new Map<string, number>();
+  for (const [scopedTermId, studentIds] of studentIdsByTerm) {
+    const rates = await getAttendanceRatesForTerm(studentIds, scopedTermId);
+    for (const [studentId, rate] of rates) attendanceRates.set(studentId, rate);
+  }
+
+  // Second pass: blend, then group by school.
   const bySchool = new Map<string, { schoolName: string; studentAverages: number[]; submissionsCount: number }>();
-  for (const { schoolId, schoolName, percentages } of byStudent.values()) {
-    const studentAverage = percentages.reduce((sum, p) => sum + p, 0) / percentages.length;
+  for (const [studentId, { schoolId, schoolName, percentages }] of byStudent) {
+    const written = Math.round((percentages.reduce((sum, p) => sum + p, 0) / percentages.length) * 10) / 10;
+    const blend = blendWithAttendance(written, attendanceRates.get(studentId) ?? null);
     const existing = bySchool.get(schoolId);
     if (existing) {
-      existing.studentAverages.push(studentAverage);
+      existing.studentAverages.push(blend.overall);
       existing.submissionsCount += percentages.length;
     } else {
-      bySchool.set(schoolId, { schoolName, studentAverages: [studentAverage], submissionsCount: percentages.length });
+      bySchool.set(schoolId, { schoolName, studentAverages: [blend.overall], submissionsCount: percentages.length });
     }
   }
 

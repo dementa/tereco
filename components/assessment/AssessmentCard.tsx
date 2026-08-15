@@ -15,8 +15,10 @@ export interface CardAssessment {
   resultsReleasedAt?: string;
   /** Set once a super_admin hides this assessment. Only a super_admin ever receives it in a list at all. */
   hiddenAt?: string;
+  /** Whether marks from this assessment count toward the blended performance figure. Defaults true — absent/true both read as included. */
+  includeInEvaluation?: boolean;
   /** Absent for school_admin's read-only list — card menu falls back to a plain "Open". */
-  capabilities?: { canManage: boolean; isOwner: boolean; canHide: boolean };
+  capabilities?: { canManage: boolean; isOwner: boolean; canHide: boolean; canToggleEvaluation?: boolean };
 }
 
 export const STATUS_VARIANT: Record<string, 'default' | 'accent' | 'success' | 'muted'> = {
@@ -65,6 +67,7 @@ interface AssessmentCardProps {
   onDuplicate?: () => void;
   onDelete?: () => void;
   onToggleHidden?: () => void;
+  onToggleEvaluation?: () => void;
 }
 
 export function AssessmentCard({
@@ -75,6 +78,7 @@ export function AssessmentCard({
   onDuplicate,
   onDelete,
   onToggleHidden,
+  onToggleEvaluation,
 }: AssessmentCardProps) {
   // Card itself doesn't forward onClick, so the click/keyboard target wraps
   // it rather than trying to thread the handler through.
@@ -99,10 +103,12 @@ export function AssessmentCard({
             <CardMenu
               capabilities={assessment.capabilities}
               hidden={Boolean(assessment.hiddenAt)}
+              excludedFromEvaluation={assessment.includeInEvaluation === false}
               onOpen={onClick}
               onDuplicate={onDuplicate}
               onDelete={onDelete}
               onToggleHidden={onToggleHidden}
+              onToggleEvaluation={onToggleEvaluation}
             />
           </div>
         </div>
@@ -113,6 +119,7 @@ export function AssessmentCard({
           <div className="flex flex-wrap gap-1">
             {assessment.resultsReleasedAt && <Badge variant="success">Results released</Badge>}
             {assessment.hiddenAt && <Badge variant="muted">Hidden</Badge>}
+            {assessment.includeInEvaluation === false && <Badge variant="muted">Not evaluated</Badge>}
           </div>
         </div>
       </Card>
