@@ -80,6 +80,17 @@ export default function MyResultsPage() {
         <PracticalCard score={practical} performance={performance} />
       </div>
 
+      {/* Every paper below is one moment, not a verdict — the overall figure
+          above already blends in how often you've shown up, and that's what
+          your report card leads with. A single low score here shouldn't read
+          as the whole story, and this line is here so it doesn't. */}
+      {attempts.length > 0 && (
+        <p className="text-xs text-text-faint mb-3">
+          Each paper below is just one attempt — your overall performance above is what really counts, and it
+          already gives you credit for being here.
+        </p>
+      )}
+
       {loading ? (
         <p className="text-text-muted">Loading…</p>
       ) : error ? (

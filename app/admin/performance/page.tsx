@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Bar, BarChart, CartesianGrid, LabelList, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { Card } from '@/components/ui/Card';
-import { Leaderboard, type LeaderboardRowData } from '@/components/ui/Leaderboard';
+import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 import { useIsPhone } from '@/lib/useMediaQuery';
 
@@ -32,18 +32,66 @@ interface LeaderboardEntry {
   rank: number;
 }
 
-function toRows(entries: LeaderboardEntry[]): LeaderboardRowData[] {
-  return entries.map((entry) => ({
-    rank: entry.rank,
-    name: entry.studentName,
-    subtitle:
-      entry.attendanceRate !== null
-        ? `${entry.written}% written, ${entry.attendanceRate}% attendance`
-        : `${entry.assessmentsCount} assessment${entry.assessmentsCount === 1 ? '' : 's'} · no attendance recorded yet`,
-    value: entry.averagePercentage,
-    valueLabel: `${entry.averagePercentage}%`,
-  }));
-}
+// Rank/Student/Written/Attendance/Overall — a roster shape fit for handing to
+// a school as-is, so this is also what the Export button (CSV/Excel/PDF)
+// hands out. exportValue keeps attendanceRate numeric (blank when there's no
+// data, never a literal "null"); pdfValue is the printed, %-suffixed form.
+const performanceColumns: DataTableColumn<LeaderboardEntry>[] = [
+  { key: 'rank', header: 'Rank', value: (e) => e.rank, sortable: true, className: 'w-14' },
+  { key: 'studentName', header: 'Student', value: (e) => e.studentName, sortable: true },
+  {
+    key: 'written',
+    header: 'Written',
+    value: (e) => e.written,
+    sortable: true,
+    align: 'right',
+    render: (e) => `${e.written}%`,
+    pdfValue: (e) => `${e.written}%`,
+  },
+  {
+    key: 'attendanceRate',
+    header: 'Attendance',
+    value: (e) => e.attendanceRate ?? undefined,
+    sortable: true,
+    align: 'right',
+    render: (e) => (e.attendanceRate !== null ? `${e.attendanceRate}%` : '—'),
+    exportValue: (e) => e.attendanceRate,
+    pdfValue: (e) => (e.attendanceRate !== null ? `${e.attendanceRate}%` : '—'),
+  },
+  {
+    key: 'averagePercentage',
+    header: 'Overall',
+    value: (e) => e.averagePercentage,
+    sortable: true,
+    align: 'right',
+    render: (e) => <span className="font-semibold text-primary-900">{e.averagePercentage}%</span>,
+    pdfValue: (e) => `${e.averagePercentage}%`,
+  },
+];
+
+const benchmarkColumns: DataTableColumn<SchoolBenchmarkEntry>[] = [
+  { key: 'rank', header: 'Rank', value: (e) => e.rank, sortable: true, className: 'w-14' },
+  { key: 'schoolName', header: 'School', value: (e) => e.schoolName, sortable: true },
+  { key: 'studentsAssessed', header: 'Students assessed', value: (e) => e.studentsAssessed, sortable: true, align: 'right' },
+  {
+    key: 'averagePercentage',
+    header: 'Average',
+    value: (e) => e.averagePercentage,
+    sortable: true,
+    align: 'right',
+    render: (e) => <span className="font-semibold text-primary-900">{e.averagePercentage}%</span>,
+    pdfValue: (e) => `${e.averagePercentage}%`,
+  },
+  {
+    key: 'medianPercentage',
+    header: 'Median',
+    value: (e) => e.medianPercentage,
+    sortable: true,
+    align: 'right',
+    render: (e) => `${e.medianPercentage}%`,
+    pdfValue: (e) => `${e.medianPercentage}%`,
+  },
+];
 
 export default function AdminPerformancePage() {
   const toast = useToast();
@@ -110,7 +158,9 @@ export default function AdminPerformancePage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Performance</h1>
-        <p className="text-sm text-text-muted">Schools ranked by average student performance this academic year.</p>
+        <p className="text-sm text-text-muted">
+          Schools ranked by this term&rsquo;s performance — written assessments and attendance, blended 50/50.
+        </p>
       </div>
 
       <Card>
@@ -168,38 +218,16 @@ export default function AdminPerformancePage() {
             </ResponsiveContainer>
           </div>
         ) : (
-          // Five columns will not fit a phone, and sideways-scrolling a table on
-          // one is unusable — so the two supporting columns drop out below `sm`
-          // and fold into the school cell instead, the same trade DataTable makes.
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-left text-text-muted border-b border-border">
-                <th className="py-2 pr-2 sm:pr-4">Rank</th>
-                <th className="py-2 pr-2 sm:pr-4">School</th>
-                <th className="py-2 pr-4 hidden sm:table-cell">Students assessed</th>
-                <th className="py-2 pr-2 sm:pr-4 text-right sm:text-left">Average</th>
-                <th className="py-2 pr-4 hidden sm:table-cell">Median</th>
-              </tr>
-            </thead>
-            <tbody>
-              {benchmark.map((row) => (
-                <tr key={row.schoolId} className="border-b border-primary-50 align-top">
-                  <td className="py-2 pr-2 sm:pr-4 text-text-primary tabular-nums">{row.rank}</td>
-                  <td className="py-2 pr-2 sm:pr-4 text-text-primary">
-                    {row.schoolName}
-                    <span className="block sm:hidden text-xs text-text-muted">
-                      {row.studentsAssessed} assessed · median {row.medianPercentage}%
-                    </span>
-                  </td>
-                  <td className="py-2 pr-4 text-text-secondary hidden sm:table-cell">{row.studentsAssessed}</td>
-                  <td className="py-2 pr-2 sm:pr-4 text-text-secondary tabular-nums text-right sm:text-left">
-                    {row.averagePercentage}%
-                  </td>
-                  <td className="py-2 pr-4 text-text-secondary hidden sm:table-cell">{row.medianPercentage}%</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <DataTable
+            rows={benchmark}
+            columns={benchmarkColumns}
+            rowKey={(e) => e.schoolId}
+            initialSort={{ key: 'rank', direction: 'asc' }}
+            searchPlaceholder="Search by school name…"
+            emptyMessage="No marked assessments yet."
+            mobileTitle={(e) => e.schoolName}
+            exportFileName="school-benchmark"
+          />
         )}
       </Card>
 
@@ -222,10 +250,18 @@ export default function AdminPerformancePage() {
 
         {!schoolId ? (
           <p className="text-sm text-text-muted">Choose a school above to see its student leaderboard.</p>
-        ) : drillDownLoading ? (
-          <p className="text-sm text-text-muted">Loading…</p>
         ) : (
-          <Leaderboard rows={toRows(drillDown)} emptyMessage="No marked assessments yet for this school." />
+          <DataTable
+            rows={drillDown}
+            columns={performanceColumns}
+            rowKey={(e) => e.studentId}
+            loading={drillDownLoading}
+            initialSort={{ key: 'rank', direction: 'asc' }}
+            searchPlaceholder="Search by student name…"
+            emptyMessage="No marked assessments yet for this school."
+            mobileTitle={(e) => e.studentName}
+            exportFileName="school-performance"
+          />
         )}
       </Card>
     </div>

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { Card } from '@/components/ui/Card';
-import { Leaderboard, type LeaderboardRowData } from '@/components/ui/Leaderboard';
+import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
 
 interface Stream {
@@ -27,18 +27,42 @@ interface LeaderboardEntry {
   rank: number;
 }
 
-function toRows(entries: LeaderboardEntry[]): LeaderboardRowData[] {
-  return entries.map((entry) => ({
-    rank: entry.rank,
-    name: entry.studentName,
-    subtitle:
-      entry.attendanceRate !== null
-        ? `${entry.written}% written, ${entry.attendanceRate}% attendance`
-        : `${entry.assessmentsCount} assessment${entry.assessmentsCount === 1 ? '' : 's'} · no attendance recorded yet`,
-    value: entry.averagePercentage,
-    valueLabel: `${entry.averagePercentage}%`,
-  }));
-}
+// Rank/Student/Written/Attendance/Overall — a roster shape fit for handing to
+// a school as-is, so this is also what the Export button (CSV/Excel/PDF)
+// hands out. exportValue keeps attendanceRate numeric (blank when there's no
+// data, never a literal "null"); pdfValue is the printed, %-suffixed form.
+const performanceColumns: DataTableColumn<LeaderboardEntry>[] = [
+  { key: 'rank', header: 'Rank', value: (e) => e.rank, sortable: true, className: 'w-14' },
+  { key: 'studentName', header: 'Student', value: (e) => e.studentName, sortable: true },
+  {
+    key: 'written',
+    header: 'Written',
+    value: (e) => e.written,
+    sortable: true,
+    align: 'right',
+    render: (e) => `${e.written}%`,
+    pdfValue: (e) => `${e.written}%`,
+  },
+  {
+    key: 'attendanceRate',
+    header: 'Attendance',
+    value: (e) => e.attendanceRate ?? undefined,
+    sortable: true,
+    align: 'right',
+    render: (e) => (e.attendanceRate !== null ? `${e.attendanceRate}%` : '—'),
+    exportValue: (e) => e.attendanceRate,
+    pdfValue: (e) => (e.attendanceRate !== null ? `${e.attendanceRate}%` : '—'),
+  },
+  {
+    key: 'averagePercentage',
+    header: 'Overall',
+    value: (e) => e.averagePercentage,
+    sortable: true,
+    align: 'right',
+    render: (e) => <span className="font-semibold text-primary-900">{e.averagePercentage}%</span>,
+    pdfValue: (e) => `${e.averagePercentage}%`,
+  },
+];
 
 export default function SchoolAdminPerformancePage() {
   const toast = useToast();
@@ -164,20 +188,32 @@ export default function SchoolAdminPerformancePage() {
           </div>
         </div>
 
-        {classLoading ? (
-          <p className="text-sm text-text-muted">Loading…</p>
-        ) : (
-          <Leaderboard rows={toRows(classEntries)} emptyMessage="No marked assessments yet for this class." />
-        )}
+        <DataTable
+          rows={classEntries}
+          columns={performanceColumns}
+          rowKey={(e) => e.studentId}
+          loading={classLoading}
+          initialSort={{ key: 'rank', direction: 'asc' }}
+          searchPlaceholder="Search by student name…"
+          emptyMessage="No marked assessments yet for this class."
+          mobileTitle={(e) => e.studentName}
+          exportFileName="class-performance"
+        />
       </Card>
 
       <Card>
         <h2 className="text-sm font-semibold text-primary-900 mb-4">Whole school</h2>
-        {schoolLoading ? (
-          <p className="text-sm text-text-muted">Loading…</p>
-        ) : (
-          <Leaderboard rows={toRows(schoolEntries)} emptyMessage="No marked assessments yet for this school." />
-        )}
+        <DataTable
+          rows={schoolEntries}
+          columns={performanceColumns}
+          rowKey={(e) => e.studentId}
+          loading={schoolLoading}
+          initialSort={{ key: 'rank', direction: 'asc' }}
+          searchPlaceholder="Search by student name…"
+          emptyMessage="No marked assessments yet for this school."
+          mobileTitle={(e) => e.studentName}
+          exportFileName="school-performance"
+        />
       </Card>
     </div>
   );

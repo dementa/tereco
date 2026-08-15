@@ -641,7 +641,7 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
   // So the selected term is resolved to its NUMBER, and every school is then
   // matched against its own term of that number. A school that has not defined
   // that term contributes nothing rather than being compared on a guess.
-  let termsByNumber: TermWindow[] = [];
+  const termsBySchool = new Map<string, TermWindow>();
   if (termId) {
     const selected = await getTermWindow(termId);
     if (!selected) return [];
@@ -651,13 +651,14 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
       .eq("academic_year_id", academicYearId)
       .eq("number", selected.number);
     if (termError) throw new Error(termError.message);
-    termsByNumber = (peers ?? []) as TermWindow[];
-    if (termsByNumber.length === 0) return [];
+    for (const t of (peers ?? []) as TermWindow[]) termsBySchool.set(t.school_id, t);
+    if (termsBySchool.size === 0) return [];
 
     // Narrow in SQL to the widest window any school uses, so the row count
     // stays bounded; the per-school check below is what makes it exact.
-    const earliest = termsByNumber.reduce((a, t) => (t.starts_on < a ? t.starts_on : a), termsByNumber[0].starts_on);
-    const latest = termsByNumber.reduce((a, t) => (t.ends_on > a ? t.ends_on : a), termsByNumber[0].ends_on);
+    const windows = Array.from(termsBySchool.values());
+    const earliest = windows.reduce((a, t) => (t.starts_on < a ? t.starts_on : a), windows[0].starts_on);
+    const latest = windows.reduce((a, t) => (t.ends_on > a ? t.ends_on : a), windows[0].ends_on);
     query = query.gte("submitted_at", earliest).lt("submitted_at", nextDay(latest));
   }
 
@@ -666,15 +667,36 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
 
   const rows = (data ?? []) as unknown as BenchmarkRow[];
 
+  // Every entry here is blended with attendance (see blendWithAttendance),
+  // and attendance is inherently per-term. When no termId was given, each
+  // school's OWN current term is resolved instead of leaving the query
+  // unbounded — same reasoning as termsBySchool above: a school's Term II
+  // is not another school's, so there is no single "current term" that
+  // applies across all of them.
+  if (!termId) {
+    const schoolIds = Array.from(
+      new Set(rows.map((r) => r.enrollment?.school_id).filter((id): id is string => !!id))
+    );
+    const resolved = await Promise.all(
+      schoolIds.map(async (id) => {
+        const currentId = await getCurrentTermId(id);
+        if (!currentId) return null;
+        const window = await getTermWindow(currentId);
+        return window ? ([id, window] as const) : null;
+      })
+    );
+    for (const entry of resolved) if (entry) termsBySchool.set(entry[0], entry[1]);
+  }
+
   // First pass: per-student average, same as queryLeaderboard, so one
-  // prolific test-taker or one heavily-weighted paper doesn't dominate.
+  // prolific test-taker or one heavily-weighted paper doesn't dominate. A
+  // school with no resolvable term (explicit or current) contributes nothing,
+  // same as the "not defined" case above — never compared on a guess.
   const byStudent = new Map<string, { schoolId: string; schoolName: string; percentages: number[] }>();
   for (const row of rows) {
     if (!isRankable(row) || !row.enrollment) continue;
-    if (termId) {
-      const own = termsByNumber.find((t) => t.school_id === row.enrollment!.school_id);
-      if (!own || !inTerm(own, row.submitted_at)) continue;
-    }
+    const own = termsBySchool.get(row.enrollment.school_id);
+    if (!own || !inTerm(own, row.submitted_at)) continue;
     const percentage = percentOf(row.total_score as number, row.max_score as number);
     const existing = byStudent.get(row.student_id);
     if (existing) {
@@ -688,16 +710,34 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
     }
   }
 
-  // Second pass: group student averages by school.
+  // Attendance rates, batched per resolved term (schools may be on different
+  // terms), then blended into each student's written average before it is
+  // folded into its school's aggregate — same blend as the leaderboards.
+  const studentIdsByTerm = new Map<string, string[]>();
+  for (const [studentId, agg] of byStudent) {
+    const term = termsBySchool.get(agg.schoolId);
+    if (!term) continue;
+    const list = studentIdsByTerm.get(term.id) ?? [];
+    list.push(studentId);
+    studentIdsByTerm.set(term.id, list);
+  }
+  const attendanceRates = new Map<string, number>();
+  for (const [scopedTermId, studentIds] of studentIdsByTerm) {
+    const rates = await getAttendanceRatesForTerm(studentIds, scopedTermId);
+    for (const [studentId, rate] of rates) attendanceRates.set(studentId, rate);
+  }
+
+  // Second pass: blend, then group by school.
   const bySchool = new Map<string, { schoolName: string; studentAverages: number[]; submissionsCount: number }>();
-  for (const { schoolId, schoolName, percentages } of byStudent.values()) {
-    const studentAverage = percentages.reduce((sum, p) => sum + p, 0) / percentages.length;
+  for (const [studentId, { schoolId, schoolName, percentages }] of byStudent) {
+    const written = Math.round((percentages.reduce((sum, p) => sum + p, 0) / percentages.length) * 10) / 10;
+    const blend = blendWithAttendance(written, attendanceRates.get(studentId) ?? null);
     const existing = bySchool.get(schoolId);
     if (existing) {
-      existing.studentAverages.push(studentAverage);
+      existing.studentAverages.push(blend.overall);
       existing.submissionsCount += percentages.length;
     } else {
-      bySchool.set(schoolId, { schoolName, studentAverages: [studentAverage], submissionsCount: percentages.length });
+      bySchool.set(schoolId, { schoolName, studentAverages: [blend.overall], submissionsCount: percentages.length });
     }
   }
 

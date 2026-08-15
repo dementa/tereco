@@ -141,6 +141,16 @@ export default function ParentResultsPage() {
         voice="parent"
       />
 
+      {/* Each paper below is one attempt, not a verdict — the overall figure
+          above already blends in how often they've been in class, and that's
+          what leads the report card. */}
+      {attempts.length > 0 && (
+        <p className="text-xs text-text-faint">
+          Each paper below is just one attempt — the overall performance above is what really counts, and it
+          already gives credit for being in class.
+        </p>
+      )}
+
       <DataTable
         rows={attempts}
         columns={columns}
