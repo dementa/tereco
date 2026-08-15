@@ -45,7 +45,12 @@ export async function GET(
           canMark: false,
           isOwner: false,
           canDownloadPaper: true,
-          canDownloadResults: true,
+          // A school_admin only sees student-level scores once the owner
+          // releases them — same rule the results and results/pdf routes
+          // enforce server-side. super_admin/admin/staff (the marking side)
+          // are never scoped through this route, so they keep seeing scores
+          // pre-release via the admin route instead.
+          canDownloadResults: Boolean(assessment.resultsReleasedAt),
           // Scripts and the marking guide are only theirs to see once the
           // assessment is closed — "authoring and marking stay with staff"
           // while it's still live.

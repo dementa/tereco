@@ -13,9 +13,10 @@ interface Progress {
 }
 
 /**
- * School-wide marking totals — the sample screenshot's "Free plan usage"
+ * System-wide marking totals — the sample screenshot's "Free plan usage"
  * panel, repurposed: same shell (title, subtitle, metered rows), different
  * subject. Read-only, no action button — there's nothing to upgrade here.
+ * super_admin only: aggregates across every school, not one account's own.
  */
 export function MarkingProgressPanel() {
   const [progress, setProgress] = useState<Progress | null>(null);
@@ -25,7 +26,7 @@ export function MarkingProgressPanel() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('/api/school-admin/marking-progress');
+        const res = await fetch('/api/admin/marking-progress');
         const data = await res.json();
         if (!cancelled && data.success) setProgress(data.data);
       } catch {
@@ -44,7 +45,7 @@ export function MarkingProgressPanel() {
   return (
     <Card>
       <h2 className="font-semibold text-primary-900">Marking progress</h2>
-      <p className="text-xs text-text-muted mb-4">How your teachers are getting on.</p>
+      <p className="text-xs text-text-muted mb-4">How marking is going across every school.</p>
 
       {loading ? (
         <p className="text-sm text-text-muted">Loading…</p>
