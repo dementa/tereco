@@ -540,6 +540,81 @@ export async function setAssessmentEvaluation(systemId: string, includeInEvaluat
   if (error) throw new Error(error.message);
 }
 
+export interface DirectMarkEntry {
+  studentId: string;
+  enrollmentId: string;
+  score: number;
+}
+
+/**
+ * Records a mark directly against an assessment, skipping the online-sitting
+ * flow entirely — the stop-gap for a class with no marks yet (e.g. one still
+ * waiting on the practical-assessment scoring screen): a teacher runs a
+ * quick in-person evaluation and the result lands in the same
+ * assessment_submissions rows a normal marked online sitting would produce,
+ * so it counts as "written" everywhere marks already do (the attendance
+ * blend, leaderboards, exports) without either system needing to know the
+ * difference.
+ *
+ * Creates a submission for a student with none yet on this assessment;
+ * overwrites the score on one that already exists (re-entering a mark, not
+ * a second attempt — assessment_submissions is one row per student per
+ * assessment).
+ */
+export async function enterMarksDirectly(
+  assessmentId: string,
+  maxScore: number,
+  entries: DirectMarkEntry[],
+  markedBy: string
+): Promise<void> {
+  if (entries.length === 0) return;
+  for (const entry of entries) {
+    if (entry.score < 0 || entry.score > maxScore) {
+      throw new UserFacingError(`Score must be between 0 and ${maxScore}.`);
+    }
+  }
+
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
+
+  const { data: existing, error: existingError } = await supabase
+    .from("assessment_submissions")
+    .select("id, student_id")
+    .eq("assessment_id", assessmentId)
+    .in("student_id", entries.map((e) => e.studentId));
+  if (existingError) throw new Error(existingError.message);
+
+  const existingIdByStudent = new Map((existing ?? []).map((r) => [r.student_id, r.id as string]));
+
+  const toInsert = entries.filter((e) => !existingIdByStudent.has(e.studentId));
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from("assessment_submissions").insert(
+      toInsert.map((e) => ({
+        assessment_id: assessmentId,
+        enrollment_id: e.enrollmentId,
+        student_id: e.studentId,
+        status: "marked",
+        total_score: e.score,
+        max_score: maxScore,
+        submitted_at: now,
+        marked_at: now,
+        marked_by: markedBy,
+      }))
+    );
+    if (error) throw new Error(error.message);
+  }
+
+  for (const e of entries) {
+    const id = existingIdByStudent.get(e.studentId);
+    if (!id) continue;
+    const { error } = await supabase
+      .from("assessment_submissions")
+      .update({ status: "marked", total_score: e.score, max_score: maxScore, marked_at: now, marked_by: markedBy })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+}
+
 // ─── Collaborators ──────────────────────────────────────────
 
 export interface AssessmentCollaborator {

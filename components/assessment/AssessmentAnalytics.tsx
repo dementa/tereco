@@ -374,6 +374,15 @@ export function AssessmentAnalytics({ systemId, role, apiBase, markingHref }: As
               Questions
             </Button>
           )}
+          {cap.canManage && (
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/${role}/assessments/${systemId}/enter-marks`)}
+              title="Record marks directly for a class with no online sitting — e.g. a quick in-person evaluation."
+            >
+              Enter marks directly
+            </Button>
+          )}
           {cap.canManage && assessment.status === 'draft' && (
             <Button
               onClick={() => void patchAssessment({ status: 'published' }, 'Assessment published.')}
