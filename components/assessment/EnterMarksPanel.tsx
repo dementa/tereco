@@ -494,7 +494,7 @@ export function EnterMarksPanel({
               <button
                 type="button"
                 onClick={markRemainingModerate}
-                className="text-xs text-primary-700 hover:underline"
+                className="w-full py-2.5 rounded-lg border border-border-strong text-sm font-semibold text-text-primary hover:bg-bg-muted"
               >
                 Mark the remaining {picked.filter((p) => !bands[p.studentId]).length} as Moderate
               </button>
