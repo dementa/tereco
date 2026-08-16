@@ -546,6 +546,13 @@ export interface DirectMarkEntry {
   score: number;
 }
 
+export interface DirectMarkResult {
+  /** How many rows were actually written (inserted or overwritten). */
+  recorded: number;
+  /** studentIds left untouched because they already had a submission and preventResubmission was set. */
+  skipped: string[];
+}
+
 /**
  * Records a mark directly against an assessment, skipping the online-sitting
  * flow entirely — the stop-gap for a class with no marks yet (e.g. one still
@@ -556,18 +563,25 @@ export interface DirectMarkEntry {
  * blend, leaderboards, exports) without either system needing to know the
  * difference.
  *
- * Creates a submission for a student with none yet on this assessment;
- * overwrites the score on one that already exists (re-entering a mark, not
- * a second attempt — assessment_submissions is one row per student per
- * assessment).
+ * Creates a submission for a student with none yet on this assessment. By
+ * default overwrites the score on one that already exists (re-entering a
+ * mark, not a second attempt — assessment_submissions is one row per student
+ * per assessment) — this is what the generic "enter marks directly" tool
+ * wants, so an admin can correct a typo. `preventResubmission` flips that:
+ * a student who already has a submission is left alone and reported back in
+ * `skipped` instead of overwritten. Used by the Behaviour Rating form, where
+ * a teacher freely rating their own class should never be able to silently
+ * clobber a rating another teacher (or their own earlier self) already
+ * recorded for the same learner.
  */
 export async function enterMarksDirectly(
   assessmentId: string,
   maxScore: number,
   entries: DirectMarkEntry[],
-  markedBy: string
-): Promise<void> {
-  if (entries.length === 0) return;
+  markedBy: string,
+  opts?: { preventResubmission?: boolean }
+): Promise<DirectMarkResult> {
+  if (entries.length === 0) return { recorded: 0, skipped: [] };
   for (const entry of entries) {
     if (entry.score < 0 || entry.score > maxScore) {
       throw new UserFacingError(`Score must be between 0 and ${maxScore}.`);
@@ -585,8 +599,14 @@ export async function enterMarksDirectly(
   if (existingError) throw new Error(existingError.message);
 
   const existingIdByStudent = new Map((existing ?? []).map((r) => [r.student_id, r.id as string]));
+  const preventResubmission = opts?.preventResubmission ?? false;
 
   const toInsert = entries.filter((e) => !existingIdByStudent.has(e.studentId));
+  const toUpdate = preventResubmission ? [] : entries.filter((e) => existingIdByStudent.has(e.studentId));
+  const skipped = preventResubmission
+    ? entries.filter((e) => existingIdByStudent.has(e.studentId)).map((e) => e.studentId)
+    : [];
+
   if (toInsert.length > 0) {
     const { error } = await supabase.from("assessment_submissions").insert(
       toInsert.map((e) => ({
@@ -604,7 +624,7 @@ export async function enterMarksDirectly(
     if (error) throw new Error(error.message);
   }
 
-  for (const e of entries) {
+  for (const e of toUpdate) {
     const id = existingIdByStudent.get(e.studentId);
     if (!id) continue;
     const { error } = await supabase
@@ -613,6 +633,8 @@ export async function enterMarksDirectly(
       .eq("id", id);
     if (error) throw new Error(error.message);
   }
+
+  return { recorded: toInsert.length + toUpdate.length, skipped };
 }
 
 const BEHAVIOR_ASSESSMENT_TITLE = "Behaviour Rating";

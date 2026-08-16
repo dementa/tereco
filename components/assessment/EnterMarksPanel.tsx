@@ -82,9 +82,11 @@ type ScoreMode = 'band' | 'number';
  * Also the scoring screen behind the standalone "Behaviour Rating" form
  * (/staff/behaviour) — that flow resolves its own backing assessment
  * invisibly (see getOrCreateBehaviorAssessment) and passes `fixedSchoolId`
- * so a teacher only ever picks a class/stream, never a school, and
+ * so a teacher only ever picks a class/stream, never a school,
  * `lockToBandMode` so the number-entry toggle (meaningless for a rating)
- * never appears.
+ * never appears, and `preventResubmission` so any teacher at the school can
+ * freely rate — the only thing that stops them is a learner who already has
+ * a rating on file, never who happens to own the form.
  */
 export function EnterMarksPanel({
   assessmentSystemId,
@@ -93,6 +95,7 @@ export function EnterMarksPanel({
   heading = 'Enter marks directly',
   fixedSchoolId,
   lockToBandMode = false,
+  preventResubmission = false,
 }: {
   assessmentSystemId: string;
   backHref: string;
@@ -100,6 +103,7 @@ export function EnterMarksPanel({
   heading?: string;
   fixedSchoolId?: string;
   lockToBandMode?: boolean;
+  preventResubmission?: boolean;
 }) {
   const router = useRouter();
   const toast = useToast();
@@ -123,6 +127,11 @@ export function EnterMarksPanel({
   const [scores, setScores] = useState<Record<string, string>>({});
   const [bands, setBands] = useState<Record<string, BehaviorBand>>({});
 
+  // studentIds that already have a submission on this assessment. Only
+  // populated (and only enforced) when preventResubmission is set — the
+  // generic enter-marks tool still allows overwriting to fix a typo.
+  const [alreadyRatedIds, setAlreadyRatedIds] = useState<Set<string>>(new Set());
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PickedStudent[]>([]);
   const [searching, setSearching] = useState(false);
@@ -140,6 +149,23 @@ export function EnterMarksPanel({
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [assessmentSystemId]);
+
+  useEffect(() => {
+    if (!preventResubmission) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/assessments/${assessmentSystemId}/results`);
+        const data = await res.json();
+        if (data.success) {
+          const results = data.data.results as { studentId: string }[];
+          setAlreadyRatedIds(new Set(results.map((r) => r.studentId)));
+        }
+      } catch {
+        // Non-fatal — the server still refuses a resubmission either way; this
+        // only drives the "already rated" greying-out in the UI.
+      }
+    })();
+  }, [assessmentSystemId, preventResubmission]);
 
   useEffect(() => {
     (async () => {
@@ -181,7 +207,9 @@ export function EnterMarksPanel({
   }
 
   function markRemainingModerate() {
-    const remaining = picked.filter((p) => !bands[p.studentId]);
+    const remaining = picked.filter(
+      (p) => !bands[p.studentId] && !(preventResubmission && alreadyRatedIds.has(p.studentId))
+    );
     if (remaining.length === 0) return;
     setBands((current) => {
       const next = { ...current };
@@ -245,15 +273,17 @@ export function EnterMarksPanel({
   const effectiveMaxScore = mode === 'band' ? 100 : maxScore;
 
   const entries = useMemo(() => {
+    const eligible = (p: PickedStudent) => !preventResubmission || !alreadyRatedIds.has(p.studentId);
     if (mode === 'band') {
       return picked
-        .filter((p) => bands[p.studentId])
+        .filter((p) => eligible(p) && bands[p.studentId])
         .map((p) => ({ ...p, score: String(BAND_SCORE[bands[p.studentId]]) }));
     }
     return picked
+      .filter(eligible)
       .map((p) => ({ ...p, score: scores[p.studentId] }))
       .filter((p): p is PickedStudent & { score: string } => p.score !== undefined && p.score.trim() !== '');
-  }, [picked, scores, bands, mode]);
+  }, [picked, scores, bands, mode, preventResubmission, alreadyRatedIds]);
 
   async function handleSave() {
     if (entries.length === 0) {
@@ -275,11 +305,18 @@ export function EnterMarksPanel({
       const res = await fetch(`/api/admin/assessments/${assessmentSystemId}/enter-marks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ maxScore: effectiveMaxScore, entries: parsed }),
+        body: JSON.stringify({ maxScore: effectiveMaxScore, entries: parsed, preventResubmission }),
       });
       const data = await res.json();
       if (data.success) {
         toast.success(data.message ?? 'Marks recorded.');
+        if (preventResubmission) {
+          setAlreadyRatedIds((current) => {
+            const next = new Set(current);
+            for (const e of entries) next.add(e.studentId);
+            return next;
+          });
+        }
         setScores({});
         setBands({});
       } else {
@@ -436,75 +473,94 @@ export function EnterMarksPanel({
           </p>
         ) : (
           <div className="space-y-2">
-            {picked.map((p) => (
-              <div key={p.studentId} className="flex items-center justify-between gap-3 py-1.5 border-b border-[#FAFAFA] last:border-0">
-                <div className="min-w-0 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => removeStudent(p.studentId)}
-                    aria-label={`Remove ${p.name}`}
-                    className="text-text-muted hover:text-error shrink-0"
-                  >
-                    <X className="w-3.5 h-3.5" aria-hidden />
-                  </button>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium text-primary-900 truncate">{p.name}</p>
-                    <p className="text-xs text-text-muted truncate">
-                      {p.systemId ?? '—'}
-                      {(p.className || p.streamName) && ` · ${[p.className, p.streamName].filter(Boolean).join(' ')}`}
-                    </p>
+            {picked.map((p) => {
+              const locked = preventResubmission && alreadyRatedIds.has(p.studentId);
+              return (
+                <div
+                  key={p.studentId}
+                  className={`flex items-center justify-between gap-3 py-1.5 border-b border-[#FAFAFA] last:border-0 ${locked ? 'opacity-60' : ''}`}
+                >
+                  <div className="min-w-0 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => removeStudent(p.studentId)}
+                      aria-label={`Remove ${p.name}`}
+                      className="text-text-muted hover:text-error shrink-0"
+                    >
+                      <X className="w-3.5 h-3.5" aria-hidden />
+                    </button>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium text-primary-900 truncate">{p.name}</p>
+                      <p className="text-xs text-text-muted truncate">
+                        {p.systemId ?? '—'}
+                        {(p.className || p.streamName) && ` · ${[p.className, p.streamName].filter(Boolean).join(' ')}`}
+                      </p>
+                    </div>
                   </div>
+                  {locked ? (
+                    <span className="text-xs font-medium text-text-muted shrink-0 px-2.5 py-1.5">
+                      Already rated
+                    </span>
+                  ) : mode === 'band' ? (
+                    <div className="flex gap-1 shrink-0" role="radiogroup" aria-label={`Band for ${p.name}`}>
+                      {BEHAVIOR_BANDS.map((band) => {
+                        const active = bands[p.studentId] === band.code;
+                        return (
+                          <button
+                            key={band.code}
+                            type="button"
+                            role="radio"
+                            aria-checked={active}
+                            onClick={() => setBands((cur) => ({ ...cur, [p.studentId]: band.code }))}
+                            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
+                              active
+                                ? 'bg-primary-700 text-white border-primary-700'
+                                : 'border-border-strong text-text-secondary hover:bg-bg-muted'
+                            }`}
+                          >
+                            {band.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <input
+                      type="number"
+                      min={0}
+                      max={maxScore}
+                      placeholder={`0-${maxScore}`}
+                      value={scores[p.studentId] ?? ''}
+                      onChange={(e) => setScores((cur) => ({ ...cur, [p.studentId]: e.target.value }))}
+                      className="w-24 rounded-lg border border-border-strong px-2.5 py-1.5 text-sm text-right focus:border-primary-700 focus:outline-none shrink-0"
+                      aria-label={`Score for ${p.name}`}
+                    />
+                  )}
                 </div>
-                {mode === 'band' ? (
-                  <div className="flex gap-1 shrink-0" role="radiogroup" aria-label={`Band for ${p.name}`}>
-                    {BEHAVIOR_BANDS.map((band) => {
-                      const active = bands[p.studentId] === band.code;
-                      return (
-                        <button
-                          key={band.code}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          onClick={() => setBands((cur) => ({ ...cur, [p.studentId]: band.code }))}
-                          className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                            active
-                              ? 'bg-primary-700 text-white border-primary-700'
-                              : 'border-border-strong text-text-secondary hover:bg-bg-muted'
-                          }`}
-                        >
-                          {band.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <input
-                    type="number"
-                    min={0}
-                    max={maxScore}
-                    placeholder={`0-${maxScore}`}
-                    value={scores[p.studentId] ?? ''}
-                    onChange={(e) => setScores((cur) => ({ ...cur, [p.studentId]: e.target.value }))}
-                    className="w-24 rounded-lg border border-border-strong px-2.5 py-1.5 text-sm text-right focus:border-primary-700 focus:outline-none shrink-0"
-                    aria-label={`Score for ${p.name}`}
-                  />
-                )}
-              </div>
-            ))}
+              );
+            })}
 
-            {mode === 'band' && picked.some((p) => !bands[p.studentId]) && (
-              <button
-                type="button"
-                onClick={markRemainingModerate}
-                className="w-full py-2.5 rounded-lg border border-border-strong text-sm font-semibold text-text-primary hover:bg-bg-muted"
-              >
-                Mark the remaining {picked.filter((p) => !bands[p.studentId]).length} as Moderate
-              </button>
-            )}
+            {mode === 'band' &&
+              picked.some((p) => !bands[p.studentId] && !(preventResubmission && alreadyRatedIds.has(p.studentId))) && (
+                <button
+                  type="button"
+                  onClick={markRemainingModerate}
+                  className="w-full py-2.5 rounded-lg border border-border-strong text-sm font-semibold text-text-primary hover:bg-bg-muted"
+                >
+                  Mark the remaining{' '}
+                  {
+                    picked.filter((p) => !bands[p.studentId] && !(preventResubmission && alreadyRatedIds.has(p.studentId)))
+                      .length
+                  }{' '}
+                  as Moderate
+                </button>
+              )}
 
             <div className="pt-3 flex items-center justify-between gap-3">
               <p className="text-xs text-text-muted">
                 {entries.length} of {picked.length} learner{picked.length === 1 ? '' : 's'} rated.
+                {preventResubmission && picked.some((p) => alreadyRatedIds.has(p.studentId))
+                  ? ` ${picked.filter((p) => alreadyRatedIds.has(p.studentId)).length} already rated.`
+                  : ''}
               </p>
               <div className="flex gap-2 shrink-0">
                 <Button variant="outline" onClick={() => router.push(backHref)}>

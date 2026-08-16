@@ -14,6 +14,9 @@ const EntrySchema = z.object({
 const BodySchema = z.object({
   maxScore: z.number().positive(),
   entries: z.array(EntrySchema).min(1),
+  // Set by the Behaviour Rating form so a learner already rated can't be
+  // silently overwritten by a second teacher — see enterMarksDirectly.
+  preventResubmission: z.boolean().optional(),
 });
 
 /**
@@ -45,10 +48,14 @@ export async function POST(
       return errorResponse('You can only enter marks for assessments you can mark.', 403);
     }
 
-    const { maxScore, entries } = BodySchema.parse(await request.json());
-    await enterMarksDirectly(assessment.id, maxScore, entries, actor.id);
+    const { maxScore, entries, preventResubmission } = BodySchema.parse(await request.json());
+    const result = await enterMarksDirectly(assessment.id, maxScore, entries, actor.id, { preventResubmission });
 
-    return successResponse({ message: `Marks recorded for ${entries.length} learner(s).` });
+    const message =
+      result.skipped.length > 0
+        ? `Recorded ${result.recorded} learner(s). ${result.skipped.length} already had a rating and were left unchanged.`
+        : `Marks recorded for ${result.recorded} learner(s).`;
+    return successResponse({ message, data: { recorded: result.recorded, skipped: result.skipped } });
   } catch (error) {
     return handleApiError(error, 'Failed to enter marks');
   }
