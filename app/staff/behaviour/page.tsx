@@ -47,6 +47,7 @@ export default function BehaviourRatingPage() {
       heading="Behaviour Rating"
       fixedSchoolId={user.schoolId}
       lockToBandMode
+      preventResubmission
     />
   );
 }
