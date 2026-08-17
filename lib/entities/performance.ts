@@ -1,5 +1,6 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getCurrentAcademicYear } from "@/lib/entities/academic-years";
+import { readAllPages } from "@/lib/assessments";
 
 export interface LeaderboardEntry {
   studentId: string;
@@ -157,32 +158,45 @@ export function blendWithAttendance(
   return { written, attendanceRate, weight: w, overall };
 }
 
+// Supabase issues .in() as a query-string parameter, not a request body — a
+// single call with every student on a system-wide benchmark (hundreds of
+// UUIDs) produces a URL long enough that the server rejects it outright with
+// a bare 400 before PostgREST ever sees it. Chunking keeps each request well
+// under that limit regardless of how many schools/students are in scope.
+const ATTENDANCE_STUDENT_CHUNK = 200;
+
 /**
  * Present/total across a term's LESSON attendance sessions only — never the
  * supervised-sitting registers taken while a student sits an assessment,
  * which measure something else and would double-count with the written side
- * of the blend. One query for every student on a leaderboard, not one per row.
+ * of the blend. One query (or a handful, chunked) for every student on a
+ * leaderboard, not one per row.
  */
 async function getAttendanceRatesForTerm(studentIds: string[], termId: string): Promise<Map<string, number>> {
   const rates = new Map<string, number>();
   if (studentIds.length === 0) return rates;
 
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
-    .from("lesson_attendance")
-    .select("student_id, is_present, session:attendance_sessions!inner(term_id, kind)")
-    .in("student_id", studentIds)
-    .eq("session.term_id", termId)
-    .eq("session.kind", "lesson");
-  if (error) throw new Error(error.message);
-
   const counts = new Map<string, { present: number; total: number }>();
-  for (const row of (data ?? []) as unknown as { student_id: string; is_present: boolean }[]) {
-    const bucket = counts.get(row.student_id) ?? { present: 0, total: 0 };
-    bucket.total += 1;
-    if (row.is_present) bucket.present += 1;
-    counts.set(row.student_id, bucket);
+
+  for (let i = 0; i < studentIds.length; i += ATTENDANCE_STUDENT_CHUNK) {
+    const chunk = studentIds.slice(i, i + ATTENDANCE_STUDENT_CHUNK);
+    const { data, error } = await supabase
+      .from("lesson_attendance")
+      .select("student_id, is_present, session:attendance_sessions!inner(term_id, kind)")
+      .in("student_id", chunk)
+      .eq("session.term_id", termId)
+      .eq("session.kind", "lesson");
+    if (error) throw new Error(error.message);
+
+    for (const row of (data ?? []) as unknown as { student_id: string; is_present: boolean }[]) {
+      const bucket = counts.get(row.student_id) ?? { present: 0, total: 0 };
+      bucket.total += 1;
+      if (row.is_present) bucket.present += 1;
+      counts.set(row.student_id, bucket);
+    }
   }
+
   for (const [studentId, { present, total }] of counts) {
     rates.set(studentId, Math.round((present / total) * 1000) / 10);
   }
@@ -221,18 +235,6 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
   }
 
   const supabase = getSupabaseAdmin();
-  let query = supabase
-    .from("assessment_submissions")
-    .select(LEADERBOARD_COLUMNS)
-    .eq("status", "marked")
-    .eq("enrollment.school_id", schoolId)
-    .eq("enrollment.academic_year_id", academicYearId)
-    .is("assessment.deleted_at", null)
-    .eq("assessment.include_in_evaluation", true);
-
-  if (classId) query = query.eq("enrollment.class_id", classId);
-  if (streamId) query = query.eq("enrollment.stream_id", streamId);
-  if (assessmentId) query = query.eq("assessment_id", assessmentId);
 
   // The term narrows by submission date, not by assessment.term_id — see
   // inTerm(). A term belonging to another school is treated as matching
@@ -247,14 +249,27 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
   // defined, or one whose marked work falls outside it, would otherwise show
   // an empty leaderboard despite having a full year of real written data —
   // exactly backwards for a page with no term picker to work around it.
-  if (term) {
-    query = query.gte("submitted_at", term.starts_on).lt("submitted_at", nextDay(term.ends_on));
-  }
+  //
+  // Paginated via readAllPages rather than a single request: a school with a
+  // full year of unfiltered submissions can pass PostgREST's 1000-row
+  // default cap, which would silently drop the rest rather than error.
+  const rows = await readAllPages<SubmissionAggRow>((from, to) => {
+    let query = supabase
+      .from("assessment_submissions")
+      .select(LEADERBOARD_COLUMNS)
+      .eq("status", "marked")
+      .eq("enrollment.school_id", schoolId)
+      .eq("enrollment.academic_year_id", academicYearId)
+      .is("assessment.deleted_at", null)
+      .eq("assessment.include_in_evaluation", true);
 
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
+    if (classId) query = query.eq("enrollment.class_id", classId);
+    if (streamId) query = query.eq("enrollment.stream_id", streamId);
+    if (assessmentId) query = query.eq("assessment_id", assessmentId);
+    if (term) query = query.gte("submitted_at", term.starts_on).lt("submitted_at", nextDay(term.ends_on));
 
-  const rows = (data ?? []) as unknown as SubmissionAggRow[];
+    return query.order("id", { ascending: true }).range(from, to);
+  });
 
   const byStudent = new Map<string, { name: string; systemId: string | null; percentages: number[] }>();
   for (const row of rows) {
@@ -669,29 +684,32 @@ export async function getSchoolBenchmark(params: SchoolBenchmarkParams): Promise
     academicYearId = currentYear.id;
   }
 
-  let query = supabase
-    .from("assessment_submissions")
-    .select(BENCHMARK_COLUMNS)
-    .eq("status", "marked")
-    .eq("enrollment.academic_year_id", academicYearId)
-    .is("assessment.deleted_at", null)
-    .eq("assessment.include_in_evaluation", true);
+  // Paginated via readAllPages rather than a single request: a system-wide,
+  // whole-year query across every school is exactly the case most likely to
+  // pass PostgREST's 1000-row default cap, which would silently drop the
+  // rest rather than error — undercounting every school's numbers at once.
+  const rows = await readAllPages<BenchmarkRow>((from, to) => {
+    let query = supabase
+      .from("assessment_submissions")
+      .select(BENCHMARK_COLUMNS)
+      .eq("status", "marked")
+      .eq("enrollment.academic_year_id", academicYearId)
+      .is("assessment.deleted_at", null)
+      .eq("assessment.include_in_evaluation", true);
 
-  if (assessmentId) query = query.eq("assessment_id", assessmentId);
+    if (assessmentId) query = query.eq("assessment_id", assessmentId);
 
-  if (termId) {
-    // Narrow in SQL to the widest window any school uses, so the row count
-    // stays bounded; the per-school check below is what makes it exact.
-    const windows = Array.from(termsBySchool.values());
-    const earliest = windows.reduce((a, t) => (t.starts_on < a ? t.starts_on : a), windows[0].starts_on);
-    const latest = windows.reduce((a, t) => (t.ends_on > a ? t.ends_on : a), windows[0].ends_on);
-    query = query.gte("submitted_at", earliest).lt("submitted_at", nextDay(latest));
-  }
+    if (termId) {
+      // Narrow in SQL to the widest window any school uses, so the row count
+      // stays bounded; the per-school check below is what makes it exact.
+      const windows = Array.from(termsBySchool.values());
+      const earliest = windows.reduce((a, t) => (t.starts_on < a ? t.starts_on : a), windows[0].starts_on);
+      const latest = windows.reduce((a, t) => (t.ends_on > a ? t.ends_on : a), windows[0].ends_on);
+      query = query.gte("submitted_at", earliest).lt("submitted_at", nextDay(latest));
+    }
 
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-
-  const rows = (data ?? []) as unknown as BenchmarkRow[];
+    return query.order("id", { ascending: true }).range(from, to);
+  });
 
   // First pass: per-student average, same as queryLeaderboard, so one
   // prolific test-taker or one heavily-weighted paper doesn't dominate. Only
