@@ -1,16 +1,24 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getCurrentAcademicYear } from "@/lib/entities/academic-years";
-import { readAllPages } from "@/lib/assessments";
+import { readAllPages, BEHAVIOR_ASSESSMENT_TITLE } from "@/lib/assessments";
 
 export interface LeaderboardEntry {
   studentId: string;
   studentName: string;
   studentSystemId: string | null;
   assessmentsCount: number;
-  /** The blended figure — written and attendance combined. What every marks display shows. */
+  /** The blended figure — every marked submission (written papers and the behaviour rating alike) plus attendance. What every marks display shows. */
   averagePercentage: number;
-  /** Mean of marked assessment percentages alone, before the attendance blend — kept for transparency. */
-  written: number;
+  /**
+   * Mean of marked WRITTEN-paper percentages alone — the behaviour rating is
+   * excluded here and reported separately in behaviourScore, since lumping a
+   * conduct score into "written" read as confusing (a paper someone sat vs. a
+   * rating a teacher gave). Null when every marked submission in scope is a
+   * behaviour rating, i.e. this student has no written paper to average.
+   */
+  assessmentScore: number | null;
+  /** Mean of marked behaviour-rating percentages alone. Null when this student has never been rated. */
+  behaviourScore: number | null;
   /** % of this term's lesson-attendance sessions the student was present for, or null with no attendance data recorded (never treated as 0). */
   attendanceRate: number | null;
   /** Share of averagePercentage taken from attendance, 0..1. 0 whenever attendanceRate is null. */
@@ -43,10 +51,11 @@ interface SubmissionAggRow {
   max_score: number | null;
   submitted_at: string;
   student: { system_id: string | null; first_name: string; middle_name: string | null; last_name: string } | null;
+  assessment: { title: string } | null;
 }
 
 const LEADERBOARD_COLUMNS =
-  "student_id, total_score, max_score, status, submitted_at, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments!inner(school_id, class_id, stream_id, academic_year_id), assessment:assessments!inner(id, deleted_at, include_in_evaluation)";
+  "student_id, total_score, max_score, status, submitted_at, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments!inner(school_id, class_id, stream_id, academic_year_id), assessment:assessments!inner(id, title, deleted_at, include_in_evaluation)";
 
 interface TermWindow {
   id: string;
@@ -116,6 +125,10 @@ function isRankable(row: { status: string; total_score: number | null; max_score
 
 function percentOf(total: number, max: number): number {
   return Math.round((total / max) * 1000) / 10;
+}
+
+function roundedMean(percentages: number[]): number {
+  return Math.round((percentages.reduce((sum, p) => sum + p, 0) / percentages.length) * 10) / 10;
 }
 
 function studentName(student: SubmissionAggRow["student"]): string {
@@ -271,21 +284,23 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
     return query.order("id", { ascending: true }).range(from, to);
   });
 
-  const byStudent = new Map<string, { name: string; systemId: string | null; percentages: number[] }>();
+  const byStudent = new Map<
+    string,
+    { name: string; systemId: string | null; assessmentPercentages: number[]; behaviourPercentages: number[] }
+  >();
   for (const row of rows) {
     if (!isRankable(row)) continue;
     if (term && !inTerm(term, row.submitted_at)) continue;
     const percentage = percentOf(row.total_score as number, row.max_score as number);
-    const existing = byStudent.get(row.student_id);
-    if (existing) {
-      existing.percentages.push(percentage);
-    } else {
-      byStudent.set(row.student_id, {
-        name: studentName(row.student),
-        systemId: row.student?.system_id ?? null,
-        percentages: [percentage],
-      });
-    }
+    const isBehaviour = row.assessment?.title === BEHAVIOR_ASSESSMENT_TITLE;
+    const existing = byStudent.get(row.student_id) ?? {
+      name: studentName(row.student),
+      systemId: row.student?.system_id ?? null,
+      assessmentPercentages: [],
+      behaviourPercentages: [],
+    };
+    (isBehaviour ? existing.behaviourPercentages : existing.assessmentPercentages).push(percentage);
+    byStudent.set(row.student_id, existing);
   }
 
   // The attendance-blend term: reuse the explicit term if one was given,
@@ -299,15 +314,20 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
     : new Map<string, number>();
 
   const entries: Omit<LeaderboardEntry, "rank">[] = Array.from(byStudent.entries()).map(([studentId, agg]) => {
-    const written = Math.round((agg.percentages.reduce((sum, p) => sum + p, 0) / agg.percentages.length) * 10) / 10;
-    const blend = blendWithAttendance(written, attendanceRates.get(studentId) ?? null);
+    // Overall blends EVERY marked submission — written papers and the
+    // behaviour rating alike — with attendance, same as before this split.
+    // assessmentScore/behaviourScore below are purely the display breakdown.
+    const allPercentages = [...agg.assessmentPercentages, ...agg.behaviourPercentages];
+    const combinedWritten = roundedMean(allPercentages);
+    const blend = blendWithAttendance(combinedWritten, attendanceRates.get(studentId) ?? null);
     return {
       studentId,
       studentName: agg.name,
       studentSystemId: agg.systemId,
-      assessmentsCount: agg.percentages.length,
+      assessmentsCount: allPercentages.length,
       averagePercentage: blend.overall,
-      written: blend.written,
+      assessmentScore: agg.assessmentPercentages.length > 0 ? roundedMean(agg.assessmentPercentages) : null,
+      behaviourScore: agg.behaviourPercentages.length > 0 ? roundedMean(agg.behaviourPercentages) : null,
       attendanceRate: blend.attendanceRate,
       attendanceWeight: blend.weight,
     };
@@ -370,7 +390,12 @@ export async function getClassTopPerformers(params: ClassTopPerformersParams): P
 export interface TermAverage {
   termId: string;
   termNumber: number;
+  /** Every marked submission this term, behaviour rating included — feeds the trend/overall figure, same as before this was split for display. */
   averagePercentage: number;
+  /** Mean of WRITTEN-paper percentages alone this term. Null if this student's only marked work this term is the behaviour rating. */
+  assessmentScore: number | null;
+  /** Mean of behaviour-rating percentages alone this term. Null if never rated this term. */
+  behaviourScore: number | null;
 }
 
 interface StudentTrendRow {
@@ -379,13 +404,13 @@ interface StudentTrendRow {
   status: string;
   submitted_at: string;
   enrollment: { school_id: string; academic_year_id: string } | null;
-  assessment: { deleted_at: string | null } | null;
+  assessment: { title: string; deleted_at: string | null } | null;
 }
 
 const STUDENT_TREND_COLUMNS =
   "total_score, max_score, status, submitted_at, " +
   "enrollment:enrollments!inner(school_id, academic_year_id), " +
-  "assessment:assessments!inner(deleted_at, include_in_evaluation)";
+  "assessment:assessments!inner(title, deleted_at, include_in_evaluation)";
 
 /**
  * A student's own average percentage per term, oldest first — their own
@@ -442,7 +467,7 @@ export async function getStudentTermAverages(studentId: string, academicYearId?:
   if (termError) throw new Error(termError.message);
 
   const terms = termRows ?? [];
-  const byTerm = new Map<string, { number: number; percentages: number[] }>();
+  const byTerm = new Map<string, { number: number; assessmentPercentages: number[]; behaviourPercentages: number[] }>();
   for (const row of scored) {
     const submittedOn = row.submitted_at.slice(0, 10);
     const term = terms.find(
@@ -453,15 +478,18 @@ export async function getStudentTermAverages(studentId: string, academicYearId?:
     // should show no term trend, not a fabricated one.
     if (!term) continue;
     const percentage = percentOf(row.total_score as number, row.max_score as number);
-    const existing = byTerm.get(term.id);
-    if (existing) existing.percentages.push(percentage);
-    else byTerm.set(term.id, { number: term.number, percentages: [percentage] });
+    const isBehaviour = row.assessment?.title === BEHAVIOR_ASSESSMENT_TITLE;
+    const existing = byTerm.get(term.id) ?? { number: term.number, assessmentPercentages: [], behaviourPercentages: [] };
+    (isBehaviour ? existing.behaviourPercentages : existing.assessmentPercentages).push(percentage);
+    byTerm.set(term.id, existing);
   }
 
   const averages: TermAverage[] = Array.from(byTerm.entries()).map(([termId, agg]) => ({
     termId,
     termNumber: agg.number,
-    averagePercentage: Math.round((agg.percentages.reduce((sum, p) => sum + p, 0) / agg.percentages.length) * 10) / 10,
+    averagePercentage: roundedMean([...agg.assessmentPercentages, ...agg.behaviourPercentages]),
+    assessmentScore: agg.assessmentPercentages.length > 0 ? roundedMean(agg.assessmentPercentages) : null,
+    behaviourScore: agg.behaviourPercentages.length > 0 ? roundedMean(agg.behaviourPercentages) : null,
   }));
 
   averages.sort((a, b) => a.termNumber - b.termNumber);
@@ -494,7 +522,10 @@ export async function getCurrentTermId(schoolId: string): Promise<string | null>
 export interface StudentTermPerformance {
   termId: string;
   termNumber: number;
-  written: number;
+  /** Mean of WRITTEN-paper percentages this term alone. Null if the only marked work this term is the behaviour rating. */
+  assessmentScore: number | null;
+  /** Mean of behaviour-rating percentages this term alone. Null if never rated this term. */
+  behaviourScore: number | null;
   attendanceRate: number | null;
   weight: number;
   overall: number;
@@ -531,7 +562,8 @@ export async function getStudentCurrentTermPerformance(studentId: string): Promi
   return {
     termId,
     termNumber: current.termNumber,
-    written: blend.written,
+    assessmentScore: current.assessmentScore,
+    behaviourScore: current.behaviourScore,
     attendanceRate: blend.attendanceRate,
     weight: blend.weight,
     overall: blend.overall,

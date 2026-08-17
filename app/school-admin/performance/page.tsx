@@ -39,28 +39,41 @@ interface LeaderboardEntry {
   studentName: string;
   assessmentsCount: number;
   averagePercentage: number;
-  written: number;
+  assessmentScore: number | null;
+  behaviourScore: number | null;
   attendanceRate: number | null;
   attendanceWeight: number;
   rank: number;
 }
 
-// Rank/Student/Written/Attendance/Overall — a roster shape fit for handing to
-// a school as-is, so this is also what the Export button (CSV/Excel/PDF)
-// hands out. exportValue keeps attendanceRate numeric (blank when there's no
-// data, never a literal "null"); pdfValue rounds to a whole percent for
-// print, same convention as the results PDFs — the 1dp figure stays on screen and in CSV/Excel.
+// Rank/Student/Assessment/Behaviour/Attendance/Overall — a roster shape fit
+// for handing to a school as-is, so this is also what the Export button
+// (CSV/Excel/PDF) hands out. exportValue keeps null-able figures numeric
+// (blank when there's no data, never a literal "null"); pdfValue rounds to a
+// whole percent for print, same convention as the results PDFs — the 1dp
+// figure stays on screen and in CSV/Excel.
 const performanceColumns: DataTableColumn<LeaderboardEntry>[] = [
   { key: 'rank', header: 'Rank', value: (e) => e.rank, sortable: true, className: 'w-14' },
   { key: 'studentName', header: 'Student', value: (e) => e.studentName, sortable: true },
   {
-    key: 'written',
-    header: 'Written',
-    value: (e) => e.written,
+    key: 'assessmentScore',
+    header: 'Assessment',
+    value: (e) => e.assessmentScore ?? undefined,
     sortable: true,
     align: 'right',
-    render: (e) => `${e.written}%`,
-    pdfValue: (e) => `${Math.round(e.written)}%`,
+    render: (e) => (e.assessmentScore !== null ? `${e.assessmentScore}%` : '—'),
+    exportValue: (e) => e.assessmentScore,
+    pdfValue: (e) => (e.assessmentScore !== null ? `${Math.round(e.assessmentScore)}%` : '—'),
+  },
+  {
+    key: 'behaviourScore',
+    header: 'Behaviour',
+    value: (e) => e.behaviourScore ?? undefined,
+    sortable: true,
+    align: 'right',
+    render: (e) => (e.behaviourScore !== null ? `${e.behaviourScore}%` : '—'),
+    exportValue: (e) => e.behaviourScore,
+    pdfValue: (e) => (e.behaviourScore !== null ? `${Math.round(e.behaviourScore)}%` : '—'),
   },
   {
     key: 'attendanceRate',

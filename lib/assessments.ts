@@ -637,7 +637,7 @@ export async function enterMarksDirectly(
   return { recorded: toInsert.length + toUpdate.length, skipped };
 }
 
-const BEHAVIOR_ASSESSMENT_TITLE = "Behaviour Rating";
+export const BEHAVIOR_ASSESSMENT_TITLE = "Behaviour Rating";
 
 /**
  * The "Behaviour Rating" form's own backing assessment for one school —

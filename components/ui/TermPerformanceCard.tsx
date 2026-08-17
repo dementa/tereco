@@ -24,6 +24,14 @@ export function TermPerformanceCard({
   // nothing rather than a confusing zero.
   if (!performance) return null;
 
+  // getStudentCurrentTermPerformance only ever returns a term that had at
+  // least one marked submission, so at least one of these two is always
+  // set — scoreText is never empty.
+  const scoreParts: string[] = [];
+  if (performance.assessmentScore !== null) scoreParts.push(`Assessment ${performance.assessmentScore}%`);
+  if (performance.behaviourScore !== null) scoreParts.push(`Behaviour ${performance.behaviourScore}%`);
+  const scoreText = scoreParts.join(' and ');
+
   return (
     <Card className="p-5">
       <div className="flex items-center gap-2">
@@ -38,10 +46,10 @@ export function TermPerformanceCard({
 
       <p className="text-xs text-text-faint mt-1">
         {performance.attendanceRate !== null
-          ? `Written ${performance.written}% and attendance ${performance.attendanceRate}%, counted equally.`
+          ? `${scoreText} and attendance ${performance.attendanceRate}%, counted equally.`
           : voice === 'self'
-            ? `Written ${performance.written}%. No attendance recorded yet this term, so only your written score counts.`
-            : `Written ${performance.written}%. No attendance recorded yet this term, so only their written score counts.`}
+            ? `${scoreText}. No attendance recorded yet this term, so only your score counts.`
+            : `${scoreText}. No attendance recorded yet this term, so only their score counts.`}
       </p>
     </Card>
   );
