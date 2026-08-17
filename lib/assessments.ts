@@ -674,7 +674,22 @@ export async function getOrCreateBehaviorAssessment(schoolId: string, createdBy:
   );
   if (existing) {
     const found = await getAssessmentBySystemId(existing.system_id);
-    if (found) return found;
+    if (found) {
+      // Self-healing for schools whose Behaviour Rating assessment was
+      // created before release-at-creation existed below: still unreleased
+      // means still unreachable through any "Release results" UI, since
+      // this assessment is permanently hidden from every listing that
+      // action lives on.
+      if (!found.resultsReleasedAt) {
+        await supabase
+          .from("assessments")
+          .update({ results_released_at: new Date().toISOString(), results_released_by: createdBy })
+          .eq("id", found.id);
+        const refreshed = await getAssessmentBySystemId(existing.system_id);
+        return refreshed ?? found;
+      }
+      return found;
+    }
   }
 
   const created = await createAssessment({
@@ -686,6 +701,17 @@ export async function getOrCreateBehaviorAssessment(schoolId: string, createdBy:
     createdBy,
   });
   await hideAssessment(created.systemId);
+
+  // Released at creation, once and for all: this assessment is hidden from
+  // every listing a "Release results" action lives on, so a manual release
+  // is unreachable through the UI. There is also nothing for it to protect
+  // here — enterMarksDirectly writes each learner's rating as already
+  // "marked" the moment a teacher submits it, never a part-scored draft.
+  await supabase
+    .from("assessments")
+    .update({ results_released_at: new Date().toISOString(), results_released_by: createdBy })
+    .eq("id", created.id);
+
   const hidden = await getAssessmentBySystemId(created.systemId);
   return hidden ?? created;
 }
