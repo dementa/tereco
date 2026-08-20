@@ -46,3 +46,9 @@ scripts/*.xlsx
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.probe.mts
+Sample data/vercel-ui.png
+Sample data/uifix.png
+Sample data/Screenshot 2026-08-01 104515.png
+.gitignore
+.gstack/
