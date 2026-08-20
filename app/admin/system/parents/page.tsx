@@ -199,7 +199,6 @@ export default function SystemParentsPage() {
     }
   }
 
-
   async function linkStudent() {
     if (!managing || !linkForm.studentId) return;
     const res = await fetch(`/api/admin/system/parents/${managing.id}/link-student`, {
@@ -336,14 +335,18 @@ export default function SystemParentsPage() {
       { key: 'systemId', header: 'Parent ID', value: (a) => a.systemId ?? '—' },
       { key: 'contactEmail', header: 'Email', value: (a) => a.contactEmail ?? '—' },
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [openManage]
+    []
   );
 
   const rowActions = useCallback(
     (a: ParentAccount): DropdownMenuItem[] => [
       { label: 'View profile', icon: Eye, onClick: () => setViewing(a) },
       { label: 'Edit details', icon: Pencil, onClick: () => setEditing(a) },
+      { 
+        label: 'Manage children', 
+        icon: Link2, 
+        onClick: () => openManage(a) 
+      },
       {
         label: 'Reset password',
         icon: KeyRound,
@@ -358,8 +361,7 @@ export default function SystemParentsPage() {
       },
       { label: 'Delete', icon: Trash2, danger: true, onClick: () => void removeAccount(a) },
     ],
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [busyId]
+    [busyId, openManage]
   );
 
   // Children already linked shouldn't be offered again.
