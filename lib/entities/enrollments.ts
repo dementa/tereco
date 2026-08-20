@@ -115,6 +115,11 @@ export interface RosterEntry {
  * a teacher takes attendance against. Reads through current_enrollments, same
  * as everywhere else placement is needed, so a promoted or transferred
  * learner simply stops appearing rather than needing separate cleanup.
+ *
+ * No streamId means "every stream", not "only the unstreamed" — a class that
+ * has streams still has every enrollment carrying one, so filtering to a null
+ * stream_id here used to return an empty roster for any streamed class picked
+ * with "All streams".
  */
 export async function listClassRoster(
   classId: string,
@@ -129,7 +134,7 @@ export async function listClassRoster(
     // student, never whoever recorded the enrollment, is what a roster means.
     .select("id, student_id, student:profiles!enrollments_student_id_fkey(system_id, first_name, middle_name, last_name)")
     .eq("class_id", classId);
-  query = streamId ? query.eq("stream_id", streamId) : query.is("stream_id", null);
+  if (streamId) query = query.eq("stream_id", streamId);
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
@@ -394,4 +399,77 @@ export async function promoteClass(input: {
   }
 
   return result;
+}
+
+export interface EnrollmentSearchResult {
+  enrollmentId: string;
+  studentId: string;
+  systemId: string | null;
+  name: string;
+  schoolName: string | null;
+  className: string | null;
+  streamName: string | null;
+}
+
+/**
+ * Find a student by name or system ID, anywhere — for picking one-off
+ * individuals (a transfer student, a scattered handful from different
+ * classes) onto a list that a class/stream roster wouldn't naturally cover.
+ * Returns only students with a CURRENT enrollment; one with none has
+ * nothing to enter marks against yet.
+ */
+export async function searchCurrentEnrollments(query: string, limit = 20): Promise<EnrollmentSearchResult[]> {
+  // Commas and parentheses are PostgREST's own or()-list syntax — left
+  // unescaped, a name containing one would silently split into an extra
+  // clause instead of matching literally. Stripped rather than escaped:
+  // no real name needs them, and the search is still useful without.
+  const needle = query.trim().replace(/[(),]/g, "");
+  if (!needle) return [];
+
+  const supabase = getSupabaseAdmin();
+  const { data: matches, error: matchError } = await supabase
+    .from("profiles")
+    .select("id, system_id, first_name, middle_name, last_name")
+    .eq("role", "student")
+    .eq("is_active", true)
+    .or(`system_id.ilike.%${needle}%,first_name.ilike.%${needle}%,last_name.ilike.%${needle}%`)
+    .limit(limit);
+  if (matchError) throw new Error(matchError.message);
+  if (!matches || matches.length === 0) return [];
+
+  const { data: enrollments, error: enrollError } = await supabase
+    .from("current_enrollments")
+    .select(
+      "id, student_id, school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name)"
+    )
+    .in(
+      "student_id",
+      matches.map((m) => m.id)
+    );
+  if (enrollError) throw new Error(enrollError.message);
+
+  interface EnrollmentRow {
+    id: string;
+    student_id: string;
+    school: { name: string } | null;
+    class: { alias: string | null; grade_level: { code: string } | null } | null;
+    stream: { name: string } | null;
+  }
+  const byStudent = new Map((enrollments as unknown as EnrollmentRow[]).map((e) => [e.student_id, e]));
+
+  const results: EnrollmentSearchResult[] = [];
+  for (const m of matches) {
+    const enrollment = byStudent.get(m.id);
+    if (!enrollment) continue;
+    results.push({
+      enrollmentId: enrollment.id,
+      studentId: m.id,
+      systemId: m.system_id,
+      name: [m.first_name, m.middle_name, m.last_name].filter(Boolean).join(" "),
+      schoolName: enrollment.school?.name ?? null,
+      className: enrollment.class?.alias ?? enrollment.class?.grade_level?.code ?? null,
+      streamName: enrollment.stream?.name ?? null,
+    });
+  }
+  return results;
 }

@@ -8,13 +8,17 @@
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "npm run renderer:check && electron-builder",
-    "dist:win": "npm run renderer:check && electron-builder --win",
-    "dist:linux": "npm run renderer:check && electron-builder --linux",
-    "dist:mac": "npm run renderer:check && electron-builder --mac",
+    "dist": "npm run prepack:check && electron-builder --publish never",
+    "dist:win": "npm run prepack:check && electron-builder --win --publish never",
+    "dist:win:publish": "npm run prepack:check && electron-builder --win --publish always",
+    "dist:linux": "npm run prepack:check && electron-builder --linux --publish never",
+    "dist:mac": "npm run prepack:check && electron-builder --mac --publish never",
+    "prepack:check": "npm run renderer:check && npm run native:check",
     "renderer:check": "node -e \"require('fs').existsSync('renderer/dist/index.html')||(console.error('renderer/dist is missing. Run npm run build:renderer from the REPO ROOT first: without it the installer ships no application code.'),process.exit(1))\"",
+    "native:check": "node scripts/check-native-build.js",
+    "smoke": "node scripts/smoke-installed-app.js",
     "rebuild": "electron-rebuild -f -w better-sqlite3-multiple-ciphers",
-    "postinstall": "electron-rebuild -f -w better-sqlite3-multiple-ciphers || echo \"[tereco] electron-rebuild failed; the native SQLite module will not load in Electron until this succeeds\""
+    "postinstall": "electron-rebuild -f -w better-sqlite3-multiple-ciphers"
   },
   "devDependencies": {
     "@electron/rebuild": "^4.2.0",
@@ -25,7 +29,12 @@
     "appId": "com.tereco.collect",
     "productName": "TERECO Collect",
     "copyright": "Copyright © TERECO",
-    "publish": null,
+    "publish": {
+      "provider": "github",
+      "owner": "dementa",
+      "repo": "tereco",
+      "releaseType": "release"
+    },
     "directories": {
       "buildResources": "build",
       "output": "dist"
@@ -38,6 +47,15 @@
       "db/**",
       "net/**",
       "keys/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../lib/offline",
+        "to": "lib/offline",
+        "filter": [
+          "*.js"
+        ]
+      }
     ],
     "win": {
       "target": [
@@ -82,6 +100,7 @@
     }
   },
   "dependencies": {
-    "better-sqlite3-multiple-ciphers": "^13.0.3"
+    "better-sqlite3-multiple-ciphers": "12.11.1",
+    "electron-updater": "6.8.9"
   }
 }

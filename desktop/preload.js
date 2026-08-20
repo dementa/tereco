@@ -40,4 +40,14 @@ contextBridge.exposeInMainWorld('tereco', {
 
   syncStatus: () => ipcRenderer.invoke('tereco:syncStatus'),
   retrySync: () => ipcRenderer.invoke('tereco:retrySync'),
+
+  // Auto-update. onUpdateReady never fires outside a packaged install; main
+  // only registers the 'tereco:update-ready' sender and the installUpdate
+  // handler once it has actually started the updater.
+  onUpdateReady: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on('tereco:update-ready', listener);
+    return () => ipcRenderer.removeListener('tereco:update-ready', listener);
+  },
+  installUpdate: () => ipcRenderer.invoke('tereco:installUpdate'),
 });

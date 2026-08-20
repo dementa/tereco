@@ -78,6 +78,61 @@ npm run dist:mac     # macOS    -> dist/*.dmg   (must run on a Mac)
 Outputs land in `desktop/dist/`. The Windows artifact is
 `dist/TERECO Collect Setup <version>.exe` — a ~78 MB NSIS installer.
 
+Each `dist:*` script first runs `prepack:check`, which refuses to package a
+renderer bundle that is missing or a SQLite binary Electron cannot load. After
+building, `npm run smoke` starts the packaged app and fails if it exits — an
+installer that exists is not an app that starts, and every startup failure this
+client has had looked the same from outside: the shortcut opens nothing.
+
+## Auto-update
+
+Packaged installs check GitHub Releases for a newer build on startup and every
+4 hours after (`initAutoUpdate` in `main.js`, via `electron-updater`). Skipped
+entirely for an unpackaged `npm start` or a `REMOTE_URL` override — both are
+someone deliberately running something other than the shipped app.
+
+The download happens silently in the background. Nothing ever force-restarts
+the app: a downloaded update installs the next time TERECO Collect is closed
+(electron-updater's own default), or immediately if the learner is on the Home
+screen and taps "Restart now" — that banner never appears over a paper in
+progress, only on Home.
+
+Releases are only ever created by `.github/workflows/desktop-installer.yml`,
+and only on a push to `main`, after the smoke test on that exact build has
+passed — see the workflow for why it's a second, separate `electron-builder`
+invocation rather than publishing the same build the smoke test ran against.
+`desktop/package.json`'s `version` is overwritten in CI to `1.0.<run number>`
+immediately before both builds; it means nothing as a version to read by eye,
+it exists only so electron-updater's semver comparison always sees the newest
+release as newer.
+
+`"releaseType": "release"` in the `publish` block is load-bearing:
+electron-builder's GitHub provider creates a **draft** release by default. A
+draft is invisible to the unauthenticated public Releases API, which is what
+electron-updater polls — the first real run of this pipeline published a
+release, the workflow went green, and no install ever saw it, because it sat
+as a draft nobody had clicked "Publish" on. Leaving this out silently defeats
+the whole feature without an error anywhere.
+
+A build produced any other way (`npm run dist:win` locally, a PR build, a
+`workflow_dispatch` run) always passes `--publish never` and publishes
+nothing, regardless of the `publish` block in the build config below.
+
+### The pinned SQLite version is load-bearing
+
+`better-sqlite3-multiple-ciphers` is pinned to **12.11.1**, exactly, and must
+not be moved to 13.x. From 13.0.0 the module ships prebuilt binaries, and its
+`binding.gyp` skips compiling when it finds one — so `electron-rebuild` reports
+"Rebuild Complete" having built nothing, and the installer carries a binary
+built for plain Node. Loading it inside Electron segfaults the process before
+any window or error dialog exists: the app installs, and clicking it does
+nothing at all. 12.11.1 has no prebuilds, so the rebuild genuinely happens and
+the binary matches Electron's ABI.
+
+`npm run native:check` (part of `prepack:check`) is what enforces this: it opens
+an encrypted database using Electron's own runtime and fails the build if the
+module ships prebuilds or will not load.
+
 ### Building the Windows installer on Linux
 
 It works, but electron-builder shells out to Windows tools through Wine to stamp
@@ -94,10 +149,20 @@ sudo apt-get install -y wine32
 Wine prints a wall of `err:` lines about missing displays and RPC services while
 it does this. They are noise — the build is fine. `WINEDEBUG=-all` silences them.
 
-`"publish": null` in the build config is load-bearing: without it electron-builder
-tries to write auto-update metadata, finds no publish provider, and exits
-non-zero *after* the installer has already been written — a failure that looks
-like a broken build but isn't.
+Historically `"publish": null` was load-bearing here: with no publish config at
+all, electron-builder fell back to autodetecting a provider from `homepage`,
+that detection found nothing usable under Wine, and it exited non-zero *after*
+the installer had already been written — a failure that looked like a broken
+build but wasn't.
+
+The build config now carries a real GitHub publish target (needed for
+auto-update — see "Auto-update" below), which should sidestep this: an
+explicit config skips the autodetection step that used to fail. `dist:win`,
+`dist:linux` and `dist:mac` all still pass `--publish never` explicitly, so a
+local build never attempts to upload anywhere regardless. This has been
+verified on the real Windows CI runner but **not** re-verified against Wine on
+Linux — if you hit a non-zero exit here after the .exe/.AppImage/.dmg already
+exists, that history is almost certainly why.
 
 ### macOS notes
 
@@ -140,6 +205,13 @@ To rotate, add a new key id alongside the existing one. Machines not yet
 updated keep verifying grants signed by the key they know, so a rotation does
 not brick a lab mid-term. Only drop an old public key once every machine has
 been updated **and** every grant signed with it has expired (14 days).
+
+`prepare.js` verifies grants with `lib/offline/package-token.js` from the repo
+root, shared with the Next.js route that signs them. It lives outside `desktop/`
+and so outside the asar, and is copied into the installer as `extraResources`,
+landing at `resources/lib/offline` — which is exactly where the `../../lib/...`
+require resolves from inside the archive. Without it the app throws while
+registering IPC and quits during startup.
 
 The desktop talks to `TERECO_API_URL` (default `https://tereco.vercel.app`) for
 sign-in and preparation. That is separate from `TERECO_APP_URL`, which only

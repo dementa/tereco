@@ -110,7 +110,8 @@ function createRepository(db) {
            a.duration_seconds as durationSeconds,
            a.question_count   as questionCount,
            p.prepared_at   as preparedAt,
-           t.started_at    as startedAt
+           t.started_at    as startedAt,
+           t.status        as attemptStatus
       from packages p
       join assessments a on a.id = p.assessment_id
       left join attempts t
@@ -141,6 +142,10 @@ function createRepository(db) {
       // coherent to show before an attempt exists.
       startedAt: row.startedAt ?? row.preparedAt,
       questionCount: row.questionCount,
+      // null: no attempt row yet, so the learner has never opened this paper.
+      // 'in_progress' / 'submitted' let the renderer choose Start vs Continue
+      // vs blocking re-entry into a paper that is already done.
+      attemptStatus: row.attemptStatus ?? null,
     }));
   }
 
@@ -222,7 +227,16 @@ function createRepository(db) {
 
     let attempt = selectAttempt.get(assessmentId, studentId);
     if (!attempt) {
-      const begin = startedAt ?? Date.now();
+      /**
+       * The server's sitting start wins.
+       *
+       * It is signed, so the device cannot move it, and it is the only clock a
+       * learner cannot reset. Anchoring to first-open instead would hand out a
+       * full fresh duration to anyone who prepared an hour before sitting down,
+       * which is exactly the gap the token exists to close. Falls back to now
+       * only for a package prepared before this column existed.
+       */
+      const begin = grant.sitting_started_at ?? startedAt ?? Date.now();
       const id = crypto.randomUUID();
       insertAttempt.run(id, assessmentId, studentId, deviceId, begin, begin);
       attempt = selectAttemptById.get(id);
@@ -315,6 +329,22 @@ function createRepository(db) {
     on conflict(id) do update set
       system_id = excluded.system_id, name = excluded.name, class_label = excluded.class_label
   `);
+
+  /**
+   * Records the learner who has just signed in, and makes them the active one.
+   *
+   * Sign-in used to write only the id. Nothing wrote the row it pointed at
+   * until a package had been downloaded, so `getActiveStudent` found no student
+   * and reported nobody signed in — a correct password put the learner straight
+   * back on the sign-in screen, with no error to explain it.
+   *
+   * One transaction, so the pointer is never stored without the row.
+   */
+  const signIn = db.transaction((student) => {
+    upsertStudent.run(student.id, student.systemId ?? null, student.name, student.classLabel ?? null);
+    setActiveStudentId(student.id);
+  });
+
   const upsertAssessment = db.prepare(`
     insert into assessments
       (id, title, instructions, duration_seconds, config_json, question_count, checksum, downloaded_at)
@@ -333,11 +363,13 @@ function createRepository(db) {
     values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   const upsertPackage = db.prepare(`
-    insert into packages (assessment_id, student_id, token, status, prepared_at, expires_at)
-    values (?, ?, ?, ?, ?, ?)
+    insert into packages
+      (assessment_id, student_id, token, status, prepared_at, expires_at, sitting_started_at)
+    values (?, ?, ?, ?, ?, ?, ?)
     on conflict(assessment_id, student_id) do update set
       token = excluded.token, status = excluded.status,
-      prepared_at = excluded.prepared_at, expires_at = excluded.expires_at
+      prepared_at = excluded.prepared_at, expires_at = excluded.expires_at,
+      sitting_started_at = excluded.sitting_started_at
   `);
 
   /**
@@ -350,7 +382,7 @@ function createRepository(db) {
    * notice until it was too late to fix.
    */
   const savePackage = db.transaction((payload) => {
-    const { student, assessment, questions, token, expiresAt, checksum } = payload;
+    const { student, assessment, questions, token, expiresAt, checksum, startedAt } = payload;
     const now = Date.now();
 
     upsertStudent.run(student.id, student.systemId ?? null, student.name, student.classLabel ?? null);
@@ -390,7 +422,9 @@ function createRepository(db) {
 
     // Held at 'preparing' while the rest of the payload (media, in Phase 2)
     // is still being fetched, so a package is never listable mid-write.
-    upsertPackage.run(assessment.id, student.id, token, 'preparing', now, expiresAt ?? null);
+    upsertPackage.run(
+      assessment.id, student.id, token, 'preparing', now, expiresAt ?? null, startedAt ?? null
+    );
 
     if (questions.length !== assessment.expectedQuestionCount) {
       // Rolls the whole transaction back, including the 'preparing' package.
@@ -399,7 +433,9 @@ function createRepository(db) {
       );
     }
 
-    upsertPackage.run(assessment.id, student.id, token, 'ready', now, expiresAt ?? null);
+    upsertPackage.run(
+      assessment.id, student.id, token, 'ready', now, expiresAt ?? null, startedAt ?? null
+    );
     return { ready: true };
   });
 
@@ -450,6 +486,34 @@ function createRepository(db) {
      limit 1
   `);
 
+  /**
+   * Same claim, minus the backoff filter.
+   *
+   * Used when a human pressed "Sync now" or the machine just came back online:
+   * both are already the honest signal the backoff exists to approximate, so
+   * waiting out a timer computed for a link that was down a moment ago only
+   * makes the button look broken.
+   */
+  const selectNextQueuedForce = db.prepare(`
+    select q.id            as queueId,
+           q.retry_count   as retryCount,
+           a.id            as attemptId,
+           a.assessment_id as assessmentId,
+           a.student_id    as studentId,
+           a.device_id     as deviceId,
+           a.started_at    as startedAt,
+           a.submitted_at  as submittedAt,
+           p.token         as token
+      from sync_queue q
+      join attempts a on a.id = q.attempt_id
+      join packages p
+        on p.assessment_id = a.assessment_id
+       and p.student_id = a.student_id
+     where q.status in ('pending', 'failed')
+     order by q.created_at
+     limit 1
+  `);
+
   const markSyncing = db.prepare(
     "update sync_queue set status = 'syncing', last_attempt_at = ? where id = ?"
   );
@@ -461,9 +525,13 @@ function createRepository(db) {
    * the order they were sat, and one item at a time so a lab reconnecting does
    * not open fifty concurrent requests over a link that is already the reason
    * this feature exists.
+   *
+   * `ignoreBackoff` skips the cooldown filter for a caller that already knows
+   * the wait is pointless (a manual retry, or the moment the network just
+   * came back) — everything else about claiming stays the same.
    */
-  const claimNext = db.transaction((now = Date.now()) => {
-    const row = selectNextQueued.get(now);
+  const claimNext = db.transaction((now = Date.now(), { ignoreBackoff = false } = {}) => {
+    const row = ignoreBackoff ? selectNextQueuedForce.get() : selectNextQueued.get(now);
     if (!row) return null;
 
     markSyncing.run(now, row.queueId);
@@ -532,6 +600,7 @@ function createRepository(db) {
   return {
     getActiveStudentId,
     setActiveStudentId,
+    signIn,
     getActiveStudent,
     listPrepared,
     getPackage,

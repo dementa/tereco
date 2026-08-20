@@ -200,6 +200,29 @@ describe('sync engine', () => {
     expect(fetchFn).toHaveBeenCalledTimes(1);
   });
 
+  it('a forced drain retries an item still inside its backoff window', async () => {
+    seedSubmittedAttempt();
+    let online = false;
+    const fetchFn = vi.fn(async () => {
+      if (!online) throw new TypeError('fetch failed');
+      return ok();
+    });
+
+    let clock = Date.now();
+    const engine = engineWith(fetchFn, () => clock);
+
+    await engine.drain();
+    // Same instant: the plain "Sync now" button, or the network coming back,
+    // must not be silently swallowed by the five second cooldown the first
+    // failure just earned.
+    online = true;
+    const result = await engine.drain({ force: true });
+
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    expect(result.synced).toBe(1);
+    expect(result.pending).toBe(0);
+  });
+
   it('refuses to call work synced on a 200 that does not confirm it', async () => {
     seedSubmittedAttempt();
     // A captive portal or proxy error page: HTTP says fine, the body does not.

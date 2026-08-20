@@ -30,7 +30,7 @@ const AttachSchema = z.object({
  * we signed, same reasoning as the profile/school upload flow this mirrors.
  */
 export async function POST(request: NextRequest) {
-  const denied = await requireRole(request, ["staff", "school_admin", "admin", "super_admin"]);
+  const denied = await requireRole(request, ["staff", "admin", "super_admin"]);
   if (denied) return denied;
 
   try {

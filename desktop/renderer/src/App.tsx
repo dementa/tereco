@@ -1,9 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
-import { CheckCircle, Download, HardDrive, LogOut, WifiOff } from 'lucide-react';
+import { motion } from 'framer-motion';
+import {
+  AlertCircle,
+  CheckCircle,
+  Download,
+  Eye,
+  EyeOff,
+  HardDrive,
+  Lock,
+  LogOut,
+  RefreshCw,
+  User,
+  WifiOff,
+} from 'lucide-react';
 
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { AuthProvider, useAuth } from '@/components/auth/AuthContext';
 import { AssessmentTake } from '@/components/assessment/AssessmentTake';
 
@@ -41,7 +53,21 @@ function Shell() {
 
   if (!isAuthenticated) return <SignIn />;
 
-  return /^\/assessment\/[^/]+\/?$/.test(pathname) ? <AssessmentTake /> : <Home />;
+  if (/^\/assessment\/[^/]+\/?$/.test(pathname)) {
+    // AssessmentTake is shared byte-for-byte with the web app (see the
+    // comment on App() above) and lays itself out with min-h-screen,
+    // expecting the browser page itself to scroll. desktop/styles.css sets
+    // `overflow: hidden` on body — every other screen manages its own scroll
+    // region instead — so without this wrapper a question longer than the
+    // window just ran off the bottom with no way to reach it.
+    return (
+      <div className="h-full overflow-y-auto">
+        <AssessmentTake />
+      </div>
+    );
+  }
+
+  return <Home />;
 }
 
 function Centered({ children }: { children: React.ReactNode }) {
@@ -58,6 +84,7 @@ function SignIn() {
   const { refresh } = useAuth();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -68,6 +95,11 @@ function SignIn() {
     setBusy(true);
     setError('');
     try {
+      // Unlike LoginScreen.tsx (components/auth/LoginScreen.tsx), this cannot
+      // fetch('/api/auth/login') directly — the renderer has no network access
+      // and no way to reach a credential; every request goes through main via
+      // this bridge call instead. Everything else here matches that screen's
+      // look on purpose, so the same app doesn't feel like two different ones.
       await window.tereco.signIn({ identifier, password });
       await refresh();
     } catch (err) {
@@ -78,41 +110,93 @@ function SignIn() {
   };
 
   return (
-    <div className="flex h-full items-center justify-center bg-background p-6">
-      <Card className="w-full max-w-md p-8">
-        <h1 className="text-xl font-semibold text-primary-900">Sign in to TERECO</h1>
-        <p className="mt-2 text-sm leading-relaxed text-neutral-600">
+    <div className="flex h-full items-center justify-center bg-bg px-4 py-8">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
+        className="w-full max-w-sm"
+      >
+        <div className="text-center mb-10">
+          <h1 className="text-3xl font-bold tracking-tight text-primary-900">TERECO</h1>
+          <p className="text-sm text-text-muted mt-2">Sign in to TERECO Collect</p>
+        </div>
+
+        <form onSubmit={submit} className="space-y-6">
+          <div>
+            <label htmlFor="identifier" className="text-xs font-medium text-text-secondary tracking-wide">
+              Student ID
+            </label>
+            <div className="relative mt-2">
+              <User className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" aria-hidden />
+              <input
+                id="identifier"
+                type="text"
+                value={identifier}
+                onChange={(e) => setIdentifier(e.target.value)}
+                className="w-full border-0 border-b border-border-strong bg-transparent pl-6 pr-2 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
+                placeholder="e.g. TSF-2026-0001"
+                autoFocus
+                required
+                autoComplete="username"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label htmlFor="password" className="text-xs font-medium text-text-secondary tracking-wide">
+              Password
+            </label>
+            <div className="relative mt-2">
+              <Lock className="absolute left-0 top-1/2 -translate-y-1/2 w-4 h-4 text-text-faint" aria-hidden />
+              <input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full border-0 border-b border-border-strong bg-transparent pl-6 pr-8 py-2 text-sm text-text-primary transition-colors duration-200 focus:border-primary-700 focus:outline-none focus:ring-0"
+                placeholder="Enter your password"
+                required
+                autoComplete="current-password"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-0 top-1/2 -translate-y-1/2 text-text-faint hover:text-primary-700 transition-colors"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="flex items-start gap-2 text-sm text-error"
+              role="alert"
+            >
+              <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" aria-hidden />
+              <p>{error}</p>
+            </motion.div>
+          )}
+
+          <Button
+            variant="primary"
+            className="w-full justify-center text-base h-11"
+            type="submit"
+            isLoading={busy}
+          >
+            Sign In
+          </Button>
+        </form>
+
+        <p className="text-xs text-text-faint text-center mt-8">
           You need the internet for this step only. Once your assessment has downloaded you can
           switch it off.
         </p>
-
-        <form onSubmit={submit} className="mt-6 space-y-4">
-          <Input
-            label="Student ID"
-            value={identifier}
-            onChange={(e) => setIdentifier(e.target.value)}
-            autoFocus
-            required
-          />
-          <Input
-            label="Password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
-
-          {error && (
-            <p className="rounded-xl bg-red-50 p-3 text-sm text-red-900" role="alert">
-              {error}
-            </p>
-          )}
-
-          <Button type="submit" isLoading={busy} className="w-full">
-            Sign in
-          </Button>
-        </form>
-      </Card>
+      </motion.div>
     </div>
   );
 }
@@ -134,6 +218,12 @@ function Home() {
   const [available, setAvailable] = useState<Downloadable[] | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState('');
+  const [updateReady, setUpdateReady] = useState(false);
+
+  // Never fires in dev or against a REMOTE_URL override — see initAutoUpdate
+  // in main.js. Restarting is always the learner's own choice: this only ever
+  // shows on the Home screen, never over a paper in progress.
+  useEffect(() => window.tereco?.onUpdateReady(() => setUpdateReady(true)), []);
 
   const load = useCallback(async () => {
     if (!window.tereco) return;
@@ -204,6 +294,21 @@ function Home() {
 
         <SyncStatus />
 
+        {updateReady && (
+          <div
+            role="status"
+            className="flex items-center gap-3 rounded-xl border border-primary-200 bg-primary-50 px-4 py-3 text-sm text-primary-900"
+          >
+            <RefreshCw className="h-4 w-4 shrink-0" aria-hidden />
+            <span className="flex-1">
+              An update has downloaded. It installs the next time TERECO Collect closes.
+            </span>
+            <Button inline variant="outline" onClick={() => window.tereco?.installUpdate()}>
+              Restart now
+            </Button>
+          </div>
+        )}
+
         {error && (
           <p className="rounded-xl bg-red-50 p-4 text-sm text-red-900" role="alert">
             {error}
@@ -247,9 +352,16 @@ function Home() {
                         minutes
                       </p>
                     </div>
-                    <Button inline onClick={() => router.push(`/assessment/${item.assessmentId}`)}>
-                      Start
-                    </Button>
+                    {item.attemptStatus === 'submitted' ? (
+                      // Already submitted: the main process refuses further writes to this
+                      // attempt anyway (#33), but a disabled state here means the learner
+                      // never gets that far and never sees a write fail with a raw error.
+                      <span className="text-sm font-medium text-neutral-500">Submitted</span>
+                    ) : (
+                      <Button inline onClick={() => router.push(`/assessment/${item.assessmentId}`)}>
+                        {item.attemptStatus === 'in_progress' ? 'Continue' : 'Start'}
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>

@@ -120,11 +120,12 @@ function ScriptPages({ script }: { script: MarkedScript }) {
         <View style={styles.scoreRow}>
           {/* The mark out of 100 leads, the Ugandan report-card convention —
               a paper out of 65 or 40 marks still reads the same way, with the
-              raw score kept as the reference detail. */}
+              raw score kept as the reference detail. Rounded to a whole
+              percent for print — the on-screen figure elsewhere keeps 1dp. */}
           <View style={styles.scoreBox}>
             <Text style={styles.scoreLabel}>MARK</Text>
             <Text style={styles.scoreValue}>
-              {script.percentage === null ? '—' : `${script.percentage}%`}
+              {script.percentage === null ? '—' : `${Math.round(script.percentage)}%`}
             </Text>
           </View>
           <View style={styles.scoreBox}>

@@ -89,8 +89,15 @@ function createSyncEngine({ baseUrl, repo, fetchFn, now = () => Date.now() }) {
    * One at a time and oldest first: a lab of fifty machines reconnecting at once
    * is already the hard case for this school's connection, and a machine that
    * opened a request per queued paper would make it worse.
+   *
+   * `force` skips each item's backoff cooldown. It exists for two callers: the
+   * "Sync now" button, where a person standing at the machine has already done
+   * the waiting the backoff exists to enforce, and the moment the machine's
+   * network comes back, where every outstanding item deserves an immediate
+   * attempt rather than however much of its old cooldown is left over from
+   * when the link was down.
    */
-  async function drain({ maxItems = 100 } = {}) {
+  async function drain({ maxItems = 100, force = false } = {}) {
     if (running) return { skipped: true, ...repo.syncStatus() };
     running = true;
     lastError = null;
@@ -101,8 +108,9 @@ function createSyncEngine({ baseUrl, repo, fetchFn, now = () => Date.now() }) {
     try {
       for (let i = 0; i < maxItems; i += 1) {
         // Anything still inside its backoff window is not offered, so an empty
-        // claim means "nothing to do right now", not "nothing left".
-        const item = repo.claimNext(now());
+        // claim means "nothing to do right now", not "nothing left" — unless
+        // `force` is set, in which case the backoff window is not consulted.
+        const item = repo.claimNext(now(), { ignoreBackoff: force });
         if (!item) break;
 
         const outcome = await syncOne(item);

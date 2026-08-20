@@ -25,6 +25,10 @@ export interface Assessment {
   resultsReleasedAt?: string;
   /** When this closed paper was published for untimed practice. Undefined = not an E-Paper. */
   ePaperAt?: string;
+  /** Set by a super_admin to remove this assessment from every other role's lists. */
+  hiddenAt?: string;
+  /** Whether marks from this assessment count toward the blended performance figure. Defaults true — a super_admin opts an assessment OUT, never in. */
+  includeInEvaluation: boolean;
   targets: AssessmentTarget[];
   /** Staff granted edit+mark access by the owner. See lib/auth/access.ts. */
   collaboratorIds: string[];
@@ -129,6 +133,8 @@ interface AssessmentRow {
   instructions: string;
   results_released_at: string | null;
   e_paper_at: string | null;
+  hidden_at: string | null;
+  include_in_evaluation: boolean;
   targets:
     | {
         id: string;
@@ -144,7 +150,7 @@ interface AssessmentRow {
 // Single string literal — concatenation would widen it to `string` and silently
 // disable the client's column checking.
 const ASSESSMENT_COLUMNS =
-  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, e_paper_at, targets:assessment_targets(id, school_id, level, class_id, student_id), collaborators:assessment_collaborators(staff_id)";
+  "id, system_id, title, description, time_limit_minutes, opens_at, closes_at, status, created_by, instructions, results_released_at, e_paper_at, hidden_at, include_in_evaluation, targets:assessment_targets(id, school_id, level, class_id, student_id), collaborators:assessment_collaborators(staff_id)";
 
 const QUESTION_COLUMNS =
   "id, position, code, question_text, type, options, correct_answer, model_answer, image_url, image_public_id, max_score, config";
@@ -165,6 +171,8 @@ function rowToAssessment(row: AssessmentRow): Assessment {
     instructions: row.instructions ?? "",
     resultsReleasedAt: row.results_released_at ?? undefined,
     ePaperAt: row.e_paper_at ?? undefined,
+    hiddenAt: row.hidden_at ?? undefined,
+    includeInEvaluation: row.include_in_evaluation,
     targets: (row.targets ?? []).map((t) => ({
       id: t.id,
       schoolId: t.school_id,
@@ -215,10 +223,19 @@ function rowToQuestion(row: QuestionRow): Question {
  *
  * `createdBy` narrows the list to one author — teachers see only the papers
  * they wrote, while admins see everything.
+ *
+ * `includeHidden` defaults to false — a super_admin-hidden assessment (see
+ * hideAssessment) stays out of every list, including a super_admin's own,
+ * unless the caller explicitly opts in. That keeps hiding an actual decluttering
+ * tool rather than something a super_admin has to look past every time.
  */
-export async function getAssessments(createdBy?: string): Promise<Assessment[]> {
+export async function getAssessments(
+  createdBy?: string,
+  opts?: { includeHidden?: boolean }
+): Promise<Assessment[]> {
   const supabase = getSupabaseAdmin();
   let query = supabase.from("assessments").select(ASSESSMENT_COLUMNS).is("deleted_at", null);
+  if (!opts?.includeHidden) query = query.is("hidden_at", null);
   if (createdBy) query = query.eq("created_by", createdBy);
   const { data, error } = await query.order("created_at", { ascending: false });
 
@@ -264,15 +281,23 @@ export async function getMarkableAssessments(
 }
 
 /**
+ * Whether a school_admin at `schoolId` may see this assessment at all — an
+ * empty target list is open to every school, otherwise at least one target
+ * row must name this school. Shared by the school-admin list and single-
+ * assessment routes so they can't drift into disagreeing about who counts.
+ */
+export function isAssessmentVisibleToSchool(assessment: Assessment, schoolId: string): boolean {
+  return assessment.targets.length === 0 || assessment.targets.some((t) => t.schoolId === schoolId);
+}
+
+/**
  * Every assessment targeting one school (or open to every school), for the
  * school-admin oversight page — a read-only superset of what any one of that
  * school's teachers could mark, since it isn't limited to a single staffId.
  */
 export async function getAssessmentsForSchool(schoolId: string): Promise<Assessment[]> {
   const all = await getAssessments();
-  return all.filter(
-    (a) => a.targets.length === 0 || a.targets.some((t) => t.schoolId === schoolId)
-  );
+  return all.filter((a) => isAssessmentVisibleToSchool(a, schoolId));
 }
 
 /**
@@ -415,6 +440,54 @@ export async function updateAssessment(
 }
 
 /**
+ * Clone an assessment as a new draft — same title (suffixed), time limit,
+ * instructions, audience and questions, but its own fresh system id and no
+ * submissions. Draft status means saveQuestions' "already sat" lock can
+ * never apply to the copy, even if the source is closed with years of
+ * results behind it.
+ */
+export async function duplicateAssessment(sourceSystemId: string, createdBy: string): Promise<Assessment> {
+  const source = await getAssessmentBySystemId(sourceSystemId);
+  if (!source) throw new UserFacingError("Assessment not found");
+
+  const questions = await getQuestions(source.id);
+
+  const copy = await createAssessment({
+    title: `${source.title} (Copy)`,
+    description: source.description,
+    timeLimit: source.timeLimit,
+    instructions: source.instructions,
+    status: "draft",
+    createdBy,
+    targets: source.targets.map((t) => ({
+      schoolId: t.schoolId,
+      level: t.level,
+      classId: t.classId,
+      studentId: t.studentId,
+    })),
+  });
+
+  if (questions.length > 0) {
+    await saveQuestions(
+      copy.id,
+      questions.map((q) => ({
+        questionText: q.questionText,
+        questionType: q.questionType,
+        options: q.options,
+        correctAnswer: q.correctAnswer,
+        modelAnswer: q.modelAnswer,
+        imageUrl: q.imageUrl,
+        imagePublicId: q.imagePublicId,
+        maxScore: q.maxScore,
+        config: q.config,
+      }))
+    );
+  }
+
+  return copy;
+}
+
+/**
  * Soft-delete. Submissions reference assessments, and removing a paper must
  * never take students' answers with it.
  */
@@ -425,6 +498,222 @@ export async function softDeleteAssessment(systemId: string): Promise<void> {
     .update({ deleted_at: new Date().toISOString() })
     .eq("system_id", systemId);
   if (error) throw new Error(error.message);
+}
+
+/**
+ * Removes an assessment from every other role's lists without deleting it —
+ * for test-phase papers a super_admin wants out of everyone's way. Reversible
+ * via unhideAssessment. Distinct from softDeleteAssessment: a hidden
+ * assessment is still fully live (still gradeable, still counted in
+ * analytics) for whoever already has it open by id.
+ */
+export async function hideAssessment(systemId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("assessments")
+    .update({ hidden_at: new Date().toISOString() })
+    .eq("system_id", systemId);
+  if (error) throw new Error(error.message);
+}
+
+export async function unhideAssessment(systemId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("assessments")
+    .update({ hidden_at: null })
+    .eq("system_id", systemId);
+  if (error) throw new Error(error.message);
+}
+
+/**
+ * Flips whether this assessment's marks count toward the blended performance
+ * figure — super_admin-only, same as hide/unhide. Sitting, marking, and
+ * results-release are untouched; this only changes what the leaderboards,
+ * benchmark, and student/parent "overall" figure include.
+ */
+export async function setAssessmentEvaluation(systemId: string, includeInEvaluation: boolean): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  const { error } = await supabase
+    .from("assessments")
+    .update({ include_in_evaluation: includeInEvaluation })
+    .eq("system_id", systemId);
+  if (error) throw new Error(error.message);
+}
+
+export interface DirectMarkEntry {
+  studentId: string;
+  enrollmentId: string;
+  score: number;
+}
+
+export interface DirectMarkResult {
+  /** How many rows were actually written (inserted or overwritten). */
+  recorded: number;
+  /** studentIds left untouched because they already had a submission and preventResubmission was set. */
+  skipped: string[];
+}
+
+/**
+ * Records a mark directly against an assessment, skipping the online-sitting
+ * flow entirely — the stop-gap for a class with no marks yet (e.g. one still
+ * waiting on the practical-assessment scoring screen): a teacher runs a
+ * quick in-person evaluation and the result lands in the same
+ * assessment_submissions rows a normal marked online sitting would produce,
+ * so it counts as "written" everywhere marks already do (the attendance
+ * blend, leaderboards, exports) without either system needing to know the
+ * difference.
+ *
+ * Creates a submission for a student with none yet on this assessment. By
+ * default overwrites the score on one that already exists (re-entering a
+ * mark, not a second attempt — assessment_submissions is one row per student
+ * per assessment) — this is what the generic "enter marks directly" tool
+ * wants, so an admin can correct a typo. `preventResubmission` flips that:
+ * a student who already has a submission is left alone and reported back in
+ * `skipped` instead of overwritten. Used by the Behaviour Rating form, where
+ * a teacher freely rating their own class should never be able to silently
+ * clobber a rating another teacher (or their own earlier self) already
+ * recorded for the same learner.
+ */
+export async function enterMarksDirectly(
+  assessmentId: string,
+  maxScore: number,
+  entries: DirectMarkEntry[],
+  markedBy: string,
+  opts?: { preventResubmission?: boolean }
+): Promise<DirectMarkResult> {
+  if (entries.length === 0) return { recorded: 0, skipped: [] };
+  for (const entry of entries) {
+    if (entry.score < 0 || entry.score > maxScore) {
+      throw new UserFacingError(`Score must be between 0 and ${maxScore}.`);
+    }
+  }
+
+  const supabase = getSupabaseAdmin();
+  const now = new Date().toISOString();
+
+  const { data: existing, error: existingError } = await supabase
+    .from("assessment_submissions")
+    .select("id, student_id")
+    .eq("assessment_id", assessmentId)
+    .in("student_id", entries.map((e) => e.studentId));
+  if (existingError) throw new Error(existingError.message);
+
+  const existingIdByStudent = new Map((existing ?? []).map((r) => [r.student_id, r.id as string]));
+  const preventResubmission = opts?.preventResubmission ?? false;
+
+  const toInsert = entries.filter((e) => !existingIdByStudent.has(e.studentId));
+  const toUpdate = preventResubmission ? [] : entries.filter((e) => existingIdByStudent.has(e.studentId));
+  const skipped = preventResubmission
+    ? entries.filter((e) => existingIdByStudent.has(e.studentId)).map((e) => e.studentId)
+    : [];
+
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from("assessment_submissions").insert(
+      toInsert.map((e) => ({
+        assessment_id: assessmentId,
+        enrollment_id: e.enrollmentId,
+        student_id: e.studentId,
+        status: "marked",
+        total_score: e.score,
+        max_score: maxScore,
+        submitted_at: now,
+        marked_at: now,
+        marked_by: markedBy,
+      }))
+    );
+    if (error) throw new Error(error.message);
+  }
+
+  for (const e of toUpdate) {
+    const id = existingIdByStudent.get(e.studentId);
+    if (!id) continue;
+    const { error } = await supabase
+      .from("assessment_submissions")
+      .update({ status: "marked", total_score: e.score, max_score: maxScore, marked_at: now, marked_by: markedBy })
+      .eq("id", id);
+    if (error) throw new Error(error.message);
+  }
+
+  return { recorded: toInsert.length + toUpdate.length, skipped };
+}
+
+export const BEHAVIOR_ASSESSMENT_TITLE = "Behaviour Rating";
+
+/**
+ * The "Behaviour Rating" form's own backing assessment for one school —
+ * created once, reused forever. Lets a teacher rate learners (see
+ * enterMarksDirectly) without ever seeing the word "assessment": from their
+ * side this is a standalone form under Data Forms, not a step inside
+ * Assessments.
+ *
+ * One per school, not one per term: a mark's TERM is already resolved from
+ * its submitted_at timestamp wherever the blend reads it (see inTerm() in
+ * lib/entities/performance.ts), not from which assessment object it's
+ * attached to — so there is nothing a per-term assessment would buy beyond
+ * complexity. Hidden immediately after creation (hideAssessment) so it
+ * never clutters the ordinary assessments list; it stays fully live and
+ * fully counted everywhere marks already count, same as any other hidden
+ * assessment.
+ */
+export async function getOrCreateBehaviorAssessment(schoolId: string, createdBy: string): Promise<Assessment> {
+  const supabase = getSupabaseAdmin();
+  const { data: rows, error } = await supabase
+    .from("assessments")
+    .select("system_id, targets:assessment_targets(school_id, level, class_id, student_id)")
+    .eq("title", BEHAVIOR_ASSESSMENT_TITLE)
+    .is("deleted_at", null);
+  if (error) throw new Error(error.message);
+
+  const existing = (rows ?? []).find(
+    (r) =>
+      r.targets?.length === 1 &&
+      r.targets[0].school_id === schoolId &&
+      r.targets[0].level === null &&
+      r.targets[0].class_id === null &&
+      r.targets[0].student_id === null
+  );
+  if (existing) {
+    const found = await getAssessmentBySystemId(existing.system_id);
+    if (found) {
+      // Self-healing for schools whose Behaviour Rating assessment was
+      // created before release-at-creation existed below: still unreleased
+      // means still unreachable through any "Release results" UI, since
+      // this assessment is permanently hidden from every listing that
+      // action lives on.
+      if (!found.resultsReleasedAt) {
+        await supabase
+          .from("assessments")
+          .update({ results_released_at: new Date().toISOString(), results_released_by: createdBy })
+          .eq("id", found.id);
+        const refreshed = await getAssessmentBySystemId(existing.system_id);
+        return refreshed ?? found;
+      }
+      return found;
+    }
+  }
+
+  const created = await createAssessment({
+    title: BEHAVIOR_ASSESSMENT_TITLE,
+    description: "How learners have been behaving — rated by a teacher, not sat as a paper.",
+    timeLimit: 30,
+    status: "closed",
+    targets: [{ schoolId, level: null, classId: null, studentId: null }],
+    createdBy,
+  });
+  await hideAssessment(created.systemId);
+
+  // Released at creation, once and for all: this assessment is hidden from
+  // every listing a "Release results" action lives on, so a manual release
+  // is unreachable through the UI. There is also nothing for it to protect
+  // here — enterMarksDirectly writes each learner's rating as already
+  // "marked" the moment a teacher submits it, never a part-scored draft.
+  await supabase
+    .from("assessments")
+    .update({ results_released_at: new Date().toISOString(), results_released_by: createdBy })
+    .eq("id", created.id);
+
+  const hidden = await getAssessmentBySystemId(created.systemId);
+  return hidden ?? created;
 }
 
 // ─── Collaborators ──────────────────────────────────────────
@@ -722,6 +1011,45 @@ export async function saveSubmission(input: {
   }
 }
 
+/**
+ * Clear a learner's sitting so they can take the paper again — for a teacher
+ * to use when a learner submitted blank, or gave up partway through.
+ *
+ * Deletes the submission (cascading its responses and any scans) and the
+ * sitting row that anchored its clock, so `assessments_for_student` (see
+ * 07-sitting-once.sql) stops excluding this assessment for them and
+ * `startOrResumeSitting` hands out a fresh start time rather than resuming
+ * the old one. The paper itself still has to be open (published, within its
+ * window) for the learner to see it again — this only undoes the "already
+ * sat it" side of the lock.
+ */
+export async function allowResit(assessmentId: string, submissionId: string): Promise<void> {
+  const supabase = getSupabaseAdmin();
+
+  const { data: submission, error: fetchError } = await supabase
+    .from("assessment_submissions")
+    .select("id, assessment_id, student_id")
+    .eq("id", submissionId)
+    .maybeSingle();
+  if (fetchError) throw new Error(fetchError.message);
+  if (!submission || submission.assessment_id !== assessmentId) {
+    throw new UserFacingError("Submission not found for this assessment.", 404);
+  }
+
+  const { error: sittingError } = await supabase
+    .from("assessment_sittings")
+    .delete()
+    .eq("assessment_id", submission.assessment_id)
+    .eq("student_id", submission.student_id);
+  if (sittingError) throw new Error(sittingError.message);
+
+  const { error: deleteError } = await supabase
+    .from("assessment_submissions")
+    .delete()
+    .eq("id", submission.id);
+  if (deleteError) throw new Error(deleteError.message);
+}
+
 interface ResponseRow {
   id: string;
   submission_id: string;
@@ -816,13 +1144,22 @@ function verdictFor(score: number | null, maxScore: number): AnswerVerdict {
  * Sequential rather than parallel: this is a printing path, not a hot one, and
  * a class of forty firing forty concurrent query bundles at Supabase is a good
  * way to get rate-limited mid-download.
+ *
+ * `opts.schoolId` narrows to one school's scripts — used by school_admin, so
+ * a bulk download on a multi-school assessment never bundles another
+ * school's learners into the same file.
  */
-export async function getAllMarkedScripts(assessmentId: string): Promise<MarkedScript[]> {
+export async function getAllMarkedScripts(
+  assessmentId: string,
+  opts?: { schoolId?: string }
+): Promise<MarkedScript[]> {
   const supabase = getSupabaseAdmin();
-  const { data, error } = await supabase
+  let query = supabase
     .from("assessment_submissions")
-    .select("student_id")
+    .select("student_id, enrollment:enrollments!inner(school_id)")
     .eq("assessment_id", assessmentId);
+  if (opts?.schoolId) query = query.eq("enrollment.school_id", opts.schoolId);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
 
   const scripts: MarkedScript[] = [];
@@ -974,7 +1311,7 @@ const PAGE_SIZE = 1000;
  * Throws rather than returning what it managed to collect: a short list that
  * reads as complete is exactly the failure this exists to prevent.
  */
-async function readAllPages<T>(
+export async function readAllPages<T>(
   page: (
     from: number,
     to: number
@@ -1136,6 +1473,7 @@ interface ResultRow {
   status: string;
   student: { system_id: string | null; first_name: string; middle_name: string | null; last_name: string } | null;
   enrollment: {
+    school_id: string;
     school: { name: string } | null;
     class: { alias: string | null; grade_level: { code: string } | null } | null;
     stream: { name: string } | null;
@@ -1143,8 +1481,15 @@ interface ResultRow {
 }
 
 // Same disambiguation as RESPONSE_COLUMNS: student_id, not marked_by.
+//
+// enrollments is `!inner` (rather than the default left embed) so that a
+// schoolId scope can filter on the joined table at all — PostgREST only
+// allows `.eq()` on an embedded resource when the embed is inner. Safe here
+// because assessment_submissions.enrollment_id is NOT NULL, so no row is
+// dropped by the switch — see LEADERBOARD_COLUMNS in
+// lib/entities/performance.ts for the same reasoning.
 const RESULT_COLUMNS =
-  "id, student_id, submitted_at, time_spent_seconds, total_score, max_score, status, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments(school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name))";
+  "id, student_id, submitted_at, time_spent_seconds, total_score, max_score, status, student:profiles!assessment_submissions_student_id_fkey(system_id, first_name, middle_name, last_name), enrollment:enrollments!inner(school_id, school:schools(name), class:classes(alias, grade_level:grade_levels(code)), stream:streams(name))";
 
 /**
  * One row per student who sat the assessment, with their marked total.
@@ -1152,8 +1497,15 @@ const RESULT_COLUMNS =
  * Totals come from the submission, which a database trigger keeps in step with
  * the individual responses — so this can never report a score that disagrees
  * with the answers behind it.
+ *
+ * `opts.schoolId` narrows to one school's submissions — used by school_admin
+ * routes, which must never see another school's students even on an
+ * assessment targeted at multiple schools.
  */
-export async function getAssessmentResults(assessmentId: string): Promise<AssessmentResult[]> {
+export async function getAssessmentResults(
+  assessmentId: string,
+  opts?: { schoolId?: string }
+): Promise<AssessmentResult[]> {
   const supabase = getSupabaseAdmin();
 
   // Grows with the number of learners who sat the exam, so it pages. An exam
@@ -1163,15 +1515,14 @@ export async function getAssessmentResults(assessmentId: string): Promise<Assess
   //
   // submitted_at alone is not a total order (a class submitting together ties
   // to the second), so id breaks the tie and keeps the pages from overlapping.
-  const rows = await readAllPages<ResultRow>((from, to) =>
-    supabase
+  const rows = await readAllPages<ResultRow>((from, to) => {
+    let query = supabase
       .from("assessment_submissions")
       .select(RESULT_COLUMNS)
-      .eq("assessment_id", assessmentId)
-      .order("submitted_at", { ascending: true })
-      .order("id", { ascending: true })
-      .range(from, to)
-  );
+      .eq("assessment_id", assessmentId);
+    if (opts?.schoolId) query = query.eq("enrollment.school_id", opts.schoolId);
+    return query.order("submitted_at", { ascending: true }).order("id", { ascending: true }).range(from, to);
+  });
 
   return rows.map((row) => {
     const student = row.student;
@@ -1343,6 +1694,115 @@ export async function listAssessmentsAwaitingMarking(): Promise<AwaitingMarking[
     }
   }
   return awaiting;
+}
+
+/** School-wide marking totals — how far a school's teachers have gotten through marking, not per-assessment. */
+export interface SchoolMarkingProgress {
+  totalScripts: number;
+  markedScripts: number;
+  /** 'submitted' only — a script nobody has handed in yet isn't waiting on a marker, same convention as AwaitingMarking. */
+  pendingScripts: number;
+  fullyMarkedPapers: number;
+  /** Papers with at least one submission from this school — the denominator fullyMarkedPapers is out of. */
+  totalPapers: number;
+}
+
+/**
+ * Every submission across a school's assessments, marked or not — the
+ * aggregate `listAssessmentsAwaitingMarking` doesn't give you, since that
+ * one only ever looks at the unmarked side, one assessment at a time.
+ */
+export async function getSchoolMarkingProgress(schoolId: string): Promise<SchoolMarkingProgress> {
+  const supabase = getSupabaseAdmin();
+
+  interface Row {
+    assessment_id: string;
+    status: string;
+  }
+  const rows = await readAllPages<Row>((from, to) =>
+    supabase
+      .from("assessment_submissions")
+      .select("assessment_id, status, enrollment:enrollments!inner(school_id)")
+      .eq("enrollment.school_id", schoolId)
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
+
+  const byAssessment = new Map<string, { total: number; marked: number }>();
+  let markedScripts = 0;
+  let pendingScripts = 0;
+  for (const row of rows) {
+    const bucket = byAssessment.get(row.assessment_id) ?? { total: 0, marked: 0 };
+    bucket.total += 1;
+    if (row.status === "marked") {
+      bucket.marked += 1;
+      markedScripts += 1;
+    } else if (row.status === "submitted") {
+      pendingScripts += 1;
+    }
+    byAssessment.set(row.assessment_id, bucket);
+  }
+
+  let fullyMarkedPapers = 0;
+  for (const bucket of byAssessment.values()) {
+    if (bucket.total > 0 && bucket.total === bucket.marked) fullyMarkedPapers += 1;
+  }
+
+  return {
+    totalScripts: rows.length,
+    markedScripts,
+    pendingScripts,
+    fullyMarkedPapers,
+    totalPapers: byAssessment.size,
+  };
+}
+
+/**
+ * Same totals as {@link getSchoolMarkingProgress}, but across every school —
+ * the super_admin assessments list's marking-progress panel, unscoped.
+ */
+export async function getSystemMarkingProgress(): Promise<SchoolMarkingProgress> {
+  const supabase = getSupabaseAdmin();
+
+  interface Row {
+    assessment_id: string;
+    status: string;
+  }
+  const rows = await readAllPages<Row>((from, to) =>
+    supabase
+      .from("assessment_submissions")
+      .select("assessment_id, status")
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
+
+  const byAssessment = new Map<string, { total: number; marked: number }>();
+  let markedScripts = 0;
+  let pendingScripts = 0;
+  for (const row of rows) {
+    const bucket = byAssessment.get(row.assessment_id) ?? { total: 0, marked: 0 };
+    bucket.total += 1;
+    if (row.status === "marked") {
+      bucket.marked += 1;
+      markedScripts += 1;
+    } else if (row.status === "submitted") {
+      pendingScripts += 1;
+    }
+    byAssessment.set(row.assessment_id, bucket);
+  }
+
+  let fullyMarkedPapers = 0;
+  for (const bucket of byAssessment.values()) {
+    if (bucket.total > 0 && bucket.total === bucket.marked) fullyMarkedPapers += 1;
+  }
+
+  return {
+    totalScripts: rows.length,
+    markedScripts,
+    pendingScripts,
+    fullyMarkedPapers,
+    totalPapers: byAssessment.size,
+  };
 }
 
 /** One assessment as it appears in a person's reminder. */

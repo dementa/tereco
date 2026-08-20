@@ -41,6 +41,9 @@ const REMOTE_URL = resolveRemoteOverride();
  */
 const API_BASE_URL = process.env.TERECO_API_URL || 'https://tereco.vercel.app';
 
+/** How often a long-running lab machine re-checks for a new build. */
+const UPDATE_POLL_MS = 4 * 60 * 60 * 1000;
+
 let mainWindow = null;
 
 function isSameOrigin(target, base) {
@@ -87,7 +90,13 @@ function createWindow() {
     minWidth: 480,
     minHeight: 600,
     backgroundColor: '#F5FDFF',
-    show: false,
+    // Shown at once, on the app's own background colour, rather than held back
+    // until the renderer paints. On a lab PC the bundle takes seconds to parse,
+    // and hiding the window until then means a double-click does nothing
+    // visible: people conclude the app is broken and click again — which the
+    // single-instance lock then swallows. index.html paints its own "Starting"
+    // line before any script runs, so the wait is at least visibly a wait.
+    show: true,
     // Defence in depth: even if a menu is ever set again, no bar is drawn in
     // the window frame.
     autoHideMenuBar: true,
@@ -100,8 +109,6 @@ function createWindow() {
       sandbox: true,
     },
   });
-
-  mainWindow.once('ready-to-show', () => mainWindow.show());
 
   if (REMOTE_URL) {
     mainWindow.loadURL(REMOTE_URL);
@@ -246,6 +253,42 @@ function readDeviceId() {
 }
 
 /**
+ * Checks GitHub Releases for a newer build and installs it automatically.
+ *
+ * Skipped outside a packaged install: electron-updater looks for
+ * app-update.yml, which only exists inside a built installer, and a
+ * REMOTE_URL means someone is deliberately pointing this at a dev server
+ * rather than running the shipped app.
+ *
+ * Never interrupts a sitting. The download happens silently in the
+ * background; nothing here ever calls quitAndInstall on its own. The update
+ * takes effect the next time the app is closed and reopened — its own
+ * default — or immediately if the learner is on the Home screen and chooses
+ * "Restart now" themselves, which they cannot do from the paper screen.
+ */
+function initAutoUpdate() {
+  if (!app.isPackaged || REMOTE_URL) return;
+
+  const { autoUpdater } = require('electron-updater');
+
+  autoUpdater.on('error', (err) => console.error('[tereco] update check failed:', err));
+  autoUpdater.on('update-available', (info) =>
+    console.log(`[tereco] update ${info.version} found, downloading`)
+  );
+  autoUpdater.on('update-downloaded', (info) => {
+    console.log(`[tereco] update ${info.version} downloaded — installs on next restart`);
+    mainWindow?.webContents.send('tereco:update-ready');
+  });
+
+  ipcMain.handle('tereco:installUpdate', () => autoUpdater.quitAndInstall());
+
+  const check = () =>
+    autoUpdater.checkForUpdates().catch((err) => console.error('[tereco] update check failed:', err));
+  setTimeout(check, 10_000).unref?.();
+  setInterval(check, UPDATE_POLL_MS).unref?.();
+}
+
+/**
  * Wiring for the bridge declared in desktop/renderer/src/tereco-bridge.d.ts.
  *
  * Every handler is a thin pass-through to the repository. Identity and time are
@@ -315,10 +358,21 @@ function registerIpc(repo) {
       throw new Error(body?.message || 'Could not sign in.');
     }
 
-    // Binds the local database to this learner. Everything the renderer can
-    // then list or open is scoped to them.
-    repo.setActiveStudentId(body.user?.id ?? body.data?.user?.id ?? null);
-    return body.user ?? body.data?.user ?? null;
+    const user = body.user ?? body.data?.user ?? null;
+    if (!user?.id) throw new Error('Could not sign in.');
+
+    // Binds the local database to this learner, and stores them, so the
+    // identity is readable with no network. Everything the renderer can then
+    // list or open is scoped to them.
+    repo.signIn({
+      id: user.id,
+      systemId: user.staffId || null,
+      // The column is NOT NULL and the display falls back to the id, which is
+      // better than refusing a sign-in over a missing name.
+      name: user.name || user.staffId || 'Student',
+      classLabel: user.className || null,
+    });
+    return user;
   });
 
   ipcMain.handle('tereco:signOut', () => {
@@ -347,11 +401,21 @@ function registerIpc(repo) {
    * Runs unprompted because the learner who sat the paper has usually gone home
    * by the time the connection returns. Nobody should have to remember to press
    * a button for a submission to reach the school.
+   *
+   * `wasOnline` tracks the previous poll's answer so a false→true transition
+   * can be told apart from "still online". On that transition every item is
+   * forced, ignoring backoff: their cooldowns were computed against a link
+   * that was just down, and pending papers should not sit out however much of
+   * that timer is left now that the link is back.
    */
   const SYNC_POLL_MS = 60_000;
+  let wasOnline = net.isOnline();
   const pump = () => {
-    if (!net.isOnline()) return;
-    sync.drain().catch((err) => console.error('[tereco] sync failed:', err));
+    const isOnline = net.isOnline();
+    const justReconnected = isOnline && !wasOnline;
+    wasOnline = isOnline;
+    if (!isOnline) return;
+    sync.drain({ force: justReconnected }).catch((err) => console.error('[tereco] sync failed:', err));
   };
   setInterval(pump, SYNC_POLL_MS).unref?.();
   setTimeout(pump, 5_000).unref?.();
@@ -405,8 +469,11 @@ function registerIpc(repo) {
 
   // Manual retry behind the "Synchronization incomplete" state, for when
   // someone is standing at the machine and would rather not wait for the poll.
+  // Forced: a person pressing this button has already done the waiting the
+  // backoff exists to enforce, so an item still inside its cooldown must be
+  // tried anyway rather than making the button look like it did nothing.
   ipcMain.handle('tereco:retrySync', async () => {
-    await sync.drain();
+    await sync.drain({ force: true });
     return sync.status();
   });
 }
@@ -519,7 +586,18 @@ if (!gotLock) {
       return fatal('opening the window', err);
     }
 
-    console.log(`[tereco] ready — API ${API_BASE_URL}, loading ${REMOTE_URL || RENDERER_ENTRY}`);
+    // Never fatal: a lab machine with no internet, or a rate-limited GitHub
+    // API, must still open the app and let the day's papers be sat.
+    try {
+      initAutoUpdate();
+    } catch (err) {
+      console.error('[tereco] could not start the update checker:', err);
+    }
+
+    console.log(
+      `[tereco] ready in ${Math.round(process.uptime() * 1000)}ms — API ${API_BASE_URL}, ` +
+        `loading ${REMOTE_URL || RENDERER_ENTRY}`
+    );
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

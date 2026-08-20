@@ -5,29 +5,12 @@ import { useRouter } from 'next/navigation';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
-import { Badge } from '@/components/ui/Badge';
-import { DataTable, type DataTableColumn } from '@/components/ui/DataTable';
 import { useToast } from '@/components/ui/ToastProvider';
-import { ClipboardList, Plus, X } from 'lucide-react';
-
-interface AssessmentTarget {
-  id: string;
-  schoolId: string | null;
-  level: number | null;
-  classId: string | null;
-}
-
-interface Assessment {
-  id: string;
-  systemId: string;
-  title: string;
-  description: string;
-  timeLimit: number;
-  opensAt?: string;
-  closesAt?: string;
-  status: 'draft' | 'published' | 'closed';
-  targets: AssessmentTarget[];
-}
+import { ClipboardList, Plus, Search, X } from 'lucide-react';
+import { AssessmentCard, type CardAssessment } from '@/components/assessment/AssessmentCard';
+import { AssessmentTable } from '@/components/assessment/AssessmentTable';
+import { SortMenu, type SortDir, type SortField } from '@/components/ui/SortMenu';
+import { ViewToggle, type ListView } from '@/components/ui/ViewToggle';
 
 const emptyForm = {
   title: '',
@@ -37,34 +20,43 @@ const emptyForm = {
   closesAt: '',
 };
 
-const STATUS_VARIANT: Record<string, 'default' | 'accent' | 'success' | 'muted'> = {
-  draft: 'muted',
-  published: 'success',
-  closed: 'default',
-};
+const STATUS_FILTER_OPTIONS = [
+  { value: 'all', label: 'All statuses' },
+  { value: 'draft', label: 'Draft' },
+  { value: 'published', label: 'Published' },
+  { value: 'closed', label: 'Closed' },
+];
 
-function formatWindow(a: Assessment): string {
-  if (!a.opensAt && !a.closesAt) return 'Always open';
-  const fmt = (iso?: string) =>
-    iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—';
-  return `${fmt(a.opensAt)} → ${fmt(a.closesAt)}`;
-}
-
-export default function AdminAssessments() {
+export default function StaffAssessments() {
   const router = useRouter();
   const toast = useToast();
-  const [assessments, setAssessments] = useState<Assessment[]>([]);
+  const [assessments, setAssessments] = useState<CardAssessment[]>([]);
+  const [schools, setSchools] = useState<{ id: string; name: string }[]>([]);
+  const [levels, setLevels] = useState<{ level: number; code: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(emptyForm);
   const [creating, setCreating] = useState(false);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  // 'created'/'desc' matches the API's own default order (newest first), so
+  // picking these as the initial state changes nothing until someone opens
+  // the sort menu.
+  const [sortField, setSortField] = useState<SortField>('created');
+  const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [view, setView] = useState<ListView>('card');
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch('/api/admin/assessments');
-      const data = await res.json();
-      if (data.success) setAssessments(data.data);
-      else toast.error(data.message ?? 'Failed to load assessments.');
+      const [assessmentsRes, schoolsRes, levelsRes] = await Promise.all([
+        fetch('/api/admin/assessments').then((r) => r.json()),
+        fetch('/api/admin/system/schools').then((r) => r.json()),
+        fetch('/api/admin/system/grade-levels').then((r) => r.json()),
+      ]);
+      if (assessmentsRes.success) setAssessments(assessmentsRes.data);
+      else toast.error(assessmentsRes.message ?? 'Failed to load assessments.');
+      if (schoolsRes.success) setSchools(schoolsRes.data);
+      if (levelsRes.success) setLevels(levelsRes.data);
     } catch {
       toast.error('Network error while loading assessments.');
     } finally {
@@ -113,50 +105,51 @@ export default function AdminAssessments() {
     }
   }
 
-  const columns: DataTableColumn<Assessment>[] = useMemo(
-    () => [
-      {
-        key: 'title',
-        header: 'Assessment',
-        value: (a) => a.title,
-        render: (a) => (
-          <span className="min-w-0">
-            <span className="font-medium block truncate">{a.title}</span>
-            <span className="text-xs text-text-muted">{a.systemId}</span>
-          </span>
-        ),
-      },
-      {
-        key: 'status',
-        header: 'Status',
-        value: (a) => a.status,
-        render: (a) => <Badge variant={STATUS_VARIANT[a.status]}>{a.status}</Badge>,
-      },
-      {
-        key: 'audience',
-        header: 'Audience',
-        sortable: false,
-        // No targets means every student — the absence IS the rule, so it has
-        // to read as a deliberate state rather than a blank cell.
-        value: (a) => (a.targets.length === 0 ? 'All students' : `${a.targets.length}`),
-        render: (a) =>
-          a.targets.length === 0 ? (
-            <span className="text-[#666666]">All students</span>
-          ) : (
-            `${a.targets.length} target${a.targets.length === 1 ? '' : 's'}`
-          ),
-      },
-      { key: 'timeLimit', header: 'Minutes', value: (a) => a.timeLimit, align: 'right' },
-      {
-        key: 'window',
-        header: 'Window',
-        value: (a) => a.opensAt ?? '',
-        render: (a) => <span className="text-xs">{formatWindow(a)}</span>,
-        hideOnMobile: true,
-      },
-    ],
-    []
-  );
+  async function handleDuplicate(a: CardAssessment) {
+    try {
+      const res = await fetch(`/api/admin/assessments/${a.systemId}/duplicate`, { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message ?? 'Duplicated.');
+        router.push(`/staff/assessments/${data.data.systemId}`);
+      } else {
+        toast.error(data.message ?? 'Could not duplicate that assessment.');
+      }
+    } catch {
+      toast.error('Network error.');
+    }
+  }
+
+  async function handleDelete(a: CardAssessment) {
+    if (!confirm(`Delete "${a.title}"? This cannot be undone from here.`)) return;
+    const res = await fetch(`/api/admin/assessments/${a.systemId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (data.success) {
+      toast.success('Assessment deleted.');
+      setAssessments((prev) => prev.filter((x) => x.systemId !== a.systemId));
+    } else {
+      toast.error(data.message ?? 'Could not delete the assessment.');
+    }
+  }
+
+  const visible = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    const filtered = assessments.filter((a) => {
+      if (statusFilter !== 'all' && a.status !== statusFilter) return false;
+      if (q && !a.title.toLowerCase().includes(q) && !a.systemId.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    const sorted = [...filtered];
+    if (sortField === 'name') {
+      sorted.sort((a, b) => a.title.localeCompare(b.title));
+      if (sortDir === 'desc') sorted.reverse();
+    } else if (sortDir === 'asc') {
+      // 'created': the API already returns newest-first, so descending needs
+      // no work and ascending is just that order reversed.
+      sorted.reverse();
+    }
+    return sorted;
+  }, [assessments, search, statusFilter, sortField, sortDir]);
 
   return (
     <div className="space-y-4">
@@ -223,36 +216,83 @@ export default function AdminAssessments() {
         </Card>
       )}
 
-      <DataTable
-        rows={assessments}
-        columns={columns}
-        rowKey={(a) => a.id}
-        loading={loading}
-        initialSort={{ key: 'title', direction: 'asc' }}
-        searchPlaceholder="Search assessments by title or ID…"
-        emptyMessage="No assessments yet."
-        mobileTitle={(a) => a.title}
-        onRowClick={(a) => router.push(`/staff/assessments/${a.systemId}`)}
-        exportFileName="assessments"
-        filters={[
-          {
-            key: 'status',
-            label: 'Status',
-            options: [
-              { value: 'draft', label: 'Draft' },
-              { value: 'published', label: 'Published' },
-              { value: 'closed', label: 'Closed' },
-            ],
-            matches: (a, v) => a.status === v,
-          },
-        ]}
-        actions={
-          <Button onClick={() => setShowForm((v) => !v)}>
+      <div className="flex flex-col md:flex-row md:items-center gap-2">
+        <div className="relative w-full md:w-64 shrink-0">
+          <Search
+            className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted pointer-events-none"
+            aria-hidden
+          />
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search assessments by title or ID…"
+            aria-label="Search assessments"
+            className="w-full h-9 rounded-lg border border-border-strong bg-bg-card pl-9 pr-3 text-sm transition-colors focus:border-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-700/15"
+          />
+        </div>
+
+        <select
+          aria-label="Status"
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          className={`h-9 shrink-0 rounded-lg border border-border-strong bg-bg-card px-2.5 text-sm transition-colors focus:border-primary-700 focus:outline-none ${
+            statusFilter !== 'all' ? 'text-text-primary font-medium' : 'text-text-muted'
+          }`}
+        >
+          {STATUS_FILTER_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+
+        <SortMenu
+          field={sortField}
+          dir={sortDir}
+          onChange={(f, d) => {
+            setSortField(f);
+            setSortDir(d);
+          }}
+        />
+
+        <div className="flex items-center gap-2 md:ml-auto">
+          <ViewToggle view={view} onChange={setView} />
+          <Button onClick={() => setShowForm((v) => !v)} inline>
             <Plus className="w-4 h-4 mr-1.5" aria-hidden />
             New assessment
           </Button>
-        }
-      />
+        </div>
+      </div>
+
+      {loading ? (
+        <p className="text-text-muted">Loading…</p>
+      ) : visible.length === 0 ? (
+        <p className="text-text-muted">No assessments yet.</p>
+      ) : view === 'card' ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {visible.map((a) => (
+            <AssessmentCard
+              key={a.id}
+              assessment={a}
+              schools={schools}
+              levels={levels}
+              onClick={() => router.push(`/staff/assessments/${a.systemId}`)}
+              onDuplicate={() => void handleDuplicate(a)}
+              onDelete={() => void handleDelete(a)}
+            />
+          ))}
+        </div>
+      ) : (
+        <AssessmentTable
+          assessments={visible}
+          schools={schools}
+          levels={levels}
+          onRowClick={(a) => router.push(`/staff/assessments/${a.systemId}`)}
+          onDuplicate={(a) => void handleDuplicate(a)}
+          onDelete={(a) => void handleDelete(a)}
+        />
+      )}
     </div>
   );
 }

@@ -21,7 +21,7 @@ interface ExportPayload {
  * document across recipients (same reasoning as ResultsDocument).
  */
 export async function POST(request: NextRequest) {
-  const denied = await requireRole(request, ["super_admin", "admin", "staff"]);
+  const denied = await requireRole(request, ["super_admin", "admin", "staff", "school_admin"]);
   if (denied) return denied;
 
   try {

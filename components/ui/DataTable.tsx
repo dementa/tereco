@@ -32,6 +32,13 @@ export interface DataTableColumn<T> {
   value?: (row: T) => string | number | null | undefined;
   /** Plain value written to exported files. Defaults to `value`. */
   exportValue?: (row: T) => string | number | null | undefined;
+  /**
+   * Overrides `exportValue` for the PDF export specifically — CSV and Excel
+   * keep using `exportValue`/`value` unchanged. For a column whose printed
+   * form should differ from its data form (e.g. a percentage rounded to a
+   * whole number on the printed page, kept at full precision in CSV/Excel).
+   */
+  pdfValue?: (row: T) => string | number | null | undefined;
   sortable?: boolean;
   /** Hide below the `sm` breakpoint — the card layout shows it regardless. */
   hideOnMobile?: boolean;
@@ -102,6 +109,15 @@ interface DataTableProps<T> {
   exportFileName?: string;
   /** Adds an opt-in "include passwords" toggle to the export menu — see DataTablePasswordColumn. */
   passwordColumn?: DataTablePasswordColumn<T>;
+  /**
+   * Adds a leading "No." column to every export format (CSV/Excel/PDF) only
+   * — never on screen. A plain 1-based row position in the filtered/sorted
+   * set (continuing across pages, not resetting per page), distinct from any
+   * caller-defined ranking column. Not part of `columns`, so it can't be
+   * hidden via the export column picker — a row's position in its own
+   * export is not optional.
+   */
+  numbered?: boolean;
 }
 
 function defaultValue<T>(row: T, column: DataTableColumn<T>): string | number | null | undefined {
@@ -119,7 +135,7 @@ function exportValueFor<T>(row: T, column: DataTableColumn<T>): string | number 
   return defaultValue(row, column);
 }
 
-const PAGE_SIZE_OPTIONS = [15, 30, 50];
+const PAGE_SIZE_OPTIONS = [15, 30, 50, 100, 200];
 
 /**
  * A default max-width constraint, so a long free-text cell ellipsizes instead
@@ -158,6 +174,7 @@ export function DataTable<T>({
   mobileTitle,
   exportFileName = 'export',
   passwordColumn,
+  numbered = false,
 }: DataTableProps<T>) {
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState(initialSort ?? null);
@@ -327,10 +344,11 @@ export function DataTable<T>({
             },
           ]
         : chosenColumns;
-      const headers = finalColumns.map((c) => c.header);
-      const exportCells: ExportCell[][] = exportRows.map((row) =>
-        finalColumns.map((c) => exportValueFor(row, c) ?? '')
-      );
+      const headers = [...(numbered ? ['No.'] : []), ...finalColumns.map((c) => c.header)];
+      const exportCells: ExportCell[][] = exportRows.map((row, i) => [
+        ...(numbered ? [i + 1] : []),
+        ...finalColumns.map((c) => (format === 'pdf' && c.pdfValue ? c.pdfValue(row) : exportValueFor(row, c)) ?? ''),
+      ]);
       if (format === 'csv') exportToCsv(exportFileName, headers, exportCells);
       else if (format === 'excel') await exportToExcel(exportFileName, headers, exportCells);
       else await exportToPdf(exportFileName, exportFileName, headers, exportCells);
@@ -561,7 +579,10 @@ export function DataTable<T>({
           <tbody>
             {visible.length === 0 ? (
               <tr>
-                <td colSpan={columns.length + (rowActions ? 1 : 0)} className="px-3 py-10 text-center text-text-muted">
+                <td
+                  colSpan={columns.length + (rowActions ? 1 : 0)}
+                  className="px-3 py-10 text-center text-text-muted"
+                >
                   {loading ? 'Loading…' : emptyMessage}
                 </td>
               </tr>

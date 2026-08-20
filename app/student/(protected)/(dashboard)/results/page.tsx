@@ -5,8 +5,10 @@ import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { PracticalCard } from '@/components/ui/PracticalCard';
+import { TermPerformanceCard } from '@/components/ui/TermPerformanceCard';
 import { Award, Clock } from 'lucide-react';
 import type { BlendedPerformance, PracticalTermScore } from '@/lib/entities/practical-observations';
+import type { StudentTermPerformance } from '@/lib/entities/performance';
 
 interface Attempt {
   assessmentSystemId: string;
@@ -22,6 +24,7 @@ export default function MyResultsPage() {
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [practical, setPractical] = useState<PracticalTermScore | null>(null);
   const [performance, setPerformance] = useState<BlendedPerformance | null>(null);
+  const [termPerformance, setTermPerformance] = useState<StudentTermPerformance | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -50,6 +53,18 @@ export default function MyResultsPage() {
       .catch(() => {});
   }, []);
 
+  // Fetched separately, same failure posture as practical above: this term's
+  // blended performance is a supplement to the assessment list, not its
+  // subject, so a failed lookup just leaves the card empty.
+  useEffect(() => {
+    fetch('/api/performance/summary')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.success) setTermPerformance(d.data ?? null);
+      })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="w-full">
       <h1 className="text-2xl font-bold text-primary-900 mb-1">My Results</h1>
@@ -60,9 +75,21 @@ export default function MyResultsPage() {
       {/* Above the assessment list, and visually separate from it: practical
           skills are observed in the lab, not sat as a paper, and the two must
           not read as one combined mark. */}
-      <div className="mb-6">
+      <div className="mb-6 space-y-4">
+        <TermPerformanceCard performance={termPerformance} />
         <PracticalCard score={practical} performance={performance} />
       </div>
+
+      {/* Every paper below is one moment, not a verdict — the overall figure
+          above already blends in how often you've shown up, and that's what
+          your report card leads with. A single low score here shouldn't read
+          as the whole story, and this line is here so it doesn't. */}
+      {attempts.length > 0 && (
+        <p className="text-xs text-text-faint mb-3">
+          Each paper below is just one attempt — your overall performance above is what really counts, and it
+          already gives you credit for being here.
+        </p>
+      )}
 
       {loading ? (
         <p className="text-text-muted">Loading…</p>

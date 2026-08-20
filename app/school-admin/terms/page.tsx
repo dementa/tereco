@@ -43,8 +43,8 @@ export default function SchoolAdminTermsPage() {
       <div>
         <h1 className="text-2xl font-bold text-primary-900 mb-1">Terms</h1>
         <p className="text-sm text-text-muted">
-          Define up to 3 terms per academic year for your school. A lesson&apos;s date resolves to
-          whichever term its date falls within, so terms cannot overlap.
+          Up to 3 terms per academic year for your school. A lesson&apos;s date resolves to
+          whichever term its date falls within. Read-only — a super_admin manages terms.
         </p>
       </div>
 
@@ -72,7 +72,7 @@ export default function SchoolAdminTermsPage() {
                 ))}
               </select>
             </div>
-            {yearId && <TermsManager apiBasePath="/api/school-admin/terms" academicYearId={yearId} />}
+            {yearId && <TermsManager apiBasePath="/api/school-admin/terms" academicYearId={yearId} readOnly />}
           </>
         )}
       </Card>

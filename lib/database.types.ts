@@ -297,7 +297,9 @@ export type Database = {
           deleted_at: string | null
           description: string
           e_paper_at: string | null
+          hidden_at: string | null
           id: string
+          include_in_evaluation: boolean
           instructions: string
           opens_at: string | null
           results_released_at: string | null
@@ -317,7 +319,9 @@ export type Database = {
           deleted_at?: string | null
           description?: string
           e_paper_at?: string | null
+          hidden_at?: string | null
           id?: string
+          include_in_evaluation?: boolean
           instructions?: string
           opens_at?: string | null
           results_released_at?: string | null
@@ -337,7 +341,9 @@ export type Database = {
           deleted_at?: string | null
           description?: string
           e_paper_at?: string | null
+          hidden_at?: string | null
           id?: string
+          include_in_evaluation?: boolean
           instructions?: string
           opens_at?: string | null
           results_released_at?: string | null
@@ -2074,6 +2080,16 @@ export type Database = {
         Args: { p_assessment: string }
         Returns: boolean
       }
+      assessment_target_matches: {
+        Args: {
+          p_class: string
+          p_level: number
+          p_school: string
+          p_student: string
+          t: Database["public"]["Tables"]["assessment_targets"]["Row"]
+        }
+        Returns: boolean
+      }
       assessments_for_student: {
         Args: { p_student: string }
         Returns: {
@@ -2135,6 +2151,16 @@ export type Database = {
           isOneToOne: false
           isSetofReturn: true
         }
+      }
+      eligible_students_for_assessment: {
+        Args: { p_assessment: string }
+        Returns: {
+          class_id: string
+          enrollment_id: string
+          level: number
+          school_id: string
+          student_id: string
+        }[]
       }
       generate_system_id: { Args: { p_entity_type: string }; Returns: string }
       library_content_for_profile: {
