@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { useParams, usePathname } from 'next/navigation';
-import { ArrowLeft, BookOpen, ListChecks } from 'lucide-react';
+import { useParams, usePathname, useRouter } from 'next/navigation';
+import { ArrowLeft, BookOpen, ListChecks, Plus, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/Button';
 import { Card } from '@/components/ui/Card';
+import { QuizImportPanel } from '@/components/library/quiz/QuizImportPanel';
 import { LibraryThumbnail, type LibraryThumbnailItem } from '@/components/library/LibraryThumbnail';
 import { LibraryFullScreenViewer, type FullScreenLibraryItem } from '@/components/library/LibraryFullScreenViewer';
 
@@ -42,12 +44,16 @@ const TYPE_LABEL: Record<string, string> = {
 export function LibraryItemDetail() {
   const { id } = useParams<{ id: string }>();
   const pathname = usePathname();
+  const router = useRouter();
   const backHref = pathname.replace(/\/[^/]+$/, '');
 
   const [item, setItem] = useState<DetailItem | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [reading, setReading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState('');
 
   useEffect(() => {
     fetch(`/api/library/content/${id}/detail`)
@@ -56,6 +62,23 @@ export function LibraryItemDetail() {
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  async function newBlankQuiz() {
+    setCreating(true);
+    setCreateError('');
+    try {
+      const res = await fetch(`/api/library/content/${id}/quizzes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: 'Untitled quiz', questions: [] }),
+      }).then((r) => r.json());
+      if (!res.success) throw new Error(res.message || 'Could not create the quiz.');
+      router.push(`${pathname}/quiz/${res.data.id}`);
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Could not create the quiz.');
+      setCreating(false);
+    }
+  }
 
   return (
     <div className="max-w-3xl mx-auto">
@@ -112,13 +135,34 @@ export function LibraryItemDetail() {
             <h2 id="quizzes-heading" className="flex items-center gap-2 text-lg font-semibold text-primary-900 mb-3">
               <ListChecks className="w-5 h-5" aria-hidden /> Quizzes
             </h2>
+            {item.canManage && (
+              <div className="mb-3 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  <Button inline variant="outline" onClick={() => void newBlankQuiz()} isLoading={creating} disabled={creating}>
+                    <Plus className="w-4 h-4" aria-hidden /> New quiz
+                  </Button>
+                  <Button inline variant="outline" onClick={() => setImporting((v) => !v)}>
+                    <Sparkles className="w-4 h-4" aria-hidden /> Make a quiz with AI
+                  </Button>
+                </div>
+                {createError && <p role="alert" className="text-xs text-red-600">{createError}</p>}
+                {importing && (
+                  <QuizImportPanel
+                    contentId={item.id}
+                    onCancel={() => setImporting(false)}
+                    onCreated={(quizId) => router.push(`${pathname}/quiz/${quizId}`)}
+                  />
+                )}
+              </div>
+            )}
             {item.quizzes.length === 0 ? (
               <p className="text-sm text-text-muted">No quizzes for this document yet.</p>
             ) : (
               <ul className="space-y-2">
                 {item.quizzes.map((q) => (
                   <li key={q.id}>
-                    <Card className="flex items-center justify-between gap-3">
+                    <Link href={`${pathname}/quiz/${q.id}`} className="block rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-700/40">
+                    <Card hover className="flex items-center justify-between gap-3">
                       <div className="min-w-0">
                         <p className="font-medium text-primary-900 truncate">{q.title}</p>
                         <p className="text-xs text-text-muted">
@@ -126,7 +170,9 @@ export function LibraryItemDetail() {
                           {q.status === 'draft' && ' • draft (only you can see this)'}
                         </p>
                       </div>
+                      <span className="shrink-0 text-sm font-medium text-primary-700">{item.canManage ? 'Edit' : 'Take quiz'}</span>
                     </Card>
+                    </Link>
                   </li>
                 ))}
               </ul>

@@ -15,7 +15,7 @@ import crypto from "crypto";
  * orphaned copies nobody can identify.
  */
 
-export type UploadKind = "profile" | "school" | "question" | "script" | "library";
+export type UploadKind = "profile" | "school" | "question" | "script" | "library" | "quiz";
 
 const FOLDERS: Record<UploadKind, string> = {
   profile: "tereco/profiles",
@@ -24,6 +24,8 @@ const FOLDERS: Record<UploadKind, string> = {
   // One folder per submission, one asset per page.
   script: "tereco/scripts",
   library: "tereco/library",
+  // Library quiz question images: tereco/library-quizzes/<quizId>/q<slot>.
+  quiz: "tereco/library-quizzes",
 };
 
 /** Cloudinary asset kind. Everything before "library" has been an image. */
