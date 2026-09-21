@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Lightbox from 'yet-another-react-lightbox';
 import Zoom from 'yet-another-react-lightbox/plugins/zoom';
 import Thumbnails from 'yet-another-react-lightbox/plugins/thumbnails';
@@ -31,18 +31,10 @@ export function PdfLightboxViewer({
   // lightbox a container of its own leaves those buttons as its only
   // neighbours' cousins, not siblings.
   const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
-  useEffect(() => {
-    const el = document.createElement('div');
-    document.body.appendChild(el);
-    setPortalRoot(el);
-    return () => {
-      document.body.removeChild(el);
-    };
-  }, []);
-
-  if (!portalRoot) return null;
 
   return (
+    <div ref={setPortalRoot}>
+      {portalRoot && (
     <Lightbox
       open
       portal={{ root: portalRoot }}
@@ -66,5 +58,7 @@ export function PdfLightboxViewer({
       styles={{ root: { position: 'fixed', inset: 0, zIndex: 90 } }}
       carousel={{ finite: true }}
     />
+      )}
+    </div>
   );
 }

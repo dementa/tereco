@@ -2,13 +2,13 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { FileText } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/components/auth/AuthContext';
 import { type LibraryThumbnailItem } from '@/components/library/LibraryThumbnail';
 import { LibraryBookCard } from '@/components/library/LibraryBookCard';
-import { LibraryFullScreenViewer } from '@/components/library/LibraryFullScreenViewer';
 
 interface LibraryItem extends LibraryThumbnailItem {
   id: string;
@@ -117,7 +117,7 @@ export function LibraryBrowse() {
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('tutorials');
   const [keyword, setKeyword] = useState('');
-  const [active, setActive] = useState<LibraryItem | null>(null);
+  const pathname = usePathname();
   const [ePapers, setEPapers] = useState<EPaper[]>([]);
   const [ePapersLoading, setEPapersLoading] = useState(true);
 
@@ -258,19 +258,17 @@ export function LibraryBrowse() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {filtered.map((item) => (
-            <button
+            <Link
               key={item.id}
-              type="button"
-              onClick={() => setActive(item)}
-              className="text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-700/40"
+              href={`${pathname}/${item.id}`}
+              className="block text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-700/40"
             >
               <LibraryBookCard item={item} />
-            </button>
+            </Link>
           ))}
         </div>
       )}
 
-      {active && <LibraryFullScreenViewer item={active} onClose={() => setActive(null)} />}
     </div>
   );
 }
