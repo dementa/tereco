@@ -237,30 +237,34 @@ export function RadioCard({
 }
 
 /* ─────────────────────────────────────────────────
-   Primitive: AttendanceRow — one learner, tap to mark absent
+   Primitive: AttendanceRow — one learner, Present / Absent toggle
 ───────────────────────────────────────────────── */
 export function AttendanceRow({
-  name, systemId, present, onToggle,
-}: { name: string; systemId: string | null; present: boolean; onToggle: () => void }) {
+  name, systemId, present, onSet,
+}: { name: string; systemId: string | null; present: boolean; onSet: (present: boolean) => void }) {
+  const option = (value: boolean, label: string, activeCls: string) => (
+    <button
+      type="button"
+      onClick={() => onSet(value)}
+      aria-pressed={present === value}
+      className={cn(
+        'px-3 py-1.5 rounded-md text-xs font-semibold transition-colors duration-150 cursor-pointer',
+        present === value ? activeCls : 'text-[#6B7280] hover:bg-white/70'
+      )}
+    >
+      {label}
+    </button>
+  )
   return (
     <div className="flex items-center justify-between gap-3 py-2.5 px-1 border-b border-[#02465B]/06 last:border-0">
       <div className="min-w-0">
         <p className="text-sm font-medium text-[#011E28] truncate">{name}</p>
         {systemId && <p className="text-xs text-[#A3A3A3]">{systemId}</p>}
       </div>
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-pressed={!present}
-        className={cn(
-          'shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors duration-150 cursor-pointer',
-          present
-            ? 'bg-[#F5F5F5] text-[#0489AE] hover:bg-[#D6F0F7]'
-            : 'bg-[#C0392B]/10 text-[#C0392B] hover:bg-[#C0392B]/15'
-        )}
-      >
-        {present ? 'Present' : 'Absent'}
-      </button>
+      <div role="group" aria-label={`Attendance for ${name}`} className="shrink-0 flex gap-0.5 p-0.5 rounded-lg bg-[#F5F5F5]">
+        {option(true, 'Present', 'bg-[#0489AE] text-white shadow-sm')}
+        {option(false, 'Absent', 'bg-[#C0392B] text-white shadow-sm')}
+      </div>
     </div>
   )
 }
