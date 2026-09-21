@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Lightbox from 'yet-another-react-lightbox';
 import Zoom from 'yet-another-react-lightbox/plugins/zoom';
 import Thumbnails from 'yet-another-react-lightbox/plugins/thumbnails';
@@ -24,9 +24,28 @@ export function PdfLightboxViewer({
 }) {
   const [index, setIndex] = useState(0);
 
+  // On open, the lightbox marks every sibling of its portal node `inert` —
+  // by default that is everything under document.body, which includes the
+  // Close/Download/Feedback buttons LibraryFullScreenViewer portals there.
+  // Inert buttons cannot be clicked, so the X did nothing. Giving the
+  // lightbox a container of its own leaves those buttons as its only
+  // neighbours' cousins, not siblings.
+  const [portalRoot, setPortalRoot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const el = document.createElement('div');
+    document.body.appendChild(el);
+    setPortalRoot(el);
+    return () => {
+      document.body.removeChild(el);
+    };
+  }, []);
+
+  if (!portalRoot) return null;
+
   return (
     <Lightbox
       open
+      portal={{ root: portalRoot }}
       // Must be the real close. The lightbox handles Escape itself and binds
       // onKeyDown: stopPropagation on its container, so the key never reaches
       // the viewer's own document listener — with a no-op here, Escape did

@@ -155,12 +155,16 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
     return () => { cancelled = true }
   }, [rosterSettled, selectedClass, selectedStream])
 
-  function toggleAbsent(studentId: string) {
+  function setPresent(studentId: string, present: boolean) {
     setAbsentIds(prev => {
       const next = new Set(prev)
-      if (next.has(studentId)) next.delete(studentId); else next.add(studentId)
+      if (present) next.delete(studentId); else next.add(studentId)
       return next
     })
+  }
+
+  function markAll(present: boolean) {
+    setAbsentIds(present ? new Set() : new Set(roster.map(r => r.studentId)))
   }
 
   const activeRoster = rosterSettled ? roster : []
@@ -409,7 +413,7 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
         <div>
           <div className="flex items-center justify-between mb-2.5">
             <p className="text-xs font-semibold uppercase tracking-wider text-[#02465B]">
-              Attendance — tap to mark absent
+              Attendance — mark each learner
             </p>
             <button
               type="button"
@@ -448,6 +452,10 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
                   )}
                 />
               </div>
+              <div className="flex gap-2 mb-2.5">
+                <button type="button" onClick={() => markAll(true)} className="text-xs font-medium text-[#02465B] hover:text-[#035D77] px-2.5 py-1 rounded-lg bg-[#F5F5F5] cursor-pointer">Mark all present</button>
+                <button type="button" onClick={() => markAll(false)} className="text-xs font-medium text-[#C0392B] px-2.5 py-1 rounded-lg bg-[#F5F5F5] cursor-pointer">Mark all absent</button>
+              </div>
               <div className="rounded-xl border border-[#02465B]/08 bg-white px-3">
                 {visibleRoster.length === 0 ? (
                   <p className="text-sm text-[#A3A3A3] py-4 text-center">No student matches &ldquo;{rosterQuery.trim()}&rdquo;.</p>
@@ -458,7 +466,7 @@ export function AttendanceForm({ onBack }: { onBack: () => void }) {
                       name={r.name}
                       systemId={r.systemId}
                       present={!effectiveAbsentIds.has(r.studentId)}
-                      onToggle={() => toggleAbsent(r.studentId)}
+                      onSet={p => setPresent(r.studentId, p)}
                     />
                   ))
                 )}
