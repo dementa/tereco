@@ -85,6 +85,8 @@ export function useRouter(): RouterShim {
  */
 const ROUTES: ReadonlyArray<{ pattern: RegExp; keys: readonly string[] }> = [
   { pattern: /^\/assessment\/([^/]+)\/?$/, keys: ['id'] },
+  { pattern: /^\/library\/([^/]+)\/?$/, keys: ['id'] },
+  { pattern: /^\/library\/([^/]+)\/quiz\/([^/]+)\/?$/, keys: ['id', 'quizId'] },
 ];
 
 export function useParams<T extends Record<string, string> = Record<string, string>>(): T {

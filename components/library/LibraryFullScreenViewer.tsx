@@ -26,7 +26,16 @@ export interface FullScreenLibraryItem extends ViewableLibraryItem {
  * office-embed/zip-notice) gets a proper top bar + content area, since
  * those have no chrome of their own.
  */
-export function LibraryFullScreenViewer({ item, onClose }: { item: FullScreenLibraryItem; onClose: () => void }) {
+export function LibraryFullScreenViewer({
+  item,
+  onClose,
+  feedback = true,
+}: {
+  item: FullScreenLibraryItem;
+  onClose: () => void;
+  /** Off in TERECO Collect, which reads offline and has nowhere to send feedback. */
+  feedback?: boolean;
+}) {
   const [showFeedback, setShowFeedback] = useState(false);
   const isPdfPages = item.pageImageUrls !== null;
 
@@ -64,14 +73,16 @@ export function LibraryFullScreenViewer({ item, onClose }: { item: FullScreenLib
           </button>
         </a>
       )}
-      <button
-        type="button"
-        onClick={() => setShowFeedback((v) => !v)}
-        className="p-2.5 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm"
-        aria-label="Feedback"
-      >
-        <MessageSquare className="w-5 h-5" />
-      </button>
+      {feedback && (
+        <button
+          type="button"
+          onClick={() => setShowFeedback((v) => !v)}
+          className="p-2.5 rounded-full bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm"
+          aria-label="Feedback"
+        >
+          <MessageSquare className="w-5 h-5" />
+        </button>
+      )}
       <button
         type="button"
         onClick={onClose}

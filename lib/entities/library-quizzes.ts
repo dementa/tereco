@@ -249,3 +249,50 @@ export function checkAnswer(
   if (!q) return null;
   return { correct: q.correctIndex === choice, correctIndex: q.correctIndex, explanation: q.explanation };
 }
+
+/**
+ * Every PUBLISHED quiz on the given documents, with questions and answers.
+ *
+ * For the offline library only: a lab machine has no server to mark an answer
+ * against, so the key has to travel with the quiz. Drafts never leave.
+ */
+export async function getPublishedQuizzesForContents(contentIds: string[]): Promise<LibraryQuiz[]> {
+  if (contentIds.length === 0) return [];
+  const supabase = getSupabaseAdmin();
+
+  const { data: quizzes, error } = await supabase
+    .from("library_quizzes")
+    .select("id, content_id, title, status, created_by")
+    .in("content_id", contentIds)
+    .eq("status", "published")
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(error.message);
+  if (!quizzes || quizzes.length === 0) return [];
+
+  const { data: qs, error: qErr } = await supabase
+    .from("library_quiz_questions")
+    .select("id, quiz_id, prompt, options, correct_index, explanation, image_url, image_public_id")
+    .in("quiz_id", quizzes.map((q) => q.id))
+    .order("position", { ascending: true });
+  if (qErr) throw new Error(qErr.message);
+
+  const byQuiz = new Map<string, LibraryQuizQuestion[]>();
+  for (const row of (qs ?? []) as unknown as (QuestionRow & { quiz_id: string })[]) {
+    const list = byQuiz.get(row.quiz_id) ?? [];
+    list.push(rowToQuestion(row));
+    byQuiz.set(row.quiz_id, list);
+  }
+
+  return quizzes
+    .map((quiz) => ({
+      id: quiz.id,
+      contentId: quiz.content_id,
+      title: quiz.title,
+      status: quiz.status as "draft" | "published",
+      createdBy: quiz.created_by,
+      questions: byQuiz.get(quiz.id) ?? [],
+    }))
+    // A published quiz always has questions (publish refuses otherwise), but
+    // one emptied since would open as a blank screen offline with no way to fix it.
+    .filter((quiz) => quiz.questions.length > 0);
+}
