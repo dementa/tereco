@@ -1,9 +1,29 @@
 'use strict';
 
-const { app, BrowserWindow, shell, Menu, ipcMain } = require('electron');
+const { app, BrowserWindow, shell, Menu, ipcMain, protocol } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
+const { Readable } = require('stream');
+
+/**
+ * `tereco-media://library/<file>` — how the renderer reaches offline library
+ * files. Registered before `ready`, as Electron requires.
+ *
+ * A scheme of our own rather than file:// paths: the shared viewers `fetch`
+ * a .docx and seek inside videos, and Chromium refuses fetch() on file:// and
+ * gives no range support there. `stream` is what lets a <video> seek.
+ */
+const MEDIA_SCHEME = 'tereco-media';
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: MEDIA_SCHEME,
+    privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true },
+  },
+]);
+
+/** How often an online machine refreshes its offline library. */
+const LIBRARY_SYNC_MS = 30 * 60 * 1000;
 
 /**
  * The bundled offline client. This is the default and the point of the app:
@@ -296,7 +316,71 @@ function initAutoUpdate() {
  * process and the active learner from the local session, so a page that lies
  * about who it is gets nowhere.
  */
-function registerIpc(repo) {
+const MEDIA_TYPES = {
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.png': 'image/png',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.svg': 'image/svg+xml',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mp3': 'audio/mpeg',
+  '.m4a': 'audio/mp4',
+  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+};
+
+/**
+ * Serves `tereco-media://library/<file>` from the library media folder.
+ *
+ * Only bare file names the sync itself writes (hex digest + extension) are
+ * accepted, so a crafted URL cannot walk out of the folder. Range requests are
+ * answered with 206 — without them a <video> plays but cannot seek.
+ */
+function registerMediaProtocol(mediaDir) {
+  protocol.handle(MEDIA_SCHEME, (request) => {
+    const url = new URL(request.url);
+    const name = decodeURIComponent(url.pathname.replace(/^\//, ''));
+    if (url.host !== 'library' || !/^[a-f0-9]{32}\.[a-z0-9]+$/.test(name)) {
+      return new Response('Not found', { status: 404 });
+    }
+
+    const file = path.join(mediaDir, name);
+    let size;
+    try {
+      size = fs.statSync(file).size;
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
+
+    const headers = {
+      'content-type': MEDIA_TYPES[path.extname(name)] ?? 'application/octet-stream',
+      'accept-ranges': 'bytes',
+      // The page is file://, origin "null"; fetch() of a .docx is cross-origin.
+      'access-control-allow-origin': '*',
+    };
+
+    const range = /^bytes=(\d*)-(\d*)$/.exec(request.headers.get('range') ?? '');
+    if (range && (range[1] || range[2])) {
+      const start = range[1] ? Number(range[1]) : Math.max(0, size - Number(range[2]));
+      const end = range[1] && range[2] ? Math.min(Number(range[2]), size - 1) : size - 1;
+      if (start >= size || start > end) {
+        return new Response(null, { status: 416, headers: { ...headers, 'content-range': `bytes */${size}` } });
+      }
+      return new Response(Readable.toWeb(fs.createReadStream(file, { start, end })), {
+        status: 206,
+        headers: { ...headers, 'content-length': String(end - start + 1), 'content-range': `bytes ${start}-${end}/${size}` },
+      });
+    }
+
+    return new Response(Readable.toWeb(fs.createReadStream(file)), {
+      status: 200,
+      headers: { ...headers, 'content-length': String(size) },
+    });
+  });
+}
+
+function registerIpc(repo, library) {
   const deviceId = readDeviceId();
 
   const { net } = require('electron');
@@ -372,6 +456,9 @@ function registerIpc(repo) {
       name: user.name || user.staffId || 'Student',
       classLabel: user.className || null,
     });
+    // Their class- and school-targeted library items, fetched with the
+    // session that just started. Not awaited: sign-in must not wait on files.
+    syncLibrary();
     return user;
   });
 
@@ -467,6 +554,34 @@ function registerIpc(repo) {
 
   ipcMain.handle('tereco:syncStatus', () => sync.status());
 
+  // ─── Offline library ────────────────────────────────────────────────────
+  //
+  // Needs no sign-in: public items are listed for anyone at the machine, and
+  // the sync fetches them with or without a session.
+
+  const libraryMediaDir = path.join(app.getPath('userData'), 'library-media');
+  registerMediaProtocol(libraryMediaDir);
+
+  const { createLibrarySync } = require('./net/library-sync');
+  const librarySync = createLibrarySync({ baseUrl: API_BASE_URL, fetchFn, library, mediaDir: libraryMediaDir });
+  librarySync.onChange((status) => mainWindow?.webContents.send('tereco:library-status', status));
+
+  const syncLibrary = () => {
+    if (!net.isOnline()) return;
+    librarySync.run().catch((err) => console.error('[tereco] library sync failed:', err));
+  };
+  setTimeout(syncLibrary, 3_000).unref?.();
+  setInterval(syncLibrary, LIBRARY_SYNC_MS).unref?.();
+
+  ipcMain.handle('tereco:libraryList', () => library.list());
+  ipcMain.handle('tereco:libraryItem', (_e, contentId) => library.getItem(contentId));
+  ipcMain.handle('tereco:libraryQuiz', (_e, quizId) => library.getPlayableQuiz(quizId));
+  ipcMain.handle('tereco:libraryCheckAnswer', (_e, quizId, questionId, choice) =>
+    library.checkAnswer(quizId, questionId, choice)
+  );
+  ipcMain.handle('tereco:libraryStatus', () => librarySync.status());
+  ipcMain.handle('tereco:librarySync', () => librarySync.run());
+
   // Manual retry behind the "Synchronization incomplete" state, for when
   // someone is standing at the machine and would rather not wait for the poll.
   // Forced: a person pressing this button has already done the waiting the
@@ -490,9 +605,13 @@ function openLocalDatabase() {
   const { createRepository } = require('./db/repository');
   const { resolveEncryptionKey } = require('./db/key');
 
+  const { createLibraryRepository } = require('./db/library');
+
   const file = path.join(app.getPath('userData'), 'tereco.db');
   const db = openDatabase({ file, key: resolveEncryptionKey() });
-  return createRepository(db);
+  const repo = createRepository(db);
+  const library = createLibraryRepository(db, { getActiveStudentId: repo.getActiveStudentId });
+  return { repo, library };
 }
 
 // Single-instance lock so only one window runs.
@@ -565,8 +684,9 @@ if (!gotLock) {
     }
 
     let repo;
+    let library;
     try {
-      repo = openLocalDatabase();
+      ({ repo, library } = openLocalDatabase());
     } catch (err) {
       // Starting without local storage would let a learner sit a paper whose
       // answers go nowhere. Refuse, and say what happened, rather than opening
@@ -575,7 +695,7 @@ if (!gotLock) {
     }
 
     try {
-      registerIpc(repo);
+      registerIpc(repo, library);
     } catch (err) {
       return fatal('setting up the local services', err);
     }

@@ -39,6 +39,21 @@ contextBridge.exposeInMainWorld('tereco', {
   submit: (attemptId) => ipcRenderer.invoke('tereco:submit', attemptId),
 
   syncStatus: () => ipcRenderer.invoke('tereco:syncStatus'),
+
+  // Offline library. Readable with nobody signed in: public items are for
+  // anyone at the machine.
+  libraryList: () => ipcRenderer.invoke('tereco:libraryList'),
+  libraryItem: (contentId) => ipcRenderer.invoke('tereco:libraryItem', contentId),
+  libraryQuiz: (quizId) => ipcRenderer.invoke('tereco:libraryQuiz', quizId),
+  libraryCheckAnswer: (quizId, questionId, choice) =>
+    ipcRenderer.invoke('tereco:libraryCheckAnswer', quizId, questionId, choice),
+  libraryStatus: () => ipcRenderer.invoke('tereco:libraryStatus'),
+  librarySync: () => ipcRenderer.invoke('tereco:librarySync'),
+  onLibraryStatus: (callback) => {
+    const listener = (_event, status) => callback(status);
+    ipcRenderer.on('tereco:library-status', listener);
+    return () => ipcRenderer.removeListener('tereco:library-status', listener);
+  },
   retrySync: () => ipcRenderer.invoke('tereco:retrySync'),
 
   // Auto-update. onUpdateReady never fires outside a packaged install; main

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import {
   AlertCircle,
+  BookOpen,
   CheckCircle,
   Download,
   Eye,
@@ -21,6 +22,7 @@ import { AssessmentTake } from '@/components/assessment/AssessmentTake';
 
 import { usePathname, useRouter } from './shims/next-navigation';
 import { SyncStatus } from './SyncStatus';
+import { LibraryHome, LibraryItemScreen, LibraryQuizScreen } from './Library';
 import type { DeviceInfo, PreparedAssessment } from './tereco-bridge';
 
 /**
@@ -49,6 +51,19 @@ function Shell() {
 
   if (loading) {
     return <Centered>Starting TERECO Collect…</Centered>;
+  }
+
+  // Before the sign-in check on purpose: public library items are for anyone
+  // at the machine, with nobody signed in and no internet.
+  if (/^\/library\/[^/]+\/quiz\/[^/]+\/?$/.test(pathname)) return <LibraryQuizScreen />;
+  if (/^\/library\/[^/]+\/?$/.test(pathname)) return <LibraryItemScreen />;
+  if (/^\/library\/?$/.test(pathname)) {
+    return (
+      <LibraryHome
+        backHref="/"
+        backLabel={isAuthenticated ? 'Back to my assessments' : 'Back to sign in'}
+      />
+    );
   }
 
   if (!isAuthenticated) return <SignIn />;
@@ -82,6 +97,7 @@ function Centered({ children }: { children: React.ReactNode }) {
 
 function SignIn() {
   const { refresh } = useAuth();
+  const router = useRouter();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -196,6 +212,14 @@ function SignIn() {
           You need the internet for this step only. Once your assessment has downloaded you can
           switch it off.
         </p>
+
+        <div className="mt-8 border-t border-border pt-6 text-center">
+          <Button inline variant="outline" onClick={() => router.push('/library')}>
+            <BookOpen className="mr-1.5 h-4 w-4" aria-hidden />
+            Open the library
+          </Button>
+          <p className="text-xs text-text-faint mt-2">No sign-in or internet needed.</p>
+        </div>
       </motion.div>
     </div>
   );
@@ -286,10 +310,16 @@ function Home() {
             </h1>
             {user?.className && <p className="text-sm text-neutral-600">{user.className}</p>}
           </div>
-          <Button inline variant="ghost" onClick={logout}>
-            <LogOut className="mr-1.5 h-4 w-4" aria-hidden />
-            Sign out
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button inline variant="ghost" onClick={() => router.push('/library')}>
+              <BookOpen className="mr-1.5 h-4 w-4" aria-hidden />
+              Library
+            </Button>
+            <Button inline variant="ghost" onClick={logout}>
+              <LogOut className="mr-1.5 h-4 w-4" aria-hidden />
+              Sign out
+            </Button>
+          </div>
         </header>
 
         <SyncStatus />

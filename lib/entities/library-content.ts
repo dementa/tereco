@@ -623,3 +623,35 @@ export function getLibraryPlaybackInfo(item: {
     thumbnailUrl: item.contentType === "video" ? libraryVideoThumbnailUrl(item.cloudinaryPublicId) : null,
   };
 }
+
+// ─── Public (no sign-in) ─────────────────────────────────────
+
+/**
+ * Items with no audience targets at all: approved, not archived, and visible
+ * to every signed-in role by library_content_for_profile's own rule ("not
+ * exists targets"). TERECO Collect shows these before anyone signs in, so a lab
+ * machine has a library to read with the internet off and nobody at the desk.
+ *
+ * Same rule as the SQL function rather than a second definition of "public":
+ * an item gains or loses public status only by gaining or losing target rows.
+ */
+export async function getPublicLibraryContent(): Promise<BrowsableLibraryContent[]> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("library_content")
+    .select(SELECT)
+    .eq("status", "approved")
+    .is("archived_at", null);
+  if (error) throw new Error(error.message);
+  const items = (data as unknown as Row[]).map(rowToLibraryContent);
+  if (items.length === 0) return [];
+
+  const { data: targeted, error: tErr } = await supabase
+    .from("library_content_targets")
+    .select("content_id")
+    .in("content_id", items.map((i) => i.id));
+  if (tErr) throw new Error(tErr.message);
+
+  const hasTargets = new Set((targeted ?? []).map((t) => t.content_id));
+  return attachAuthorNames(items.filter((i) => !hasTargets.has(i.id)));
+}

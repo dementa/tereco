@@ -70,6 +70,46 @@ export interface PreparedResult {
   durationSeconds: number;
 }
 
+export interface OfflineLibrarySummary {
+  id: string;
+  title: string;
+  description: string;
+  contentType: 'video' | 'document' | 'notes' | 'support_file' | 'audiobook' | 'past_paper' | 'presentation';
+  fileFormat: string | null;
+  learningArea: string | null;
+  authorName: string;
+  thumbnailUrl: string | null;
+  quizCount: number;
+  /** Targeted at the signed-in learner rather than public. */
+  personal: boolean;
+}
+
+export interface OfflineLibraryItem extends Omit<OfflineLibrarySummary, 'quizCount' | 'personal'> {
+  /** `tereco-media://` URLs to files on this machine; never the network. */
+  pageImageUrls: string[] | null;
+  streamUrl: string | null;
+  downloadable: false;
+  downloadAvailable: false;
+  downloadUrl: null;
+  quizzes: { id: string; title: string; questionCount: number }[];
+}
+
+export interface OfflineLibraryQuiz {
+  id: string;
+  title: string;
+  contentId: string;
+  /** No answers: those come back one at a time from libraryCheckAnswer. */
+  questions: { id: string; prompt: string; options: string[]; imageUrl: string | null }[];
+}
+
+export interface LibrarySyncStatus {
+  state: 'idle' | 'syncing' | 'complete' | 'failed';
+  done: number;
+  total: number;
+  lastError: string | null;
+  lastSyncedAt: number | null;
+}
+
 export interface SignedInUser {
   id: string;
   name: string;
@@ -130,6 +170,25 @@ export interface TerecoBridge {
 
   /** Manual retry for the "Synchronization incomplete" state. */
   retrySync(): Promise<SyncStatus>;
+
+  /**
+   * The offline library. None of these need a network or a signed-in learner:
+   * public items are listed for anyone at the machine, and a signed-in
+   * learner additionally sees the items targeted at them.
+   */
+  libraryList(): Promise<OfflineLibrarySummary[]>;
+  libraryItem(contentId: string): Promise<OfflineLibraryItem | null>;
+  libraryQuiz(quizId: string): Promise<OfflineLibraryQuiz | null>;
+  libraryCheckAnswer(
+    quizId: string,
+    questionId: string,
+    choice: number
+  ): Promise<{ correct: boolean; correctIndex: number; explanation: string | null }>;
+  libraryStatus(): Promise<LibrarySyncStatus>;
+  /** Refreshes the library from the server now. Resolves with the final status. */
+  librarySync(): Promise<LibrarySyncStatus>;
+  /** Progress while the library downloads. Returns an unsubscribe function. */
+  onLibraryStatus(callback: (status: LibrarySyncStatus) => void): () => void;
 
   /**
    * Subscribes to "a new build has finished downloading in the background

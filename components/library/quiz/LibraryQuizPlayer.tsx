@@ -27,7 +27,29 @@ const LETTERS = 'ABCDEF';
  * server after an answer is submitted, so it is not sitting in the page to be
  * read off before answering.
  */
-export function LibraryQuizPlayer({ quiz }: { quiz: PlayableQuiz }) {
+export type CheckAnswer = (
+  questionId: string,
+  choice: number
+) => Promise<{ correct: boolean; correctIndex: number; explanation: string | null }>;
+
+/** Online: the server marks the answer, so the key never reaches the page before a choice is made. */
+function checkOnline(quizId: string): CheckAnswer {
+  return async (questionId, choice) => {
+    const res = await fetch(`/api/library/quizzes/${quizId}/check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ questionId, choice }),
+    }).then((r) => r.json());
+    if (!res.success) throw new Error(res.message || 'Could not check that answer.');
+    return res.data;
+  };
+}
+
+/**
+ * `check` is for TERECO Collect, which marks against its local copy of the
+ * quiz with no network. Everywhere else it is left out and the server marks.
+ */
+export function LibraryQuizPlayer({ quiz, check }: { quiz: PlayableQuiz; check?: CheckAnswer }) {
   const [index, setIndex] = useState(0);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [score, setScore] = useState(0);
@@ -43,14 +65,9 @@ export function LibraryQuizPlayer({ quiz }: { quiz: PlayableQuiz }) {
     setChecking(true);
     setError('');
     try {
-      const res = await fetch(`/api/library/quizzes/${quiz.id}/check`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ questionId: q.id, choice }),
-      }).then((r) => r.json());
-      if (!res.success) throw new Error(res.message || 'Could not check that answer.');
-      setFeedback({ choice, ...res.data });
-      if (res.data.correct) setScore((s) => s + 1);
+      const result = await (check ?? checkOnline(quiz.id))(q.id, choice);
+      setFeedback({ choice, ...result });
+      if (result.correct) setScore((s) => s + 1);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not check that answer.');
     } finally {
