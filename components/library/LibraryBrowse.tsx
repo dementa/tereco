@@ -101,8 +101,8 @@ type Tab =
   | { key: string; label: string; kind: 'e_paper' };
 
 const TABS: Tab[] = [
-  { key: 'tutorials', label: 'Tutorials', kind: 'content', types: ['video'] },
   { key: 'documents', label: 'Documents', kind: 'content', types: ['document', 'notes'] },
+  { key: 'tutorials', label: 'Tutorials', kind: 'content', types: ['video'] },
   { key: 'e_papers', label: 'E-Papers', kind: 'e_paper' },
   { key: 'past_papers', label: 'Past Papers', kind: 'content', types: ['past_paper'] },
   { key: 'presentations', label: 'Presentations', kind: 'content', types: ['presentation'] },
