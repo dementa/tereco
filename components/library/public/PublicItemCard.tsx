@@ -1,10 +1,32 @@
 'use client';
 
 import Link from 'next/link';
-import { CheckCircle2, Download } from 'lucide-react';
+import { CheckCircle2, Download, ListChecks, Star } from 'lucide-react';
 import { PublicCover } from '@/components/library/public/PublicCover';
 import { TYPE_META, sizeLabel } from '@/components/library/public/libraryMeta';
-import type { PublicItem } from '@/components/library/public/usePublicLibrary';
+import type { LibraryContentTypeValue } from '@/components/library/LibraryThumbnail';
+
+/**
+ * What a card needs. The web's public items and TERECO Collect's offline
+ * summaries both fit: fields only one of them has are optional.
+ */
+export interface CardItem {
+  id: string;
+  title: string;
+  description: string;
+  contentType: LibraryContentTypeValue;
+  fileFormat: string | null;
+  learningArea: string | null;
+  authorName: string;
+  thumbnailUrl: string | null;
+  pageImageUrls?: string[] | null;
+  downloadAvailable?: boolean;
+  createdAt?: string;
+  /** Desktop: published quizzes on this item. */
+  quizCount?: number;
+  /** Desktop: aimed at the signed-in learner rather than public. */
+  personal?: boolean;
+}
 
 /**
  * A public Library card: a uniform 4:3 cover (so a row of mixed videos and
@@ -12,7 +34,7 @@ import type { PublicItem } from '@/components/library/public/usePublicLibrary';
  * On phones it lies flat — cover left, text right — so a list of twenty is a
  * scroll, not a marathon. The whole card is the link.
  */
-export function PublicItemCard({ item, saved }: { item: PublicItem; saved: boolean }) {
+export function PublicItemCard({ item, saved = false }: { item: CardItem; saved?: boolean }) {
   const meta = TYPE_META[item.contentType];
   const Icon = meta.icon;
   const size = sizeLabel(item);
@@ -29,7 +51,12 @@ export function PublicItemCard({ item, saved }: { item: PublicItem; saved: boole
         <span className="absolute left-3 top-3 hidden items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-semibold text-primary-700 shadow-sm xs:inline-flex">
           <Icon className="h-3.5 w-3.5" aria-hidden /> {meta.label}
         </span>
-        {saved && (
+        {item.personal && (
+          <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-accent px-2 py-1 text-[11px] font-semibold text-text-primary shadow-sm xs:right-3 xs:top-3">
+            <Star className="h-3.5 w-3.5" aria-hidden /> <span className="sr-only xs:not-sr-only">For you</span>
+          </span>
+        )}
+        {saved && !item.personal && (
           <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-primary-700 p-1 text-[11px] font-semibold text-white shadow-sm xs:right-3 xs:top-3 xs:px-2 xs:py-1">
             <CheckCircle2 className="h-3.5 w-3.5" aria-hidden /> <span className="sr-only xs:not-sr-only">Saved</span>
           </span>
@@ -59,6 +86,11 @@ export function PublicItemCard({ item, saved }: { item: PublicItem; saved: boole
               <span aria-hidden className="text-text-faint">•</span>
               <span className="shrink-0">{size}</span>
             </>
+          )}
+          {!!item.quizCount && (
+            <span className="ml-auto inline-flex shrink-0 items-center gap-1 font-medium text-primary-700">
+              <ListChecks className="h-3.5 w-3.5" aria-hidden /> {item.quizCount} quiz{item.quizCount === 1 ? '' : 'zes'}
+            </span>
           )}
           {item.downloadAvailable && (
             <span className="ml-auto inline-flex shrink-0 items-center gap-1 font-medium text-primary-700">

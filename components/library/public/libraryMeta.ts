@@ -32,7 +32,7 @@ export function inCategory(contentType: LibraryContentTypeValue, key: string): b
 }
 
 /** "12 pages", "PDF", "MP4" — the one fact a card can show without opening the item. */
-export function sizeLabel(item: { pageImageUrls: string[] | null; fileFormat: string | null }): string | null {
+export function sizeLabel(item: { pageImageUrls?: string[] | null; fileFormat: string | null }): string | null {
   if (item.pageImageUrls && item.pageImageUrls.length > 0) {
     const n = item.pageImageUrls.length;
     return `${n} page${n === 1 ? '' : 's'}`;

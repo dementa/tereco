@@ -71,6 +71,14 @@ export default defineConfig({
         replacement: path.resolve(here, 'src/shims/next-navigation.tsx'),
       },
       /**
+       * Same for `next/link`, which the shared Library components use for
+       * their cards and breadcrumbs: app paths become hash links.
+       */
+      {
+        find: /^next\/link$/,
+        replacement: path.resolve(here, 'src/shims/next-link.tsx'),
+      },
+      /**
        * Mirrors the `@/*` -> `./*` mapping in the root tsconfig.json so shared
        * components resolve their own imports unchanged.
        */
