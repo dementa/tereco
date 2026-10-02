@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { LibraryItemDetail } from "@/components/library/LibraryItemDetail";
+import { PublicItemDetail } from "@/components/library/public/PublicItemDetail";
 import { getLibraryContentById, isPublicLibraryContent } from "@/lib/entities/library-content";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -10,12 +10,18 @@ export async function generateMetadata({ params }: { params: Promise<{ id: strin
   try {
     if (!UUID.test(id) || !(await isPublicLibraryContent(id))) return {};
     const item = await getLibraryContentById(id);
-    return item ? { title: `${item.title} · TERECO Library`, description: item.description || undefined } : {};
+    if (!item) return {};
+    const description = item.description || `A free ${item.contentType.replace("_", " ")} on TERECO Library.`;
+    return {
+      title: `${item.title} · TERECO Library`,
+      description,
+      openGraph: { title: item.title, description, type: "article" },
+    };
   } catch {
     return {};
   }
 }
 
 export default function PublicLibraryItemPage() {
-  return <LibraryItemDetail variant="public" />;
+  return <PublicItemDetail />;
 }
