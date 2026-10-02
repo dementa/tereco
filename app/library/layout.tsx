@@ -58,11 +58,12 @@ export default function PublicLibraryLayout({ children }: { children: React.Reac
       <footer className="border-t border-border bg-bg-subtle">
         <div className="mx-auto flex max-w-6xl flex-col gap-2 px-4 py-8 text-sm text-text-muted sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <p>© {new Date().getFullYear()} TERECO. Free learning resources for every learner.</p>
-          <p className="flex gap-4">
-            <Link href="/library" className="hover:text-primary-700">
+          {/* Padded to a 40px tap target: on a phone these are thumbs, not cursors. */}
+          <p className="-mx-2 flex">
+            <Link href="/library" className="inline-flex min-h-10 items-center px-2 hover:text-primary-700">
               Library
             </Link>
-            <Link href="/auth" className="hover:text-primary-700">
+            <Link href="/auth" className="inline-flex min-h-10 items-center px-2 hover:text-primary-700">
               Teachers &amp; students sign in
             </Link>
           </p>
