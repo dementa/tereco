@@ -198,3 +198,29 @@ describe('offline quizzes', () => {
     expect(() => library.checkAnswer('quiz-1', 'nope', 0)).toThrow();
   });
 });
+
+describe('when the library syncs on its own', () => {
+  const { isLibrarySyncDue } = require('./library-sync.js');
+  const MIN = 60 * 1000;
+  const at = (minutesAgo, lastState = 'complete') => ({
+    justReconnected: false,
+    lastAttemptAt: 0,
+    lastState,
+    now: minutesAgo * MIN,
+  });
+
+  it('syncs at once on first start and on reconnecting, however recent the last try', () => {
+    expect(isLibrarySyncDue({ ...at(0), lastAttemptAt: null })).toBe(true);
+    expect(isLibrarySyncDue({ ...at(1), justReconnected: true })).toBe(true);
+  });
+
+  it('retries a failed sync after five minutes, not half an hour', () => {
+    expect(isLibrarySyncDue(at(4, 'failed'))).toBe(false);
+    expect(isLibrarySyncDue(at(5, 'failed'))).toBe(true);
+  });
+
+  it('refreshes a good library every half hour', () => {
+    expect(isLibrarySyncDue(at(29))).toBe(false);
+    expect(isLibrarySyncDue(at(30))).toBe(true);
+  });
+});

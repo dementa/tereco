@@ -22,8 +22,6 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-/** How often an online machine refreshes its offline library. */
-const LIBRARY_SYNC_MS = 30 * 60 * 1000;
 
 /**
  * The bundled offline client. This is the default and the point of the app:
@@ -562,16 +560,40 @@ function registerIpc(repo, library) {
   const libraryMediaDir = path.join(app.getPath('userData'), 'library-media');
   registerMediaProtocol(libraryMediaDir);
 
-  const { createLibrarySync } = require('./net/library-sync');
+  const { createLibrarySync, isLibrarySyncDue } = require('./net/library-sync');
   const librarySync = createLibrarySync({ baseUrl: API_BASE_URL, fetchFn, library, mediaDir: libraryMediaDir });
   librarySync.onChange((status) => mainWindow?.webContents.send('tereco:library-status', status));
 
+  let libraryLastAttemptAt = null;
   const syncLibrary = () => {
     if (!net.isOnline()) return;
+    libraryLastAttemptAt = Date.now();
     librarySync.run().catch((err) => console.error('[tereco] library sync failed:', err));
   };
-  setTimeout(syncLibrary, 3_000).unref?.();
-  setInterval(syncLibrary, LIBRARY_SYNC_MS).unref?.();
+
+  /**
+   * Downloads new library files whenever there is internet, with nobody
+   * pressing anything: checked every minute, synced straight away when the
+   * machine comes back online, retried sooner after a failure, refreshed
+   * every half hour otherwise (isLibrarySyncDue). Polled for the same reason
+   * as the submission queue above — "online" events lie on lab networks.
+   */
+  let libraryWasOnline = net.isOnline();
+  const pumpLibrary = () => {
+    const isOnline = net.isOnline();
+    const justReconnected = isOnline && !libraryWasOnline;
+    libraryWasOnline = isOnline;
+    if (!isOnline) return;
+    const due = isLibrarySyncDue({
+      justReconnected,
+      lastAttemptAt: libraryLastAttemptAt,
+      lastState: librarySync.status().state,
+      now: Date.now(),
+    });
+    if (due) syncLibrary();
+  };
+  setTimeout(pumpLibrary, 3_000).unref?.();
+  setInterval(pumpLibrary, 60_000).unref?.();
 
   ipcMain.handle('tereco:libraryList', () => library.list());
   ipcMain.handle('tereco:libraryItem', (_e, contentId) => library.getItem(contentId));

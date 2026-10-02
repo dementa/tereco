@@ -3,12 +3,25 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { FileText } from 'lucide-react';
+import { CheckCircle2, FileText, WifiOff } from 'lucide-react';
 import { Card } from '@/components/ui/Card';
 import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/components/auth/AuthContext';
 import { type LibraryThumbnailItem } from '@/components/library/LibraryThumbnail';
 import { LibraryBookCard } from '@/components/library/LibraryBookCard';
+import {
+  isOfflineSupported,
+  listSaved,
+  onSavedChange,
+  refreshSaved,
+  toDetailItem,
+  type SavedLibraryItem,
+} from '@/lib/library-offline-store';
+
+/** A saved item as a browse card, for the offline list. */
+function savedToItem(saved: SavedLibraryItem): LibraryItem {
+  return { ...toDetailItem(saved), createdAt: new Date(saved.savedAt).toISOString() };
+}
 
 interface LibraryItem extends LibraryThumbnailItem {
   id: string;
@@ -110,8 +123,13 @@ const TABS: Tab[] = [
   { key: 'resources', label: 'Resources', kind: 'content', types: ['support_file'] },
 ];
 
-/** Shared browse/consume view — used by students, parents, teachers, and admins browsing (not authoring). */
-export function LibraryBrowse() {
+/**
+ * Shared browse/consume view — used by students, parents, teachers, and admins
+ * browsing (not authoring), and by the signed-out public Library at /library
+ * (`variant="public"`), which lists only items with no audience targets.
+ */
+export function LibraryBrowse({ variant = 'portal' }: { variant?: 'portal' | 'public' }) {
+  const isPublic = variant === 'public';
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -120,24 +138,52 @@ export function LibraryBrowse() {
   const pathname = usePathname();
   const [ePapers, setEPapers] = useState<EPaper[]>([]);
   const [ePapersLoading, setEPapersLoading] = useState(true);
+  const [saved, setSaved] = useState<SavedLibraryItem[]>([]);
+  const [online, setOnline] = useState(true);
 
   // Staff, parents and admins browse the same Library, but an E-Paper is
   // something a learner sits — eligibility is per-student and the endpoint is
   // students-only, so the tab simply does not exist for anyone else.
+  // The public Library has no E-Papers: their links lead into the student portal.
   const { user } = useAuth();
-  const isStudent = user?.role === 'student';
+  const isStudent = !isPublic && user?.role === 'student';
 
   // Fetched once; tab/keyword narrow the already-loaded list client-side
   // (mirrors app/staff/lessons/page.tsx) rather than re-fetching per
   // keystroke — a school's library is small enough that this is simpler
   // and cheaper than a request per filter change.
   useEffect(() => {
-    fetch('/api/library/content')
+    fetch(isPublic ? '/api/library/public' : '/api/library/content')
       .then((r) => r.json())
       .then((res) => (res.success ? setItems(res.data) : setError(res.message)))
       .catch(() => setError('Network error'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [isPublic]);
+
+  // Public Library only: what is saved on this device, and whether there is a
+  // network. Offline, the list is exactly the saved items — anything else
+  // would be a card that cannot open. Online, saved copies are brought up to
+  // date in the background (re-downloaded if edited, dropped if no longer public).
+  useEffect(() => {
+    if (!isPublic || !isOfflineSupported()) return;
+    const read = () => void listSaved().then(setSaved).catch(() => {});
+    const onNetwork = () => setOnline(navigator.onLine);
+    read();
+    onNetwork();
+    void refreshSaved().catch(() => {});
+    window.addEventListener('online', onNetwork);
+    window.addEventListener('offline', onNetwork);
+    const stop = onSavedChange(read);
+    return () => {
+      stop();
+      window.removeEventListener('online', onNetwork);
+      window.removeEventListener('offline', onNetwork);
+    };
+  }, [isPublic]);
+
+  const offline = isPublic && (!online || (!!error && saved.length > 0));
+  const savedIds = useMemo(() => new Set(saved.map((i) => i.id)), [saved]);
+  const listed = useMemo(() => (offline ? saved.map(savedToItem) : items), [offline, saved, items]);
 
   // Fetched separately because it is a different entity from a different table.
   // A failure here is deliberately silent: a learner browsing for a video
@@ -165,16 +211,16 @@ export function LibraryBrowse() {
             ? isStudent
               ? ePapers.length
               : 0
-            : items.filter((i) => tab.types.includes(i.contentType)).length,
+            : listed.filter((i) => tab.types.includes(i.contentType)).length,
       })).filter((tab) => tab.count > 0),
-    [items, ePapers, isStudent]
+    [listed, ePapers, isStudent]
   );
 
   // Keep the selected tab valid once content loads (default 'tutorials' may
   // have nothing) — fall back to the first tab that does.
   const currentTab = visibleTabs.find((t) => t.key === activeTab) ?? visibleTabs[0];
 
-  const filtered = items.filter((item) => {
+  const filtered = listed.filter((item) => {
     if (!currentTab || currentTab.kind !== 'content') return false;
     if (!currentTab.types.includes(item.contentType)) return false;
     if (keyword) {
@@ -203,6 +249,13 @@ export function LibraryBrowse() {
           <p className="text-sm text-text-muted mt-1">Reading and teaching material for free time.</p>
         </div>
       </div>
+
+      {offline && (
+        <p role="status" className="flex items-center gap-2 text-sm text-text-secondary bg-bg-muted rounded-xl px-3 py-2 mb-4">
+          <WifiOff className="w-4 h-4 shrink-0 text-primary-700" aria-hidden />
+          You&apos;re offline. Showing what&apos;s saved on this device.
+        </p>
+      )}
 
       {!loading && !error && visibleTabs.length > 0 && (
         <>
@@ -237,7 +290,7 @@ export function LibraryBrowse() {
 
       {loading || (isStudent && ePapersLoading) ? (
         <p className="text-sm text-text-muted">Loading…</p>
-      ) : error ? (
+      ) : error && !offline ? (
         <p className="text-sm text-error">{error}</p>
       ) : visibleTabs.length === 0 ? (
         <Card className="text-center py-10">
@@ -261,9 +314,14 @@ export function LibraryBrowse() {
             <Link
               key={item.id}
               href={`${pathname}/${item.id}`}
-              className="block text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-700/40"
+              className="relative block text-left rounded-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-700/40"
             >
               <LibraryBookCard item={item} />
+              {savedIds.has(item.id) && (
+                <span className="absolute top-2 left-2 inline-flex items-center gap-1 rounded-full bg-white/95 px-2 py-0.5 text-[11px] font-semibold text-primary-700 shadow-sm">
+                  <CheckCircle2 className="w-3 h-3" aria-hidden /> Saved
+                </span>
+              )}
             </Link>
           ))}
         </div>

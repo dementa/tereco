@@ -193,10 +193,30 @@ function createLibrarySync({ baseUrl, fetchFn, library, mediaDir, now = () => Da
   };
 }
 
+/** A full refresh while things are working: catches edits and new items. */
+const LIBRARY_REFRESH_MS = 30 * 60 * 1000;
+/** After a failed sync (a router with no internet behind it, a dropped download). */
+const LIBRARY_RETRY_MS = 5 * 60 * 1000;
+
+/**
+ * Whether the library should sync now. Asked once a minute by main.js.
+ *
+ * A machine that was offline syncs the moment it is back, not at the next
+ * half-hour tick, so a lab gets its new videos while the connection lasts.
+ * A failed sync retries sooner than a good one refreshes; `net.isOnline()`
+ * only means "has a network", and a failure is often a router that cannot
+ * reach the internet yet.
+ */
+function isLibrarySyncDue({ justReconnected, lastAttemptAt, lastState, now }) {
+  if (justReconnected || lastAttemptAt === null) return true;
+  const wait = lastState === 'failed' ? LIBRARY_RETRY_MS : LIBRARY_REFRESH_MS;
+  return now - lastAttemptAt >= wait;
+}
+
 function extensionFor(url, fileFormat) {
   if (fileFormat) return `.${String(fileFormat).toLowerCase().replace(/^\./, '')}`;
   const match = /\.(png|jpe?g|gif|webp|svg|mp4|webm|mp3|m4a|docx)(?:$|[?#])/i.exec(url);
   return match ? `.${match[1].toLowerCase()}` : '.bin';
 }
 
-module.exports = { createLibrarySync };
+module.exports = { createLibrarySync, isLibrarySyncDue };

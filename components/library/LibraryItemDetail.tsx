@@ -9,6 +9,8 @@ import { Card } from '@/components/ui/Card';
 import { QuizImportPanel } from '@/components/library/quiz/QuizImportPanel';
 import { LibraryThumbnail, type LibraryThumbnailItem } from '@/components/library/LibraryThumbnail';
 import { LibraryFullScreenViewer, type FullScreenLibraryItem } from '@/components/library/LibraryFullScreenViewer';
+import { SaveForOfflineButton } from '@/components/library/SaveForOfflineButton';
+import { getSaved, toDetailItem } from '@/lib/library-offline-store';
 
 interface QuizSummary {
   id: string;
@@ -40,8 +42,13 @@ const TYPE_LABEL: Record<string, string> = {
  * description, the file itself, and the quizzes attached to it. Shared by every
  * role's `library/[id]` route — the back link is derived from the current path
  * so it needs no per-role configuration.
+ *
+ * `variant="public"` is the signed-out Library at /library/[id]: it reads the
+ * public route, offers "Save for offline", has no feedback (that needs an
+ * account), and with no network falls back to the copy saved on this device.
  */
-export function LibraryItemDetail() {
+export function LibraryItemDetail({ variant = 'portal' }: { variant?: 'portal' | 'public' }) {
+  const isPublic = variant === 'public';
   const { id } = useParams<{ id: string }>();
   const pathname = usePathname();
   const router = useRouter();
@@ -56,12 +63,21 @@ export function LibraryItemDetail() {
   const [createError, setCreateError] = useState('');
 
   useEffect(() => {
-    fetch(`/api/library/content/${id}/detail`)
+    const fromDevice = async (fallbackError: string) => {
+      const saved = isPublic ? await getSaved(id).catch(() => null) : null;
+      if (saved) setItem(toDetailItem(saved));
+      else setError(fallbackError);
+    };
+    fetch(isPublic ? `/api/library/public/${id}` : `/api/library/content/${id}/detail`)
       .then((r) => r.json())
       .then((res) => (res.success ? setItem(res.data) : setError(res.message || 'Could not load this item.')))
-      .catch(() => setError('Network error'))
+      .catch(() =>
+        fromDevice(
+          isPublic ? "You're offline and this item isn't saved on this device." : 'Network error'
+        )
+      )
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, isPublic]);
 
   async function newBlankQuiz() {
     setCreating(true);
@@ -131,6 +147,8 @@ export function LibraryItemDetail() {
             </button>
           </Card>
 
+          {isPublic && <SaveForOfflineButton contentId={item.id} />}
+
           <section aria-labelledby="quizzes-heading">
             <h2 id="quizzes-heading" className="flex items-center gap-2 text-lg font-semibold text-primary-900 mb-3">
               <ListChecks className="w-5 h-5" aria-hidden /> Quizzes
@@ -181,7 +199,7 @@ export function LibraryItemDetail() {
         </div>
       )}
 
-      {item && reading && <LibraryFullScreenViewer item={item} onClose={() => setReading(false)} />}
+      {item && reading && <LibraryFullScreenViewer item={item} onClose={() => setReading(false)} feedback={!isPublic} />}
     </div>
   );
 }

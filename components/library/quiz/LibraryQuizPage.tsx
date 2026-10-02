@@ -4,7 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams, usePathname } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
-import { LibraryQuizPlayer, type PlayableQuiz } from '@/components/library/quiz/LibraryQuizPlayer';
+import { LibraryQuizPlayer, type CheckAnswer, type PlayableQuiz } from '@/components/library/quiz/LibraryQuizPlayer';
+import { getSaved, localCheck, toPlayableQuiz } from '@/lib/library-offline-store';
 import { LibraryQuizEditor, type EditorQuiz } from '@/components/library/quiz/LibraryQuizEditor';
 
 type Play = PlayableQuiz & { contentId: string; canManage: boolean };
@@ -15,9 +16,12 @@ type Play = PlayableQuiz & { contentId: string; canManage: boolean };
  * player. The server decides which — this only asks /play, which any viewer
  * of a published quiz may call, and then /quizzes/[id] for the editable copy
  * if `canManage` says the caller is entitled to it.
+ *
+ * With no network, a quiz on a public item saved to this device (Save for
+ * offline) is played from that copy and marked against its saved key.
  */
 export function LibraryQuizPage() {
-  const { quizId } = useParams<{ quizId: string }>();
+  const { id, quizId } = useParams<{ id: string; quizId: string }>();
   const pathname = usePathname();
   const backHref = pathname.replace(/\/quiz\/[^/]+$/, '');
 
@@ -26,11 +30,20 @@ export function LibraryQuizPage() {
   const [trying, setTrying] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [offlineCheck, setOfflineCheck] = useState<CheckAnswer | undefined>(undefined);
 
   useEffect(() => {
     (async () => {
       try {
-        const p = await fetch(`/api/library/quizzes/${quizId}/play`).then((r) => r.json());
+        const p = await fetch(`/api/library/quizzes/${quizId}/play`)
+          .then((r) => r.json())
+          .catch(async (networkError) => {
+            const quiz = (await getSaved(id).catch(() => null))?.quizzes.find((q) => q.id === quizId);
+            if (!quiz) throw networkError;
+            // A function in state must be wrapped, or React calls it as an updater.
+            setOfflineCheck(() => localCheck(quiz));
+            return { success: true, data: { ...toPlayableQuiz(quiz), contentId: id, canManage: false } };
+          });
         if (!p.success) throw new Error(p.message || 'Could not load this quiz.');
         setPlay(p.data);
         if (p.data.canManage) {
@@ -44,7 +57,7 @@ export function LibraryQuizPage() {
         setLoading(false);
       }
     })();
-  }, [quizId]);
+  }, [id, quizId]);
 
   // Entering "try it" re-reads the learner copy so it reflects what was just
   // saved. The editor stays mounted (only hidden) so unsaved edits survive the trip.
@@ -78,7 +91,7 @@ export function LibraryQuizPage() {
                   ← Back to editing
                 </button>
               )}
-              <LibraryQuizPlayer key={play.questions.map((q) => q.id).join()} quiz={play} />
+              <LibraryQuizPlayer key={play.questions.map((q) => q.id).join()} quiz={play} check={offlineCheck} />
             </>
           )}
         </>

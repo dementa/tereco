@@ -1,6 +1,7 @@
 'use client';
 
 import { Suspense, useEffect } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth, type User } from '@/components/auth/AuthContext';
 import { LoginScreen } from '@/components/auth/LoginScreen';
@@ -78,6 +79,13 @@ function AuthPageContent() {
         </div>
       )}
       <LoginScreen onLogin={handleLogin} />
+      {/* The public Library needs no account; the way in for anyone without one. */}
+      <Link
+        href="/library"
+        className="fixed top-4 right-4 z-10 rounded-full bg-white/90 px-3 py-1.5 text-sm font-medium text-primary-700 shadow-sm hover:underline"
+      >
+        Browse the library
+      </Link>
     </>
   );
 }

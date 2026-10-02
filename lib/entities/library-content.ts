@@ -655,3 +655,27 @@ export async function getPublicLibraryContent(): Promise<BrowsableLibraryContent
   const hasTargets = new Set((targeted ?? []).map((t) => t.content_id));
   return attachAuthorNames(items.filter((i) => !hasTargets.has(i.id)));
 }
+
+/**
+ * One item's answer to getPublicLibraryContent's rule — approved, not
+ * archived, no audience targets — for the anonymous detail and quiz routes.
+ */
+export async function isPublicLibraryContent(contentId: string): Promise<boolean> {
+  const supabase = getSupabaseAdmin();
+  const { data, error } = await supabase
+    .from("library_content")
+    .select("id")
+    .eq("id", contentId)
+    .eq("status", "approved")
+    .is("archived_at", null)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return false;
+
+  const { count, error: tErr } = await supabase
+    .from("library_content_targets")
+    .select("content_id", { count: "exact", head: true })
+    .eq("content_id", contentId);
+  if (tErr) throw new Error(tErr.message);
+  return count === 0;
+}
