@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import {
+  attachAuthorNames,
   getLibraryContentById,
   getLibraryPlaybackInfo,
   isPublicLibraryContent,
@@ -25,10 +26,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     const content = await getLibraryContentById(id);
     if (!content) return notFound;
 
-    const quizzes = await listQuizzesForContent(id);
+    const [[withAuthor], quizzes] = await Promise.all([attachAuthorNames([content]), listQuizzesForContent(id)]);
     return successResponse({
       data: {
-        ...toPublicLibraryItem(content, getLibraryPlaybackInfo(content)),
+        ...toPublicLibraryItem(withAuthor ?? content, getLibraryPlaybackInfo(content)),
         quizzes: quizzes.map((q) => ({ id: q.id, title: q.title, status: q.status, questionCount: q.questionCount })),
         canManage: false,
       },

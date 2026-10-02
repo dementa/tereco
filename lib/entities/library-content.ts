@@ -500,7 +500,7 @@ export interface BrowsableLibraryContent extends LibraryContent {
  * than embedding through the RPC (PostgREST embedding on a function result is
  * fussier than on a table, and this keeps the browse query untouched).
  */
-async function attachAuthorNames(items: LibraryContent[]): Promise<BrowsableLibraryContent[]> {
+export async function attachAuthorNames(items: LibraryContent[]): Promise<BrowsableLibraryContent[]> {
   const creatorIds = [...new Set(items.map((i) => i.createdBy))];
   if (creatorIds.length === 0) return [];
 
