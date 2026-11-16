@@ -1,6 +1,42 @@
 import { getSupabaseAdmin } from "@/lib/supabase";
 import { getCurrentAcademicYear } from "@/lib/entities/academic-years";
 import { readAllPages, BEHAVIOR_ASSESSMENT_TITLE } from "@/lib/assessments";
+import { isCompetencyExamTitle } from "@/lib/competency-exam";
+
+type MarkKind = "assessment" | "behaviour" | "competency";
+
+/**
+ * Which display bucket a marked submission belongs to. All three still feed
+ * the overall figure; this only decides which breakdown number shows it, so
+ * a practical competency exam reads as "Competency" on the report rather than
+ * being folded into the written-paper average.
+ */
+function markKind(title: string | null | undefined): MarkKind {
+  if (title === BEHAVIOR_ASSESSMENT_TITLE) return "behaviour";
+  if (isCompetencyExamTitle(title)) return "competency";
+  return "assessment";
+}
+
+interface MarkBuckets {
+  assessmentPercentages: number[];
+  behaviourPercentages: number[];
+  competencyPercentages: number[];
+}
+
+function pushMark(buckets: MarkBuckets, title: string | null | undefined, percentage: number): void {
+  const kind = markKind(title);
+  if (kind === "behaviour") buckets.behaviourPercentages.push(percentage);
+  else if (kind === "competency") buckets.competencyPercentages.push(percentage);
+  else buckets.assessmentPercentages.push(percentage);
+}
+
+function allMarks(b: MarkBuckets): number[] {
+  return [...b.assessmentPercentages, ...b.behaviourPercentages, ...b.competencyPercentages];
+}
+
+function meanOrNull(percentages: number[]): number | null {
+  return percentages.length > 0 ? roundedMean(percentages) : null;
+}
 
 export interface LeaderboardEntry {
   studentId: string;
@@ -19,6 +55,8 @@ export interface LeaderboardEntry {
   assessmentScore: number | null;
   /** Mean of marked behaviour-rating percentages alone. Null when this student has never been rated. */
   behaviourScore: number | null;
+  /** Mean of competency (practical) exam percentages alone. Null when this student has no competency exam mark. */
+  competencyScore: number | null;
   /** % of this term's lesson-attendance sessions the student was present for, or null with no attendance data recorded (never treated as 0). */
   attendanceRate: number | null;
   /** Share of averagePercentage taken from attendance, 0..1. 0 whenever attendanceRate is null. */
@@ -284,22 +322,19 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
     return query.order("id", { ascending: true }).range(from, to);
   });
 
-  const byStudent = new Map<
-    string,
-    { name: string; systemId: string | null; assessmentPercentages: number[]; behaviourPercentages: number[] }
-  >();
+  const byStudent = new Map<string, MarkBuckets & { name: string; systemId: string | null }>();
   for (const row of rows) {
     if (!isRankable(row)) continue;
     if (term && !inTerm(term, row.submitted_at)) continue;
     const percentage = percentOf(row.total_score as number, row.max_score as number);
-    const isBehaviour = row.assessment?.title === BEHAVIOR_ASSESSMENT_TITLE;
     const existing = byStudent.get(row.student_id) ?? {
       name: studentName(row.student),
       systemId: row.student?.system_id ?? null,
       assessmentPercentages: [],
       behaviourPercentages: [],
+      competencyPercentages: [],
     };
-    (isBehaviour ? existing.behaviourPercentages : existing.assessmentPercentages).push(percentage);
+    pushMark(existing, row.assessment?.title, percentage);
     byStudent.set(row.student_id, existing);
   }
 
@@ -314,10 +349,10 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
     : new Map<string, number>();
 
   const entries: Omit<LeaderboardEntry, "rank">[] = Array.from(byStudent.entries()).map(([studentId, agg]) => {
-    // Overall blends EVERY marked submission — written papers and the
-    // behaviour rating alike — with attendance, same as before this split.
-    // assessmentScore/behaviourScore below are purely the display breakdown.
-    const allPercentages = [...agg.assessmentPercentages, ...agg.behaviourPercentages];
+    // Overall blends EVERY marked submission — written papers, the behaviour
+    // rating and competency exams alike — with attendance, same as before
+    // this split. The three scores below are purely the display breakdown.
+    const allPercentages = allMarks(agg);
     const combinedWritten = roundedMean(allPercentages);
     const blend = blendWithAttendance(combinedWritten, attendanceRates.get(studentId) ?? null);
     return {
@@ -326,8 +361,9 @@ async function queryLeaderboard(filters: LeaderboardFilters): Promise<Leaderboar
       studentSystemId: agg.systemId,
       assessmentsCount: allPercentages.length,
       averagePercentage: blend.overall,
-      assessmentScore: agg.assessmentPercentages.length > 0 ? roundedMean(agg.assessmentPercentages) : null,
-      behaviourScore: agg.behaviourPercentages.length > 0 ? roundedMean(agg.behaviourPercentages) : null,
+      assessmentScore: meanOrNull(agg.assessmentPercentages),
+      behaviourScore: meanOrNull(agg.behaviourPercentages),
+      competencyScore: meanOrNull(agg.competencyPercentages),
       attendanceRate: blend.attendanceRate,
       attendanceWeight: blend.weight,
     };
@@ -396,6 +432,8 @@ export interface TermAverage {
   assessmentScore: number | null;
   /** Mean of behaviour-rating percentages alone this term. Null if never rated this term. */
   behaviourScore: number | null;
+  /** Mean of competency (practical) exam percentages this term. Null if no competency exam mark this term. */
+  competencyScore: number | null;
 }
 
 interface StudentTrendRow {
@@ -467,7 +505,7 @@ export async function getStudentTermAverages(studentId: string, academicYearId?:
   if (termError) throw new Error(termError.message);
 
   const terms = termRows ?? [];
-  const byTerm = new Map<string, { number: number; assessmentPercentages: number[]; behaviourPercentages: number[] }>();
+  const byTerm = new Map<string, MarkBuckets & { number: number }>();
   for (const row of scored) {
     const submittedOn = row.submitted_at.slice(0, 10);
     const term = terms.find(
@@ -478,18 +516,23 @@ export async function getStudentTermAverages(studentId: string, academicYearId?:
     // should show no term trend, not a fabricated one.
     if (!term) continue;
     const percentage = percentOf(row.total_score as number, row.max_score as number);
-    const isBehaviour = row.assessment?.title === BEHAVIOR_ASSESSMENT_TITLE;
-    const existing = byTerm.get(term.id) ?? { number: term.number, assessmentPercentages: [], behaviourPercentages: [] };
-    (isBehaviour ? existing.behaviourPercentages : existing.assessmentPercentages).push(percentage);
+    const existing = byTerm.get(term.id) ?? {
+      number: term.number,
+      assessmentPercentages: [],
+      behaviourPercentages: [],
+      competencyPercentages: [],
+    };
+    pushMark(existing, row.assessment?.title, percentage);
     byTerm.set(term.id, existing);
   }
 
   const averages: TermAverage[] = Array.from(byTerm.entries()).map(([termId, agg]) => ({
     termId,
     termNumber: agg.number,
-    averagePercentage: roundedMean([...agg.assessmentPercentages, ...agg.behaviourPercentages]),
-    assessmentScore: agg.assessmentPercentages.length > 0 ? roundedMean(agg.assessmentPercentages) : null,
-    behaviourScore: agg.behaviourPercentages.length > 0 ? roundedMean(agg.behaviourPercentages) : null,
+    averagePercentage: roundedMean(allMarks(agg)),
+    assessmentScore: meanOrNull(agg.assessmentPercentages),
+    behaviourScore: meanOrNull(agg.behaviourPercentages),
+    competencyScore: meanOrNull(agg.competencyPercentages),
   }));
 
   averages.sort((a, b) => a.termNumber - b.termNumber);
@@ -526,6 +569,8 @@ export interface StudentTermPerformance {
   assessmentScore: number | null;
   /** Mean of behaviour-rating percentages this term alone. Null if never rated this term. */
   behaviourScore: number | null;
+  /** Mean of competency (practical) exam percentages this term. Null if no competency exam mark this term. */
+  competencyScore: number | null;
   attendanceRate: number | null;
   weight: number;
   overall: number;
@@ -564,6 +609,7 @@ export async function getStudentCurrentTermPerformance(studentId: string): Promi
     termNumber: current.termNumber,
     assessmentScore: current.assessmentScore,
     behaviourScore: current.behaviourScore,
+    competencyScore: current.competencyScore,
     attendanceRate: blend.attendanceRate,
     weight: blend.weight,
     overall: blend.overall,
