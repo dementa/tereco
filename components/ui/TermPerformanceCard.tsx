@@ -25,12 +25,14 @@ export function TermPerformanceCard({
   if (!performance) return null;
 
   // getStudentCurrentTermPerformance only ever returns a term that had at
-  // least one marked submission, so at least one of these two is always
+  // least one marked submission, so at least one of these three is always
   // set — scoreText is never empty.
   const scoreParts: string[] = [];
   if (performance.assessmentScore !== null) scoreParts.push(`Assessment ${performance.assessmentScore}%`);
   if (performance.behaviourScore !== null) scoreParts.push(`Behaviour ${performance.behaviourScore}%`);
-  const scoreText = scoreParts.join(' and ');
+  if (performance.competencyScore !== null) scoreParts.push(`Competency exam ${performance.competencyScore}%`);
+  const scoreText =
+    scoreParts.length > 1 ? `${scoreParts.slice(0, -1).join(', ')} and ${scoreParts[scoreParts.length - 1]}` : scoreParts[0];
 
   return (
     <Card className="p-5">

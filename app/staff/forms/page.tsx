@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { Card } from '@/components/ui/Card';
-import { ClipboardCheck, FileText, Laptop, Smile } from 'lucide-react';
+import { ClipboardCheck, FileText, GraduationCap, Laptop, Smile } from 'lucide-react';
 
 // Listed in the order a teacher actually works: register at the start of the
 // lesson, report and practical skills after it. Practical scoring reads its
@@ -13,6 +13,7 @@ const FORMS = [
   { href: '/staff/lessons',    label: 'Lesson Reports', description: 'File what happened after the lesson.', icon: FileText },
   { href: '/staff/practical',  label: 'Practical Skills', description: 'Score lab skills for the learners you had.', icon: Laptop },
   { href: '/staff/behaviour',  label: 'Behaviour Rating', description: 'Rate how a class has been behaving this term.', icon: Smile },
+  { href: '/staff/competency', label: 'Competency Examination', description: 'Mark practical exams: Completed, Not completed or Absent.', icon: GraduationCap },
 ];
 
 export default function StaffFormsPage() {

@@ -47,6 +47,7 @@ interface LeaderboardEntry {
   averagePercentage: number;
   assessmentScore: number | null;
   behaviourScore: number | null;
+  competencyScore: number | null;
   attendanceRate: number | null;
   attendanceWeight: number;
   rank: number;
@@ -80,6 +81,16 @@ const performanceColumns: DataTableColumn<LeaderboardEntry>[] = [
     render: (e) => (e.behaviourScore !== null ? `${e.behaviourScore}%` : '—'),
     exportValue: (e) => e.behaviourScore,
     pdfValue: (e) => (e.behaviourScore !== null ? `${Math.round(e.behaviourScore)}%` : '—'),
+  },
+  {
+    key: 'competencyScore',
+    header: 'Competency',
+    value: (e) => e.competencyScore ?? undefined,
+    sortable: true,
+    align: 'right',
+    render: (e) => (e.competencyScore !== null ? `${e.competencyScore}%` : '—'),
+    exportValue: (e) => e.competencyScore,
+    pdfValue: (e) => (e.competencyScore !== null ? `${Math.round(e.competencyScore)}%` : '—'),
   },
   {
     key: 'attendanceRate',
