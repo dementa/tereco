@@ -10,7 +10,7 @@ import { MobileNavDrawer } from '@/components/ui/MobileNavDrawer';
 import {
   LayoutDashboard, FileText, GraduationCap, ClipboardList,
   CheckSquare, LogOut, School, UserCog, Contact, CalendarDays, ShieldCheck, TrendingUp, Library,
-  UserCircle,
+  UserCircle, Sheet,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -28,6 +28,7 @@ const NAV = [
   // that lives under System below instead of here.
   { href: '/admin/library', label: 'Library', icon: Library },
   { href: '/admin/performance', label: 'Performance', icon: TrendingUp },
+  { href: '/admin/competency-marksheet', label: 'Competency Marksheet', icon: Sheet },
 ];
 
 // Super-admin-only account provisioning — separate from the day-to-day

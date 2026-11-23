@@ -141,7 +141,12 @@ export default function CompetencyExamsPage() {
         </form>
       </Card>
 
-      <p className="text-xs font-semibold uppercase tracking-wide text-text-faint mb-2">Your school&apos;s exams</p>
+      <div className="flex items-center justify-between gap-3 mb-2">
+        <p className="text-xs font-semibold uppercase tracking-wide text-text-faint">Your school&apos;s exams</p>
+        <Link href="/staff/competency/marksheet" className="text-sm font-medium text-primary-700 hover:underline">
+          View marksheet by term →
+        </Link>
+      </div>
       {loading ? (
         <p className="text-text-muted text-sm">Loading…</p>
       ) : loadError ? (
