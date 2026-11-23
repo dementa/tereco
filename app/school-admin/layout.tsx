@@ -20,6 +20,7 @@ import {
   CalendarDays,
   Library,
   NotebookPen,
+  Sheet,
 } from 'lucide-react';
 import type { Role } from '@/lib/auth/session';
 
@@ -35,6 +36,7 @@ const NAV = [
   { href: '/school-admin/assessments', label: 'Assessments', icon: ClipboardList },
   { href: '/school-admin/library', label: 'Library', icon: Library },
   { href: '/school-admin/performance', label: 'Performance', icon: TrendingUp },
+  { href: '/school-admin/competency-marksheet', label: 'Competency Marksheet', icon: Sheet },
   { href: '/school-admin/terms', label: 'Terms', icon: CalendarDays },
   { href: '/school-admin/school', label: 'My School', icon: School },
 ];
